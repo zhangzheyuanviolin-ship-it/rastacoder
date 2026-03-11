@@ -1,8 +1,16 @@
-# NavixMind
+# NavixMind 🚀
 
-**A high-agency AI console agent for Android with local code execution and fully offline inference.**
+**The AI assistant that runs entirely on your phone — no internet required.**
+
+[![Website](https://img.shields.io/badge/Website-navixmind.ai-6366F1?style=for-the-badge)](https://navixmind.ai)
+[![Google Play](https://img.shields.io/badge/Google_Play-Coming_Soon-4285F4?style=for-the-badge&logo=google-play)]()
+[![GitHub Release](https://img.shields.io/github/v/release/alexandertaboriskiy/navixmind?style=for-the-badge&color=green)](https://github.com/alexandertaboriskiy/navixmind/releases)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)](LICENSE)
+[![Discord](https://img.shields.io/discord/navixmind?style=for-the-badge&color=7289da)](https://discord.gg/navixmind)
 
 NavixMind embeds a Python 3.10 runtime directly inside the APK, enabling iterative, multi-step tasks that cloud-based AI apps cannot perform. Process files, execute logic, and automate workflows — all on-device. With on-device LLM support via MLC, NavixMind can operate entirely offline — no API key, no internet connection required.
+
+> 💰 **Monetization:** Free tier available. Pro ($9.99/mo) unlocks cloud AI and advanced tools. Enterprise ($497/mo) for teams. [Learn more](https://navixmind.ai#pricing)
 
 ## Why NavixMind?
 

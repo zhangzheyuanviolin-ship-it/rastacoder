@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NavixMind</title>
-    <meta name="description" content="AI agent for Android. Process videos, documents, and automate tasks with Claude AI.">
+    <title>NavixMind - AI Agent for Android | Offline + Cloud AI</title>
+    <meta name="description" content="The only AI assistant that runs entirely on your phone. Process videos, documents, execute Python, automate workflows. No API key, no internet required.">
+    <meta name="keywords" content="AI, Android, offline AI, local LLM, Python, automation, privacy">
     <link rel="icon" type="image/png" href="favicon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -14,90 +15,521 @@
             background: #0F0F12;
             color: #fff;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
+            overflow-x: hidden;
         }
-        .logo {
-            width: 80px;
-            height: 80px;
+        .gradient-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at 50% 0%, #1a1a2e 0%, #0F0F12 70%);
+            z-index: -1;
+        }
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .nav-logo {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .nav-links {
+            display: flex;
+            gap: 32px;
+        }
+        .nav-links a {
+            color: #888;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: #fff; }
+        .hero {
+            text-align: center;
+            padding: 80px 20px 60px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .badge {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            padding: 6px 16px;
             border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
             margin-bottom: 24px;
         }
         h1 {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 8px;
+            font-size: clamp(36px, 8vw, 64px);
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 16px;
+        }
+        h1 span {
+            background: linear-gradient(135deg, #6366F1, #8B5CF6, #EC4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         .tagline {
+            font-size: clamp(16px, 4vw, 20px);
             color: #888;
             margin-bottom: 40px;
+            line-height: 1.6;
         }
-        .buttons {
+        .cta-buttons {
             display: flex;
             gap: 16px;
             flex-wrap: wrap;
             justify-content: center;
+            margin-bottom: 60px;
         }
-        a {
+        .btn {
             display: inline-flex;
             align-items: center;
-            gap: 10px;
-            padding: 14px 28px;
-            border-radius: 10px;
-            font-size: 15px;
+            gap: 12px;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 16px;
             font-weight: 600;
             text-decoration: none;
-            transition: transform 0.2s, background 0.2s;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
         }
-        a:hover { transform: translateY(-2px); }
-        .play {
-            background: #6366F1;
+        .btn-primary {
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
             color: #fff;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
         }
-        .play:hover { background: #818CF8; }
-        .github {
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.5);
+        }
+        .btn-secondary {
             background: #1A1A1F;
             color: #fff;
             border: 1px solid #333;
         }
-        .github:hover { background: #252529; }
-        footer {
-            position: fixed;
-            bottom: 24px;
+        .btn-secondary:hover {
+            background: #252529;
+            transform: translateY(-2px);
+        }
+        .features {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+        .section-title {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .section-subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 60px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+        .feature-card {
+            background: #1A1A1F;
+            border: 1px solid #2A2A2F;
+            border-radius: 16px;
+            padding: 32px;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            border-color: #6366F1;
+            transform: translateY(-4px);
+        }
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            border-radius: 12px;
             display: flex;
-            gap: 20px;
-            font-size: 13px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 24px;
         }
-        footer a {
-            padding: 0;
-            color: #555;
-            background: none;
-            border: none;
+        .feature-card h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
         }
-        footer a:hover { color: #888; transform: none; }
+        .feature-card p {
+            color: #888;
+            line-height: 1.6;
+        }
+        .pricing {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+            margin-top: 60px;
+        }
+        .pricing-card {
+            background: #1A1A1F;
+            border: 1px solid #2A2A2F;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .pricing-card.featured {
+            border-color: #6366F1;
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.2);
+        }
+        .pricing-card.popular {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .pricing-card:hover {
+            transform: translateY(-8px);
+        }
+        .pricing-card h3 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .price {
+            font-size: 48px;
+            font-weight: 800;
+            margin: 24px 0;
+        }
+        .price span {
+            font-size: 16px;
+            color: #888;
+            font-weight: 400;
+        }
+        .pricing-features {
+            list-style: none;
+            margin: 32px 0;
+            text-align: left;
+        }
+        .pricing-features li {
+            padding: 12px 0;
+            border-bottom: 1px solid #2A2A2F;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .pricing-features li:last-child {
+            border-bottom: none;
+        }
+        .check {
+            color: #10B981;
+            font-weight: bold;
+        }
+        .demo-section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 80px 20px;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+        .demo-card {
+            background: #1A1A1F;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #2A2A2F;
+        }
+        .demo-preview {
+            height: 200px;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+        }
+        .demo-content {
+            padding: 24px;
+        }
+        .demo-content h4 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+        .demo-content p {
+            color: #888;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        footer {
+            border-top: 1px solid #2A2A2F;
+            padding: 60px 20px;
+            margin-top: 80px;
+        }
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+        }
+        .footer-section h4 {
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+        .footer-section a {
+            display: block;
+            color: #888;
+            text-decoration: none;
+            padding: 8px 0;
+            transition: color 0.2s;
+        }
+        .footer-section a:hover {
+            color: #fff;
+        }
+        .footer-bottom {
+            max-width: 1200px;
+            margin: 40px auto 0;
+            padding-top: 40px;
+            border-top: 1px solid #2A2A2F;
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+        }
+        @media (max-width: 768px) {
+            nav { padding: 20px; flex-direction: column; gap: 20px; }
+            .nav-links { gap: 16px; }
+            .hero { padding: 40px 20px; }
+            .cta-buttons { flex-direction: column; align-items: center; }
+            .btn { width: 100%; justify-content: center; }
+        }
     </style>
 </head>
 <body>
-    <img src="favicon.png" alt="NavixMind" class="logo">
-    <h1>NavixMind</h1>
-    <p class="tagline">AI agent for Android</p>
-    <div class="buttons">
-        <a href="https://play.google.com/store/apps/details?id=ai.navixmind" class="play">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.198l2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/></svg>
-            Google Play
-        </a>
-        <a href="https://github.com/alexandertaboriskiy/navixmind" class="github">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-            GitHub
-        </a>
-    </div>
+    <div class="gradient-bg"></div>
+    
+    <nav>
+        <div class="nav-logo">NavixMind</div>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#demo">Demo</a>
+            <a href="#pricing">Pricing</a>
+            <a href="https://github.com/alexandertaboriskiy/navixmind">GitHub</a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <span class="badge">🚀 Now on Google Play + Direct Download</span>
+        <h1>The AI Assistant That Runs <span>Entirely On Your Phone</span></h1>
+        <p class="tagline">
+            Process videos, documents, and automate workflows with Claude AI or offline LLMs. 
+            No API key, no internet, no cloud dependency. Your data stays on your device.
+        </p>
+        <div class="cta-buttons">
+            <a href="https://play.google.com/store/apps/details?id=ai.navixmind" class="btn btn-primary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.198l2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.206 12l2.492-2.491zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z"/></svg>
+                Download on Play Store
+            </a>
+            <a href="https://github.com/alexandertaboriskiy/navixmind/releases" class="btn btn-secondary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                Direct APK Download
+            </a>
+            <a href="https://gumroad.com/l/navixmind" class="btn btn-secondary">
+                💳 Support on Gumroad
+            </a>
+        </div>
+    </section>
+
+    <section id="features" class="features">
+        <h2 class="section-title">Why NavixMind?</h2>
+        <p class="section-subtitle">Current mobile AI apps can chat. NavixMind <strong>gets things done</strong>.</p>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>Fully Offline AI</h3>
+                <p>Run Qwen2.5-Coder models (0.5B-4B) on-device via MLC LLM. No internet, no API key, no cloud dependency.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🐍</div>
+                <h3>Local Python Execution</h3>
+                <p>Embedded Python 3.10 runtime inside the APK. Process files, execute logic, automate workflows on-device.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎬</div>
+                <h3>Video/Audio Processing</h3>
+                <p>Compress videos, extract audio, convert formats with FFmpeg. Iterative processing until targets are met.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📄</div>
+                <h3>Document Handling</h3>
+                <p>Read/create PDFs, convert DOCX, Excel, PowerPoint. Generate reports directly on your phone.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌐</div>
+                <h3>Cloud AI Option</h3>
+                <p>Use Claude API (Opus/Sonnet/Haiku) for maximum capability. Bring your own key, full control.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔄</div>
+                <h3>Self-Improving</h3>
+                <p>The agent analyzes successful workflows and updates its system prompt to handle similar requests better.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="demo" class="demo-section">
+        <h2 class="section-title">What Can You Do?</h2>
+        <p class="section-subtitle">Real tasks that cloud AI apps can't handle.</p>
+        <div class="demo-grid">
+            <div class="demo-card">
+                <div class="demo-preview">📹</div>
+                <div class="demo-content">
+                    <h4>"Compress this video to under 25MB"</h4>
+                    <p>NavixMind runs FFmpeg iteratively, adjusting bitrate until target is met. Cloud AI makes one attempt and fails.</p>
+                </div>
+            </div>
+            <div class="demo-card">
+                <div class="demo-preview">🎵</div>
+                <div class="demo-content">
+                    <h4>"Split this recording into 10-min MP3 segments"</h4>
+                    <p>Processes in-place on your device. No uploading huge files to cloud sandboxes.</p>
+                </div>
+            </div>
+            <div class="demo-card">
+                <div class="demo-preview">📊</div>
+                <div class="demo-content">
+                    <h4>"Generate a PDF summary for each meeting"</h4>
+                    <p>Creates files directly on your phone. No cloud dependency, instant access.</p>
+                </div>
+            </div>
+            <div class="demo-card">
+                <div class="demo-preview">🎮</div>
+                <div class="demo-content">
+                    <h4>"Create an interactive HTML game"</h4>
+                    <p>Generate fullscreen mobile-optimized games with touch controls. Run locally.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="pricing">
+        <h2 class="section-title">Simple, Transparent Pricing</h2>
+        <p class="section-subtitle">Start free. Upgrade when you need more power.</p>
+        <div class="pricing-grid">
+            <div class="pricing-card">
+                <h3>Free</h3>
+                <div class="price">$0<span>/forever</span></div>
+                <ul class="pricing-features">
+                    <li><span class="check">✓</span> Offline AI (on-device LLM)</li>
+                    <li><span class="check">✓</span> Basic Python execution</li>
+                    <li><span class="check">✓</span> File processing</li>
+                    <li><span class="check">✓</span> Community support</li>
+                    <li style="color: #666;">✗ Cloud AI (Claude API)</li>
+                    <li style="color: #666;">✗ Advanced tools (FFmpeg, PDF)</li>
+                    <li style="color: #666;">✗ Priority support</li>
+                </ul>
+                <a href="https://github.com/alexandertaboriskiy/navixmind/releases" class="btn btn-secondary" style="width: 100%;">Download Free</a>
+            </div>
+            <div class="pricing-card featured">
+                <span class="popular">Most Popular</span>
+                <h3>Pro</h3>
+                <div class="price">$9.99<span>/month</span></div>
+                <ul class="pricing-features">
+                    <li><span class="check">✓</span> Everything in Free</li>
+                    <li><span class="check">✓</span> Cloud AI support (Claude API)</li>
+                    <li><span class="check">✓</span> All advanced tools</li>
+                    <li><span class="check">✓</span> Video/Audio processing</li>
+                    <li><span class="check">✓</span> Document handling</li>
+                    <li><span class="check">✓</span> Priority email support</li>
+                    <li style="color: #666;">✗ White-label licensing</li>
+                </ul>
+                <a href="https://gumroad.com/l/navixmind-pro" class="btn btn-primary" style="width: 100%;">Start Pro Trial</a>
+            </div>
+            <div class="pricing-card">
+                <h3>Enterprise</h3>
+                <div class="price">$497<span>/month</span></div>
+                <ul class="pricing-features">
+                    <li><span class="check">✓</span> Everything in Pro</li>
+                    <li><span class="check">✓</span> Team management (up to 50)</li>
+                    <li><span class="check">✓</span> API access</li>
+                    <li><span class="check">✓</span> Custom workflows</li>
+                    <li><span class="check">✓</span> SLA guarantee</li>
+                    <li><span class="check">✓</span> Dedicated support</li>
+                    <li><span class="check">✓</span> White-label option</li>
+                </ul>
+                <a href="mailto:enterprise@navixmind.ai" class="btn btn-secondary" style="width: 100%;">Contact Sales</a>
+            </div>
+        </div>
+    </section>
+
     <footer>
-        <a href="/privacy.html">Privacy</a>
-        <a href="/terms.html">Terms</a>
-        <a href="/impressum.html">Impressum</a>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4>Product</h4>
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="https://github.com/alexandertaboriskiy/navixmind/releases">Download</a>
+                <a href="https://github.com/alexandertaboriskiy/navixmind">Source Code</a>
+            </div>
+            <div class="footer-section">
+                <h4>Resources</h4>
+                <a href="https://github.com/alexandertaboriskiy/navixmind/blob/main/README.md">Documentation</a>
+                <a href="https://github.com/alexandertaboriskiy/navixmind/issues">Issue Tracker</a>
+                <a href="https://discord.gg/navixmind">Discord Community</a>
+                <a href="mailto:support@navixmind.ai">Contact Support</a>
+            </div>
+            <div class="footer-section">
+                <h4>Legal</h4>
+                <a href="privacy.html">Privacy Policy</a>
+                <a href="terms.html">Terms of Service</a>
+                <a href="impressum.html">Impressum</a>
+                <a href="mailto:legal@navixmind.ai">Legal Contact</a>
+            </div>
+            <div class="footer-section">
+                <h4>Connect</h4>
+                <a href="https://twitter.com/navixmind">Twitter/X</a>
+                <a href="https://youtube.com/@navixmind">YouTube</a>
+                <a href="https://reddit.com/r/navixmind">Reddit</a>
+                <a href="https://linkedin.com/company/navixmind">LinkedIn</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>© 2026 NavixMind. Apache 2.0 Licensed. Built with ❤️ for Android.</p>
+        </div>
     </footer>
+
+    <script>
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
 </body>
 </html>
