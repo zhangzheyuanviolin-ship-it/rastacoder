@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
 
 import 'theme.dart';
+import 'rasta_theme.dart';
 import 'routes.dart';
 import '../features/chat/presentation/chat_screen.dart';
 import '../features/legal/legal_acceptance_dialog.dart';
 
-class NavixMindApp extends StatelessWidget {
+class CoderastaApp extends StatelessWidget {
   final bool initializing;
   final Isar? isar;
 
-  const NavixMindApp({
+  const CoderastaApp({
     super.key,
     this.initializing = false,
     this.isar,
@@ -19,11 +20,11 @@ class NavixMindApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NavixMind',
+      title: 'Coderasta 🦁🇯🇲',
       debugShowCheckedModeBanner: false,
-      theme: NavixTheme.darkTheme,
+      theme: RastaTheme.darkTheme,
       home: _LegalGate(initializing: initializing),
-      onGenerateRoute: NavixMindRoutes.onGenerateRoute,
+      onGenerateRoute: CoderastaRoutes.onGenerateRoute,
     );
   }
 }

@@ -22,7 +22,7 @@ class TestHandleRequest:
 
     def test_handle_request_valid_process_query(self):
         """Test valid process_query request is handled."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -46,7 +46,7 @@ class TestHandleRequest:
 
     def test_handle_request_invalid_json(self):
         """Test invalid JSON returns parse error."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         response = handle_request("not valid json {{{")
 
@@ -56,7 +56,7 @@ class TestHandleRequest:
 
     def test_handle_request_unknown_method(self):
         """Test unknown method returns method not found."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -71,7 +71,7 @@ class TestHandleRequest:
 
     def test_handle_request_apply_delta(self):
         """Test apply_delta method is handled."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -88,7 +88,7 @@ class TestHandleRequest:
 
     def test_handle_request_missing_id(self):
         """Test request without ID still works."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -110,7 +110,7 @@ class TestProcessQuery:
     @pytest.fixture(autouse=True)
     def set_api_key(self):
         """Set and clean up a global API key for all tests in this class."""
-        import navixmind.agent
+        import rastacoder.agent
         original = navixmind.agent._api_key
         navixmind.agent._api_key = "test-key"
         yield
@@ -143,8 +143,8 @@ class TestProcessQuery:
 
     def test_process_query_no_api_key(self):
         """Test error when API key is missing."""
-        import navixmind.agent
-        from navixmind.agent import process_query
+        import rastacoder.agent
+        from rastacoder.agent import process_query
 
         # Override the autouse fixture's api key to simulate missing key
         original = navixmind.agent._api_key
@@ -166,7 +166,7 @@ class TestProcessQuery:
 
     def test_process_query_simple_response(self, mock_dependencies):
         """Test simple query with end_turn response."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.return_value = {
             "stop_reason": "end_turn",
@@ -184,7 +184,7 @@ class TestProcessQuery:
 
     def test_process_query_with_tool_use(self, mock_dependencies):
         """Test query that uses a tool."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         # First response: tool use
         # Second response: end_turn with result
@@ -222,7 +222,7 @@ class TestProcessQuery:
 
     def test_process_query_max_iterations(self, mock_dependencies):
         """Test that max iterations limit is enforced."""
-        from navixmind.agent import process_query, DEFAULT_MAX_ITERATIONS as MAX_ITERATIONS
+        from rastacoder.agent import process_query, DEFAULT_MAX_ITERATIONS as MAX_ITERATIONS
 
         # Always return tool_use to force max iterations
         mock_dependencies['client'].create_message.return_value = {
@@ -251,7 +251,7 @@ class TestProcessQuery:
 
     def test_process_query_max_tool_calls(self, mock_dependencies):
         """Test that max tool calls per query is enforced."""
-        from navixmind.agent import process_query, DEFAULT_MAX_TOOL_CALLS
+        from rastacoder.agent import process_query, DEFAULT_MAX_TOOL_CALLS
 
         # Return multiple tool uses in one response (more than DEFAULT_MAX_TOOL_CALLS)
         tool_uses = [
@@ -290,8 +290,8 @@ class TestProcessQuery:
 
     def test_process_query_tool_error_handling(self, mock_dependencies):
         """Test that tool errors are handled gracefully."""
-        from navixmind.agent import process_query
-        from navixmind.bridge import ToolError
+        from rastacoder.agent import process_query
+        from rastacoder.bridge import ToolError
 
         mock_dependencies['client'].create_message.side_effect = [
             {
@@ -326,7 +326,7 @@ class TestProcessQuery:
 
     def test_process_query_max_tokens_response(self, mock_dependencies):
         """Test handling of max_tokens stop reason — agent continues the conversation."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         # First response hits token limit, second finishes normally
         mock_dependencies['client'].create_message.side_effect = [
@@ -353,7 +353,7 @@ class TestProcessQuery:
 
     def test_process_query_with_files(self, mock_dependencies):
         """Test query with file attachments."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.return_value = {
             "stop_reason": "end_turn",
@@ -376,7 +376,7 @@ class TestProcessQuery:
 
     def test_process_query_large_tool_result_truncation(self, mock_dependencies):
         """Test that large tool results are truncated."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.side_effect = [
             {
@@ -417,7 +417,7 @@ class TestClaudeClient:
 
     def test_create_message_success(self):
         """Test successful API call."""
-        from navixmind.agent import ClaudeClient
+        from rastacoder.agent import ClaudeClient
 
         client = ClaudeClient("test-api-key")
 
@@ -436,7 +436,7 @@ class TestClaudeClient:
 
     def test_create_message_rate_limit_retry(self):
         """Test retry on rate limit (429)."""
-        from navixmind.agent import ClaudeClient, APIError
+        from rastacoder.agent import ClaudeClient, APIError
 
         client = ClaudeClient("test-api-key")
 
@@ -468,7 +468,7 @@ class TestClaudeClient:
 
     def test_create_message_rate_limit_exhausted(self):
         """Test error when rate limit retries exhausted."""
-        from navixmind.agent import ClaudeClient, APIError
+        from rastacoder.agent import ClaudeClient, APIError
 
         client = ClaudeClient("test-api-key")
 
@@ -491,7 +491,7 @@ class TestClaudeClient:
 
     def test_create_message_server_error_retry(self):
         """Test retry on server error (500/502/503)."""
-        from navixmind.agent import ClaudeClient
+        from rastacoder.agent import ClaudeClient
 
         client = ClaudeClient("test-api-key")
 
@@ -519,7 +519,7 @@ class TestClaudeClient:
 
     def test_create_message_timeout_retry(self):
         """Test retry on timeout."""
-        from navixmind.agent import ClaudeClient, APIError
+        from rastacoder.agent import ClaudeClient, APIError
         import requests
 
         client = ClaudeClient("test-api-key")
@@ -543,7 +543,7 @@ class TestClaudeClient:
 
     def test_create_message_auth_error_no_retry(self):
         """Test that auth errors (401) don't retry."""
-        from navixmind.agent import ClaudeClient, APIError
+        from rastacoder.agent import ClaudeClient, APIError
 
         client = ClaudeClient("invalid-key")
 
@@ -563,7 +563,7 @@ class TestClaudeClient:
 
     def test_create_message_with_tools(self):
         """Test API call with tool definitions."""
-        from navixmind.agent import ClaudeClient
+        from rastacoder.agent import ClaudeClient
 
         client = ClaudeClient("test-api-key")
 
@@ -599,7 +599,7 @@ class TestExtractTextContent:
 
     def test_extract_single_text_block(self):
         """Test extraction from single text block."""
-        from navixmind.agent import _extract_text_content
+        from rastacoder.agent import _extract_text_content
 
         blocks = [{"type": "text", "text": "Hello world"}]
         result = _extract_text_content(blocks)
@@ -607,7 +607,7 @@ class TestExtractTextContent:
 
     def test_extract_multiple_text_blocks(self):
         """Test extraction from multiple text blocks."""
-        from navixmind.agent import _extract_text_content
+        from rastacoder.agent import _extract_text_content
 
         blocks = [
             {"type": "text", "text": "First"},
@@ -619,7 +619,7 @@ class TestExtractTextContent:
 
     def test_extract_ignores_non_text_blocks(self):
         """Test that non-text blocks are ignored."""
-        from navixmind.agent import _extract_text_content
+        from rastacoder.agent import _extract_text_content
 
         blocks = [
             {"type": "text", "text": "Hello"},
@@ -631,7 +631,7 @@ class TestExtractTextContent:
 
     def test_extract_empty_blocks(self):
         """Test extraction from empty block list."""
-        from navixmind.agent import _extract_text_content
+        from rastacoder.agent import _extract_text_content
 
         result = _extract_text_content([])
         assert result == ""
@@ -642,7 +642,7 @@ class TestSummarizeProgress:
 
     def test_summarize_with_tools_used(self):
         """Test summary includes tool names."""
-        from navixmind.agent import _summarize_progress
+        from rastacoder.agent import _summarize_progress
 
         messages = [
             {"role": "user", "content": "test"},
@@ -657,7 +657,7 @@ class TestSummarizeProgress:
 
     def test_summarize_no_tools(self):
         """Test summary when no tools were used."""
-        from navixmind.agent import _summarize_progress
+        from rastacoder.agent import _summarize_progress
 
         messages = [
             {"role": "user", "content": "test"},
@@ -673,7 +673,7 @@ class TestGetUserFriendlyError:
 
     def test_rate_limit_error(self):
         """Test rate limit error message."""
-        from navixmind.agent import _get_user_friendly_error, APIError
+        from rastacoder.agent import _get_user_friendly_error, APIError
 
         error = APIError("Rate limited", 429)
         result = _get_user_friendly_error(error)
@@ -681,7 +681,7 @@ class TestGetUserFriendlyError:
 
     def test_auth_error(self):
         """Test auth error message."""
-        from navixmind.agent import _get_user_friendly_error, APIError
+        from rastacoder.agent import _get_user_friendly_error, APIError
 
         error = APIError("Invalid key", 401)
         result = _get_user_friendly_error(error)
@@ -689,7 +689,7 @@ class TestGetUserFriendlyError:
 
     def test_server_error(self):
         """Test server error message."""
-        from navixmind.agent import _get_user_friendly_error, APIError
+        from rastacoder.agent import _get_user_friendly_error, APIError
 
         error = APIError("Server error", 500)
         result = _get_user_friendly_error(error)
@@ -697,7 +697,7 @@ class TestGetUserFriendlyError:
 
     def test_timeout_error(self):
         """Test timeout error message."""
-        from navixmind.agent import _get_user_friendly_error, APIError
+        from rastacoder.agent import _get_user_friendly_error, APIError
 
         error = APIError("Timeout", 408)
         result = _get_user_friendly_error(error)
@@ -709,7 +709,7 @@ class TestAPIError:
 
     def test_api_error_attributes(self):
         """Test APIError stores message and status code."""
-        from navixmind.agent import APIError
+        from rastacoder.agent import APIError
 
         error = APIError("Test error", 500)
         assert str(error) == "Test error"
@@ -717,7 +717,7 @@ class TestAPIError:
 
     def test_api_error_as_exception(self):
         """Test APIError can be raised and caught."""
-        from navixmind.agent import APIError
+        from rastacoder.agent import APIError
 
         with pytest.raises(APIError) as exc_info:
             raise APIError("Test", 400)
@@ -730,7 +730,7 @@ class TestSelectModel:
 
     def test_default_model_is_sonnet(self):
         """Test that default model is Sonnet when no special conditions."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         # Use a query that's long enough (>5 words) and has no patterns
         model, reason = _select_model(
@@ -743,7 +743,7 @@ class TestSelectModel:
     # Cost threshold tests
     def test_haiku_when_cost_at_80_percent(self):
         """Test Haiku is selected at exactly 80% cost threshold."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model("Tell me a joke", {"cost_percent_used": 80})
         assert model == FALLBACK_MODEL
@@ -751,7 +751,7 @@ class TestSelectModel:
 
     def test_haiku_when_cost_above_80_percent(self):
         """Test Haiku is selected above 80% cost threshold."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model("Tell me a joke", {"cost_percent_used": 95})
         assert model == FALLBACK_MODEL
@@ -759,21 +759,21 @@ class TestSelectModel:
 
     def test_sonnet_when_cost_below_80_percent(self):
         """Test Sonnet is used when cost is below 80%."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, reason = _select_model("Tell me a joke", {"cost_percent_used": 79})
         assert model == DEFAULT_MODEL
 
     def test_haiku_at_100_percent_cost(self):
         """Test Haiku at 100% cost usage."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model("Anything", {"cost_percent_used": 100})
         assert model == FALLBACK_MODEL
 
     def test_cost_threshold_boundary_79(self):
         """Test boundary condition at 79% (just under threshold)."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Simple question", {"cost_percent_used": 79.9})
         assert model == DEFAULT_MODEL
@@ -781,7 +781,7 @@ class TestSelectModel:
     # User preference tests
     def test_user_prefers_haiku(self):
         """Test user can explicitly request Haiku."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model(
             "Complex analysis task",  # Would normally use Sonnet
@@ -792,7 +792,7 @@ class TestSelectModel:
 
     def test_user_prefers_sonnet(self):
         """Test user can explicitly request Sonnet."""
-        from navixmind.agent import _select_model, SONNET_MODEL
+        from rastacoder.agent import _select_model, SONNET_MODEL
 
         model, reason = _select_model(
             "what time is it",  # Would normally use Haiku
@@ -803,7 +803,7 @@ class TestSelectModel:
 
     def test_cost_overrides_user_preference(self):
         """Test that cost threshold takes precedence over user preference."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         # User prefers Sonnet but cost is at 90%
         model, reason = _select_model(
@@ -816,7 +816,7 @@ class TestSelectModel:
     # Simple query pattern tests
     def test_haiku_for_convert_query(self):
         """Test Haiku is used for conversion queries."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model("Convert this to PDF", {})
         assert model == FALLBACK_MODEL
@@ -824,56 +824,56 @@ class TestSelectModel:
 
     def test_haiku_for_format_query(self):
         """Test Haiku is used for formatting queries."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model("Format this text nicely", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_yes_no_query(self):
         """Test Haiku is used for yes/no questions."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Is this correct? yes or no", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_classification(self):
         """Test Haiku is used for classification tasks."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Classify this document", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_extract_query(self):
         """Test Haiku is used for extraction tasks."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Extract the dates from this text", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_count_query(self):
         """Test Haiku is used for counting queries."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("How many items are in this list?", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_list_query(self):
         """Test Haiku is used for listing queries."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("List the main points", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_time_query(self):
         """Test Haiku is used for time queries."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("What time is my meeting?", {})
         assert model == FALLBACK_MODEL
 
     def test_haiku_for_translate_query(self):
         """Test Haiku is used for translation queries."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Translate to Spanish please", {})
         assert model == FALLBACK_MODEL
@@ -881,7 +881,7 @@ class TestSelectModel:
     # Complex query pattern tests
     def test_sonnet_for_analyze_query(self):
         """Test Sonnet is used for analysis tasks."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, reason = _select_model("Analyze this code for bugs", {})
         assert model == DEFAULT_MODEL
@@ -889,56 +889,56 @@ class TestSelectModel:
 
     def test_sonnet_for_write_code_query(self):
         """Test Sonnet is used for code writing."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Write code to sort this array", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_debug_query(self):
         """Test Sonnet is used for debugging."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Debug this function please", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_implement_query(self):
         """Test Sonnet is used for implementation tasks."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Implement a binary search", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_design_query(self):
         """Test Sonnet is used for design tasks."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Design a database schema", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_research_query(self):
         """Test Sonnet is used for research tasks."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Research the best approach", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_step_by_step_query(self):
         """Test Sonnet is used for step-by-step explanations."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Explain step by step how this works", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_compare_query(self):
         """Test Sonnet is used for comparison tasks."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Compare and contrast these approaches", {})
         assert model == DEFAULT_MODEL
 
     def test_sonnet_for_explain_in_detail_query(self):
         """Test Sonnet is used for detailed explanations."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Explain in detail how authentication works", {})
         assert model == DEFAULT_MODEL
@@ -946,7 +946,7 @@ class TestSelectModel:
     # Complex overrides simple tests
     def test_complex_overrides_simple_pattern(self):
         """Test that complex pattern wins when both present."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         # Contains both "analyze" (complex) and "list" (simple)
         model, _ = _select_model("Analyze and list the issues", {})
@@ -955,7 +955,7 @@ class TestSelectModel:
     # Short query tests
     def test_haiku_for_short_question(self):
         """Test Haiku for very short questions."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, reason = _select_model("Why?", {})
         assert model == FALLBACK_MODEL
@@ -963,14 +963,14 @@ class TestSelectModel:
 
     def test_haiku_for_5_word_question(self):
         """Test Haiku for exactly 5 word question."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Is this thing working correctly?", {})
         assert model == FALLBACK_MODEL
 
     def test_sonnet_for_long_question(self):
         """Test Sonnet for longer questions without patterns."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model(
             "I have a problem with my application that I need help solving today",
@@ -980,7 +980,7 @@ class TestSelectModel:
 
     def test_short_non_question_uses_sonnet(self):
         """Test that short non-questions don't use Haiku shortcut."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Help me", {})  # No question mark
         assert model == DEFAULT_MODEL
@@ -988,7 +988,7 @@ class TestSelectModel:
     # Attachment tests
     def test_sonnet_for_attachments(self):
         """Test Sonnet is used when attachments are present with neutral query."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         # Use a neutral query that doesn't match any patterns and is >5 words
         model, reason = _select_model(
@@ -1000,7 +1000,7 @@ class TestSelectModel:
 
     def test_attachments_dont_override_simple_pattern(self):
         """Test that simple patterns are checked before attachments (order matters)."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         # Simple pattern is checked BEFORE attachments in the implementation
         model, _ = _select_model(
@@ -1011,7 +1011,7 @@ class TestSelectModel:
 
     def test_cost_overrides_attachments(self):
         """Test that cost threshold overrides attachments."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model(
             "Analyze this file",
@@ -1022,28 +1022,28 @@ class TestSelectModel:
     # Edge cases
     def test_empty_query(self):
         """Test handling of empty query."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("", {})
         assert model == DEFAULT_MODEL
 
     def test_whitespace_only_query(self):
         """Test handling of whitespace-only query."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("   ", {})
         assert model == DEFAULT_MODEL
 
     def test_empty_context(self):
         """Test handling of empty context dict."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Hello world", {})
         assert model == DEFAULT_MODEL
 
     def test_none_context_values(self):
         """Test handling of None values in context."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         # Use a longer query to avoid the short question check
         model, _ = _select_model(
@@ -1054,7 +1054,7 @@ class TestSelectModel:
 
     def test_case_insensitive_patterns(self):
         """Test that pattern matching is case insensitive."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model1, _ = _select_model("CONVERT this to PDF", {})
         model2, _ = _select_model("Convert This To PDF", {})
@@ -1066,28 +1066,28 @@ class TestSelectModel:
 
     def test_negative_cost_percent(self):
         """Test handling of negative cost percent (edge case)."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Test", {"cost_percent_used": -10})
         assert model == DEFAULT_MODEL
 
     def test_cost_percent_over_100(self):
         """Test handling of cost percent over 100%."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Test", {"cost_percent_used": 150})
         assert model == FALLBACK_MODEL
 
     def test_unknown_preferred_model(self):
         """Test handling of unknown preferred model value."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Test query", {"preferred_model": "opus"})
         assert model == DEFAULT_MODEL  # Falls through to default
 
     def test_reason_message_format(self):
         """Test that reason messages are properly formatted."""
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         _, reason1 = _select_model("Test", {"cost_percent_used": 85})
         _, reason2 = _select_model("Analyze this", {})
@@ -1100,21 +1100,21 @@ class TestSelectModel:
 
     def test_multiple_simple_patterns_in_query(self):
         """Test query with multiple simple patterns."""
-        from navixmind.agent import _select_model, FALLBACK_MODEL
+        from rastacoder.agent import _select_model, FALLBACK_MODEL
 
         model, _ = _select_model("Extract and count the items", {})
         assert model == FALLBACK_MODEL
 
     def test_unicode_in_query(self):
         """Test handling of unicode characters in query."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("分析这个 (analyze this)", {})
         assert model == DEFAULT_MODEL  # "analyze" pattern matched
 
     def test_newlines_in_query(self):
         """Test handling of newlines in query."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("Please help me\nwith this\nproblem", {})
         assert model == DEFAULT_MODEL
@@ -1152,7 +1152,7 @@ class TestSystemPromptFromContext:
     @pytest.fixture(autouse=True)
     def set_api_key(self):
         """Set and clean up a global API key for all tests in this class."""
-        import navixmind.agent
+        import rastacoder.agent
         original = navixmind.agent._api_key
         navixmind.agent._api_key = "test-key"
         yield
@@ -1168,7 +1168,7 @@ class TestSystemPromptFromContext:
 
     def test_default_system_prompt_when_not_in_context(self, mock_dependencies):
         """When context has no 'system_prompt' key, create_message uses SYSTEM_PROMPT."""
-        from navixmind.agent import process_query, SYSTEM_PROMPT
+        from rastacoder.agent import process_query, SYSTEM_PROMPT
 
         mock_dependencies['client'].create_message.return_value = self._make_end_turn_response()
 
@@ -1179,7 +1179,7 @@ class TestSystemPromptFromContext:
 
     def test_custom_system_prompt_from_context(self, mock_dependencies):
         """When context has 'system_prompt', that custom string is passed to create_message."""
-        from navixmind.agent import process_query, SYSTEM_PROMPT
+        from rastacoder.agent import process_query, SYSTEM_PROMPT
 
         custom_prompt = "You are a helpful coding tutor. Be brief."
         mock_dependencies['client'].create_message.return_value = self._make_end_turn_response()
@@ -1192,7 +1192,7 @@ class TestSystemPromptFromContext:
 
     def test_empty_string_system_prompt_uses_empty(self, mock_dependencies):
         """An empty string system_prompt is passed through, not treated as falsy."""
-        from navixmind.agent import process_query, SYSTEM_PROMPT
+        from rastacoder.agent import process_query, SYSTEM_PROMPT
 
         mock_dependencies['client'].create_message.return_value = self._make_end_turn_response()
 
@@ -1204,7 +1204,7 @@ class TestSystemPromptFromContext:
 
     def test_custom_prompt_logged(self, mock_dependencies):
         """When a custom system_prompt is provided, bridge.log is called with 'Using custom system prompt'."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         custom_prompt = "You are a math expert."
         mock_dependencies['client'].create_message.return_value = self._make_end_turn_response()
@@ -1220,7 +1220,7 @@ class TestSystemPromptFromContext:
 
     def test_default_prompt_not_logged_as_custom(self, mock_dependencies):
         """When using default SYSTEM_PROMPT, bridge.log should NOT contain 'Using custom system prompt'."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.return_value = self._make_end_turn_response()
 
@@ -1244,7 +1244,7 @@ class TestCreatedFilesTracking:
     @pytest.fixture(autouse=True)
     def set_api_key(self):
         """Set and clean up a global API key for all tests in this class."""
-        import navixmind.agent
+        import rastacoder.agent
         original = navixmind.agent._api_key
         navixmind.agent._api_key = "test-key"
         yield
@@ -1300,7 +1300,7 @@ class TestCreatedFilesTracking:
 
     def test_singular_output_path_tracked(self, mock_dependencies):
         """Tool returning output_path (singular) adds file to created_files."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         # First API call: tool_use, second: end_turn
         mock_dependencies['client'].create_message.side_effect = [
@@ -1321,7 +1321,7 @@ class TestCreatedFilesTracking:
 
     def test_plural_output_paths_tracked(self, mock_dependencies):
         """Tool returning output_paths (plural list) adds all files to created_files."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.side_effect = [
             self._make_tool_use_response("ffmpeg_process", {
@@ -1352,7 +1352,7 @@ class TestCreatedFilesTracking:
 
     def test_plural_output_paths_added_to_file_map(self, mock_dependencies):
         """output_paths entries are added to session file_map for next query resolution."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.side_effect = [
             self._make_tool_use_response("ffmpeg_process", {
@@ -1378,7 +1378,7 @@ class TestCreatedFilesTracking:
 
     def test_no_created_files_when_no_tools(self, mock_dependencies):
         """Response without tool calls has no created_files key."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.return_value = \
             self._make_end_turn_response("Just text, no tools.")
@@ -1389,7 +1389,7 @@ class TestCreatedFilesTracking:
 
     def test_both_singular_and_plural_in_same_session(self, mock_dependencies):
         """Multiple tool calls - one returning output_path, another output_paths - all tracked."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         # First call: tool with singular output_path
         tool_use_1 = self._make_tool_use_response("create_pdf", {"output_path": "/out/doc.pdf"}, "t1")
@@ -1424,7 +1424,7 @@ class TestCreatedFilesTracking:
 
     def test_empty_output_paths_list_not_tracked(self, mock_dependencies):
         """An empty output_paths list should not add anything to created_files."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.side_effect = [
             self._make_tool_use_response("ffmpeg_process", {
@@ -1448,7 +1448,7 @@ class TestCreatedFilesTracking:
 
     def test_output_paths_logged_individually(self, mock_dependencies):
         """Each file in output_paths is logged via bridge.log."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         mock_dependencies['client'].create_message.side_effect = [
             self._make_tool_use_response("ffmpeg_process", {

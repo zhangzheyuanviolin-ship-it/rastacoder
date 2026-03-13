@@ -4,7 +4,7 @@ import '../features/chat/presentation/chat_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 
-class NavixMindRoutes {
+class CoderastaRoutes {
   static const String chat = '/';
   static const String settings = '/settings';
   static const String onboarding = '/onboarding';
@@ -15,7 +15,7 @@ class NavixMindRoutes {
         return MaterialPageRoute(
           builder: (_) => const ChatScreen(),
         );
-      case NavixMindRoutes.settings:
+      case CoderastaRoutes.settings:
         return MaterialPageRoute(
           builder: (_) => const SettingsScreen(),
         );

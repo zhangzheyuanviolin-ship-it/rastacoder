@@ -26,7 +26,7 @@ class TestCrashLoggerInitialization:
 
     def setup_method(self):
         """Reset CrashLogger state before each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         # Store original state
         self._original_stderr = sys.stderr
         self._original_excepthook = sys.excepthook
@@ -37,7 +37,7 @@ class TestCrashLoggerInitialization:
 
     def teardown_method(self):
         """Restore state after each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         # Shutdown if initialized
         if CrashLogger._stderr_file:
             try:
@@ -51,7 +51,7 @@ class TestCrashLoggerInitialization:
 
     def test_creates_log_file_in_specified_directory(self):
         """Test that initialize creates log file in the specified directory."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -61,7 +61,7 @@ class TestCrashLoggerInitialization:
 
     def test_sets_log_dir_class_variable(self):
         """Test that initialize sets LOG_DIR class variable."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -69,7 +69,7 @@ class TestCrashLoggerInitialization:
 
     def test_rotates_log_when_too_large(self):
         """Test that log file is rotated when exceeding MAX_LOG_SIZE."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = os.path.join(tmpdir, 'python_crash.log')
@@ -90,7 +90,7 @@ class TestCrashLoggerInitialization:
 
     def test_removes_existing_old_log_on_rotation(self):
         """Test that existing .old log is removed during rotation."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = os.path.join(tmpdir, 'python_crash.log')
@@ -114,7 +114,7 @@ class TestCrashLoggerInitialization:
 
     def test_no_rotation_when_log_small(self):
         """Test that small log files are not rotated."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = os.path.join(tmpdir, 'python_crash.log')
@@ -135,7 +135,7 @@ class TestCrashLoggerInitialization:
 
     def test_redirects_stderr_to_file(self):
         """Test that stderr is redirected to the log file."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -145,7 +145,7 @@ class TestCrashLoggerInitialization:
 
     def test_stores_original_stderr(self):
         """Test that original stderr is stored for restoration."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         original = sys.stderr
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -154,7 +154,7 @@ class TestCrashLoggerInitialization:
 
     def test_installs_exception_hook(self):
         """Test that custom exception hook is installed."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -163,7 +163,7 @@ class TestCrashLoggerInitialization:
 
     def test_writes_initialization_message(self):
         """Test that initialization message is written to log."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -177,7 +177,7 @@ class TestCrashLoggerInitialization:
 
     def test_initialization_message_has_timestamp(self):
         """Test that initialization message includes ISO timestamp."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             before = datetime.now()
@@ -197,7 +197,7 @@ class TestCrashLoggerExceptionHook:
 
     def setup_method(self):
         """Reset CrashLogger state before each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         self._original_stderr = sys.stderr
         self._original_excepthook = sys.excepthook
         CrashLogger.LOG_DIR = None
@@ -206,7 +206,7 @@ class TestCrashLoggerExceptionHook:
 
     def teardown_method(self):
         """Restore state after each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         if CrashLogger._stderr_file:
             try:
                 CrashLogger._stderr_file.close()
@@ -218,7 +218,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_captures_exception_type(self):
         """Test that exception type is captured in log."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -238,7 +238,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_captures_exception_message(self):
         """Test that exception message is captured in log."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -258,7 +258,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_writes_timestamp(self):
         """Test that exception log includes timestamp."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -281,7 +281,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_writes_traceback(self):
         """Test that full traceback is written to log."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -305,7 +305,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_writes_separator_line(self):
         """Test that exception log has visual separator."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -326,7 +326,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_flushes_output(self):
         """Test that output is flushed after exception logging."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -346,7 +346,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_also_prints_to_original_stderr(self):
         """Test that exception is also printed to original stderr."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         mock_stderr = MagicMock()
         mock_stderr.write = Mock()
@@ -368,7 +368,7 @@ class TestCrashLoggerExceptionHook:
 
     def test_handles_none_stderr_file(self):
         """Test that exception hook handles None stderr file gracefully."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         # Don't initialize - _stderr_file is None
         CrashLogger._stderr_file = None
@@ -386,7 +386,7 @@ class TestCrashLoggerLogging:
 
     def setup_method(self):
         """Reset CrashLogger state before each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         self._original_stderr = sys.stderr
         self._original_excepthook = sys.excepthook
         CrashLogger.LOG_DIR = None
@@ -395,7 +395,7 @@ class TestCrashLoggerLogging:
 
     def teardown_method(self):
         """Restore state after each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         if CrashLogger._stderr_file:
             try:
                 CrashLogger._stderr_file.close()
@@ -407,7 +407,7 @@ class TestCrashLoggerLogging:
 
     def test_log_error_writes_context(self):
         """Test that log_error writes the context string."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -426,7 +426,7 @@ class TestCrashLoggerLogging:
 
     def test_log_error_writes_error_type_and_message(self):
         """Test that log_error writes exception type and message."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -446,7 +446,7 @@ class TestCrashLoggerLogging:
 
     def test_log_error_writes_timestamp(self):
         """Test that log_error includes timestamp."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -466,7 +466,7 @@ class TestCrashLoggerLogging:
 
     def test_log_error_writes_traceback(self):
         """Test that log_error writes traceback."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -488,7 +488,7 @@ class TestCrashLoggerLogging:
 
     def test_log_info_writes_message(self):
         """Test that log_info writes the message."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -503,7 +503,7 @@ class TestCrashLoggerLogging:
 
     def test_log_info_includes_info_prefix(self):
         """Test that log_info includes INFO prefix."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -518,7 +518,7 @@ class TestCrashLoggerLogging:
 
     def test_log_info_writes_timestamp(self):
         """Test that log_info includes timestamp."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -534,7 +534,7 @@ class TestCrashLoggerLogging:
 
     def test_log_error_handles_uninitialized_state(self):
         """Test that log_error handles uninitialized state gracefully."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         # Don't initialize
         try:
@@ -545,7 +545,7 @@ class TestCrashLoggerLogging:
 
     def test_log_info_handles_uninitialized_state(self):
         """Test that log_info handles uninitialized state gracefully."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         # Don't initialize
         # Should not raise
@@ -557,7 +557,7 @@ class TestCrashLoggerShutdown:
 
     def setup_method(self):
         """Reset CrashLogger state before each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         self._original_stderr = sys.stderr
         self._original_excepthook = sys.excepthook
         CrashLogger.LOG_DIR = None
@@ -566,7 +566,7 @@ class TestCrashLoggerShutdown:
 
     def teardown_method(self):
         """Restore state after each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         if CrashLogger._stderr_file:
             try:
                 CrashLogger._stderr_file.close()
@@ -578,7 +578,7 @@ class TestCrashLoggerShutdown:
 
     def test_writes_shutdown_message(self):
         """Test that shutdown writes shutdown message to log."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -593,7 +593,7 @@ class TestCrashLoggerShutdown:
 
     def test_shutdown_message_has_timestamp(self):
         """Test that shutdown message includes timestamp."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -610,7 +610,7 @@ class TestCrashLoggerShutdown:
 
     def test_closes_file_handle(self):
         """Test that shutdown closes the file handle."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -623,7 +623,7 @@ class TestCrashLoggerShutdown:
 
     def test_restores_original_stderr(self):
         """Test that shutdown restores original stderr."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         original = sys.stderr
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -636,7 +636,7 @@ class TestCrashLoggerShutdown:
 
     def test_shutdown_handles_uninitialized_state(self):
         """Test that shutdown handles uninitialized state gracefully."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         # Don't initialize
         # Should not raise
@@ -644,7 +644,7 @@ class TestCrashLoggerShutdown:
 
     def test_shutdown_can_be_called_multiple_times(self):
         """Test that shutdown can be called multiple times safely."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -659,7 +659,7 @@ class TestCrashLoggerEdgeCases:
 
     def setup_method(self):
         """Reset CrashLogger state before each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         self._original_stderr = sys.stderr
         self._original_excepthook = sys.excepthook
         CrashLogger.LOG_DIR = None
@@ -668,7 +668,7 @@ class TestCrashLoggerEdgeCases:
 
     def teardown_method(self):
         """Restore state after each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         if CrashLogger._stderr_file:
             try:
                 CrashLogger._stderr_file.close()
@@ -680,7 +680,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_multiple_initialize_calls(self):
         """Test that multiple initialize calls work correctly."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir1:
             with tempfile.TemporaryDirectory() as tmpdir2:
@@ -699,7 +699,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_logging_before_initialize(self):
         """Test that logging before initialize doesn't crash."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         # Should not raise
         CrashLogger.log_info("before init")
@@ -711,7 +711,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_concurrent_logging_from_multiple_threads(self):
         """Test thread safety of logging operations."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -758,7 +758,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_very_large_error_message(self):
         """Test handling of very large error messages."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -783,7 +783,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_special_characters_in_message(self):
         """Test handling of special characters in messages."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -801,7 +801,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_exception_with_no_message(self):
         """Test handling exception with no message."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -821,7 +821,7 @@ class TestCrashLoggerEdgeCases:
 
     def test_nested_exception(self):
         """Test handling of nested/chained exceptions."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             CrashLogger.initialize(tmpdir)
@@ -848,7 +848,7 @@ class TestModuleLevelFunction:
 
     def setup_method(self):
         """Reset CrashLogger state before each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         self._original_stderr = sys.stderr
         self._original_excepthook = sys.excepthook
         CrashLogger.LOG_DIR = None
@@ -857,7 +857,7 @@ class TestModuleLevelFunction:
 
     def teardown_method(self):
         """Restore state after each test."""
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.crash_logger import CrashLogger
         if CrashLogger._stderr_file:
             try:
                 CrashLogger._stderr_file.close()
@@ -869,7 +869,7 @@ class TestModuleLevelFunction:
 
     def test_module_level_initialize(self):
         """Test that module-level initialize function works."""
-        from navixmind.crash_logger import initialize, CrashLogger
+        from rastacoder.crash_logger import initialize, CrashLogger
 
         with tempfile.TemporaryDirectory() as tmpdir:
             initialize(tmpdir)

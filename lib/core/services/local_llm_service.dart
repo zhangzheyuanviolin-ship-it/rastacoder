@@ -21,11 +21,11 @@ class LocalLLMService {
   static final LocalLLMService instance = LocalLLMService._();
 
   static const _downloadMethodChannel =
-      MethodChannel('ai.navixmind/model_download');
+      MethodChannel('ai.rastacoder/model_download');
   static const _downloadEventChannel =
-      EventChannel('ai.navixmind/model_download_events');
+      EventChannel('ai.rastacoder/model_download_events');
   static const _inferenceMethodChannel =
-      MethodChannel('ai.navixmind/mlc_inference');
+      MethodChannel('ai.rastacoder/mlc_inference');
 
   LocalLLMService._();
 

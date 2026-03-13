@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 
-from navixmind.agent import self_improve, handle_request
+from rastacoder.agent import self_improve, handle_request
 
 
 class TestSelfImprove(unittest.TestCase):

@@ -1,4 +1,4 @@
-package ai.navixmind.services
+package ai.rastacoder.services
 
 import android.os.Handler
 import android.os.Looper
@@ -22,12 +22,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Kotlin-side download engine for HuggingFace model files.
  *
- * MethodChannel: ai.navixmind/model_download
+ * MethodChannel: ai.rastacoder/model_download
  *   - startDownload(modelId, repoId, destDir)
  *   - cancelDownload(modelId)
  *   - getAvailableSpace
  *
- * EventChannel: ai.navixmind/model_download_events
+ * EventChannel: ai.rastacoder/model_download_events
  *   Streams JSON events: progress, complete, error, cancelled
  */
 class ModelDownloadChannel(
@@ -36,8 +36,8 @@ class ModelDownloadChannel(
 ) {
     companion object {
         private const val TAG = "ModelDownload"
-        private const val METHOD_CHANNEL = "ai.navixmind/model_download"
-        private const val EVENT_CHANNEL = "ai.navixmind/model_download_events"
+        private const val METHOD_CHANNEL = "ai.rastacoder/model_download"
+        private const val EVENT_CHANNEL = "ai.rastacoder/model_download_events"
         private const val BUFFER_SIZE = 8192
         private const val PROGRESS_THROTTLE_MS = 200L
         private const val DISK_SPACE_BUFFER = 1.1 // 10% buffer

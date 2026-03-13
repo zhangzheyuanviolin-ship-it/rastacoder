@@ -21,7 +21,7 @@ class TestToolsSchema:
 
     def test_all_tools_have_schema(self):
         """Test all tools have proper schema."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
 
         required_tools = [
             "web_fetch", "headless_browser", "read_pdf", "create_pdf",
@@ -35,7 +35,7 @@ class TestToolsSchema:
 
     def test_schema_format(self):
         """Test each schema has required fields."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
 
         for schema in TOOLS_SCHEMA:
             assert "name" in schema
@@ -46,7 +46,7 @@ class TestToolsSchema:
 
     def test_schema_required_fields(self):
         """Test schemas define required fields."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
 
         for schema in TOOLS_SCHEMA:
             if "required" in schema["input_schema"]:
@@ -62,8 +62,8 @@ class TestExecuteTool:
 
     def test_execute_unknown_tool(self):
         """Test executing unknown tool raises error."""
-        from navixmind.tools import execute_tool
-        from navixmind.bridge import ToolError
+        from rastacoder.tools import execute_tool
+        from rastacoder.bridge import ToolError
 
         with pytest.raises(ToolError) as exc_info:
             execute_tool("nonexistent_tool", {}, {})
@@ -72,7 +72,7 @@ class TestExecuteTool:
 
     def test_execute_web_fetch(self):
         """Test executing web_fetch tool with mocked requests."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         mock_response = Mock()
         mock_response.content = b"<html><body>Test content</body></html>"
@@ -87,7 +87,7 @@ class TestExecuteTool:
 
     def test_execute_google_tools_get_context(self):
         """Test Google tools receive context."""
-        from navixmind.tools import execute_tool, ToolError
+        from rastacoder.tools import execute_tool, ToolError
 
         # Test that the tool correctly passes context by checking error when no token
         # The important thing is that context gets passed through
@@ -107,8 +107,8 @@ class TestTimeoutStripping:
 
     def test_timeout_not_passed_to_create_zip(self):
         """Test that _timeout_ms is stripped from non-native tools like create_zip."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod.create_zip
         mock_zip = Mock(return_value={"output_path": "/out.zip", "success": True, "file_count": 1, "size_bytes": 100})
@@ -127,8 +127,8 @@ class TestTimeoutStripping:
 
     def test_timeout_not_passed_to_create_pdf(self):
         """Test that _timeout_ms is stripped from create_pdf."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod.create_pdf
         mock_pdf = Mock(return_value={"output_path": "/out.pdf", "success": True})
@@ -146,8 +146,8 @@ class TestTimeoutStripping:
 
     def test_timeout_kept_for_native_tools(self):
         """Test that _timeout_ms IS kept for native tools (ffmpeg, ocr, smart_crop)."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod._ffmpeg_process
         mock_ffmpeg = Mock(return_value={"success": True, "output_path": "/out.mp4"})
@@ -166,8 +166,8 @@ class TestTimeoutStripping:
 
     def test_timeout_not_passed_to_web_fetch(self):
         """Test that _timeout_ms is stripped from web_fetch."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod.web_fetch
         mock_fetch = Mock(return_value={"url": "https://example.com", "text": "hi"})
@@ -189,8 +189,8 @@ class TestFilePathResolution:
 
     def test_array_paths_resolved_by_basename(self):
         """Test that file_paths array items are resolved via basename lookup."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         file_map = {
             "segment_01.mp3": "/storage/emulated/0/output/segment_01.mp3",
@@ -216,8 +216,8 @@ class TestFilePathResolution:
 
     def test_array_paths_resolved_by_full_path_basename(self):
         """Test that full paths in file_paths are resolved via basename extraction."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         file_map = {
             "segment_01.mp3": "/storage/emulated/0/output/segment_01.mp3",
@@ -239,8 +239,8 @@ class TestFilePathResolution:
 
     def test_array_paths_passthrough_when_not_in_map(self):
         """Test that paths not in file_map are passed through unchanged."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod.create_zip
         mock_zip = Mock(return_value={"output_path": "/out.zip", "success": True, "file_count": 1, "size_bytes": 100})
@@ -262,7 +262,7 @@ class TestWebFetch:
 
     def test_fetch_text_mode(self):
         """Test fetching page in text mode."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -280,7 +280,7 @@ class TestWebFetch:
 
     def test_fetch_html_mode(self):
         """Test fetching page in HTML mode."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -293,7 +293,7 @@ class TestWebFetch:
 
     def test_fetch_links_mode(self):
         """Test fetching page in links mode."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -310,7 +310,7 @@ class TestWebFetch:
 
     def test_fetch_adds_https(self):
         """Test URL without scheme gets https added."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -323,8 +323,8 @@ class TestWebFetch:
 
     def test_fetch_timeout(self):
         """Test fetch handles timeout."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
         import requests
 
         with patch('requests.get') as mock_get:
@@ -337,8 +337,8 @@ class TestWebFetch:
 
     def test_fetch_request_error(self):
         """Test fetch handles request errors."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
         import requests
 
         with patch('requests.get') as mock_get:
@@ -349,7 +349,7 @@ class TestWebFetch:
 
     def test_fetch_truncates_long_content(self):
         """Test long content is truncated."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             # Create very long content
@@ -367,7 +367,7 @@ class TestHeadlessBrowser:
 
     def test_headless_browser_delegates_to_native(self):
         """Test headless browser calls native tool."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -392,8 +392,8 @@ class TestMediaTools:
 
     def test_download_blocks_youtube(self):
         """Test YouTube URLs are blocked."""
-        from navixmind.tools.media import download_media
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.media import download_media
+        from rastacoder.bridge import ToolError
 
         with pytest.raises(ToolError) as exc_info:
             download_media("https://www.youtube.com/watch?v=abc123")
@@ -403,8 +403,8 @@ class TestMediaTools:
 
     def test_download_blocks_youtu_be(self):
         """Test youtu.be URLs are blocked."""
-        from navixmind.tools.media import download_media
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.media import download_media
+        from rastacoder.bridge import ToolError
 
         with pytest.raises(ToolError) as exc_info:
             download_media("https://youtu.be/abc123")
@@ -413,7 +413,7 @@ class TestMediaTools:
 
     def test_download_video_format(self):
         """Test downloading in video format."""
-        from navixmind.tools.media import download_media
+        from rastacoder.tools.media import download_media
 
         with patch('yt_dlp.YoutubeDL') as mock_ydl:
             mock_instance = MagicMock()
@@ -435,7 +435,7 @@ class TestMediaTools:
 
     def test_download_audio_format(self):
         """Test downloading in audio format."""
-        from navixmind.tools.media import download_media
+        from rastacoder.tools.media import download_media
 
         with patch('yt_dlp.YoutubeDL') as mock_ydl:
             mock_instance = MagicMock()
@@ -456,8 +456,8 @@ class TestMediaTools:
 
     def test_download_blocks_redirect_to_youtube(self):
         """Test URLs that redirect to YouTube are blocked."""
-        from navixmind.tools.media import download_media
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.media import download_media
+        from rastacoder.bridge import ToolError
 
         with patch('yt_dlp.YoutubeDL') as mock_ydl:
             mock_instance = MagicMock()
@@ -478,7 +478,7 @@ class TestDocumentTools:
 
     def test_read_pdf_all_pages(self):
         """Test reading all pages from PDF."""
-        from navixmind.tools.documents import read_pdf
+        from rastacoder.tools.documents import read_pdf
 
         with patch('navixmind.tools.documents.validate_pdf_for_processing'), \
              patch('pypdf.PdfReader') as mock_reader:
@@ -499,7 +499,7 @@ class TestDocumentTools:
 
     def test_read_pdf_page_range(self):
         """Test reading specific page range from PDF."""
-        from navixmind.tools.documents import read_pdf
+        from rastacoder.tools.documents import read_pdf
 
         with patch('navixmind.tools.documents.validate_pdf_for_processing'), \
              patch('pypdf.PdfReader') as mock_reader:
@@ -519,7 +519,7 @@ class TestDocumentTools:
 
     def test_read_pdf_single_page(self):
         """Test reading single page from PDF."""
-        from navixmind.tools.documents import read_pdf
+        from rastacoder.tools.documents import read_pdf
 
         with patch('navixmind.tools.documents.validate_pdf_for_processing'), \
              patch('pypdf.PdfReader') as mock_reader:
@@ -537,8 +537,8 @@ class TestDocumentTools:
 
     def test_read_pdf_invalid_page(self):
         """Test reading invalid page number."""
-        from navixmind.tools.documents import read_pdf
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.documents import read_pdf
+        from rastacoder.bridge import ToolError
 
         with patch('navixmind.tools.documents.validate_pdf_for_processing'), \
              patch('pypdf.PdfReader') as mock_reader:
@@ -552,7 +552,7 @@ class TestDocumentTools:
 
     def test_create_pdf(self):
         """Test creating PDF from text."""
-        from navixmind.tools.documents import create_pdf
+        from rastacoder.tools.documents import create_pdf
 
         # Mock styles as a dict-like object
         mock_styles = {
@@ -585,7 +585,7 @@ class TestDocumentTools:
 
     def test_convert_docx_to_txt(self):
         """Test converting DOCX to TXT."""
-        from navixmind.tools.documents import convert_document
+        from rastacoder.tools.documents import convert_document
 
         with patch('navixmind.tools.documents.validate_file_for_processing'), \
              patch('docx.Document') as mock_doc, \
@@ -604,8 +604,8 @@ class TestDocumentTools:
 
     def test_convert_unsupported_format(self):
         """Test converting unsupported format."""
-        from navixmind.tools.documents import convert_document
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.documents import convert_document
+        from rastacoder.bridge import ToolError
 
         with patch('navixmind.tools.documents.validate_file_for_processing'):
             with pytest.raises(ToolError) as exc_info:
@@ -619,7 +619,7 @@ class TestFileLimits:
 
     def test_validate_file_size(self):
         """Test file size validation."""
-        from navixmind.utils.file_limits import validate_file_for_processing, FileTooLargeError
+        from rastacoder.utils.file_limits import validate_file_for_processing, FileTooLargeError
         import os
 
         with patch('os.path.exists') as mock_exists, \
@@ -633,7 +633,7 @@ class TestFileLimits:
 
     def test_validate_file_not_found(self):
         """Test validation of non-existent file."""
-        from navixmind.utils.file_limits import validate_file_for_processing
+        from rastacoder.utils.file_limits import validate_file_for_processing
 
         with patch('os.path.exists') as mock_exists:
             mock_exists.return_value = False
@@ -643,7 +643,7 @@ class TestFileLimits:
 
     def test_validate_auto_detect_type(self):
         """Test automatic file type detection."""
-        from navixmind.utils.file_limits import validate_file_for_processing
+        from rastacoder.utils.file_limits import validate_file_for_processing
 
         with patch('os.path.exists') as mock_exists, \
              patch('os.path.getsize') as mock_size:
@@ -662,7 +662,7 @@ class TestSecurityTools:
 
     def test_is_blocked_domain_youtube(self):
         """Test YouTube domain is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://www.youtube.com/watch?v=abc") is True
         assert is_blocked_domain("https://youtube.com/watch?v=abc") is True
@@ -671,7 +671,7 @@ class TestSecurityTools:
 
     def test_is_blocked_domain_allowed(self):
         """Test allowed domains are not blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://instagram.com/p/abc") is False
         assert is_blocked_domain("https://tiktok.com/@user/video/123") is False
@@ -683,7 +683,7 @@ class TestNativeToolDelegation:
 
     def test_ffmpeg_process_delegates(self):
         """Test FFmpeg tool delegates to native."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         with patch('navixmind.bridge.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -704,7 +704,7 @@ class TestNativeToolDelegation:
 
     def test_ocr_image_delegates(self):
         """Test OCR tool delegates to native."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         with patch('navixmind.bridge.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -723,7 +723,7 @@ class TestNativeToolDelegation:
 
     def test_smart_crop_delegates(self):
         """Test smart crop tool delegates to native."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         with patch('navixmind.bridge.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -744,7 +744,7 @@ class TestNativeToolDelegation:
 
     def test_image_compose_delegates(self):
         """Test image_compose tool delegates to native."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         with patch('navixmind.bridge.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -770,7 +770,7 @@ class TestNativeToolDelegation:
 
     def test_image_compose_adjust_delegates(self):
         """Test image_compose adjust operation delegates to native."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         with patch('navixmind.bridge.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -795,8 +795,8 @@ class TestNativeToolDelegation:
 
     def test_image_compose_gets_timeout(self):
         """Test image_compose receives timeout from context."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod._image_compose
         mock_compose = Mock(return_value={"success": True, "output_path": "/out.jpg"})
@@ -815,7 +815,7 @@ class TestNativeToolDelegation:
 
     def test_list_files_delegates(self):
         """Test list_files tool delegates to native."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         with patch('navixmind.bridge.get_bridge') as mock_bridge:
             mock_bridge.return_value.call_native.return_value = {
@@ -844,8 +844,8 @@ class TestNativeToolDelegation:
 
     def test_list_files_gets_timeout(self):
         """Test list_files receives timeout from context."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod._list_files
         mock_list = Mock(return_value={"success": True, "files": [], "file_count": 0})
@@ -868,13 +868,13 @@ class TestImageComposeSchema:
 
     def test_schema_exists(self):
         """Test image_compose schema is defined."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         tool_names = [t["name"] for t in TOOLS_SCHEMA]
         assert "image_compose" in tool_names
 
     def test_schema_has_required_fields(self):
         """Test image_compose schema has proper structure."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "image_compose")
 
         assert "description" in schema
@@ -889,7 +889,7 @@ class TestImageComposeSchema:
 
     def test_schema_operations_include_adjust(self):
         """Test image_compose operations include adjust for brightness/contrast."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "image_compose")
         ops = schema["input_schema"]["properties"]["operation"]["enum"]
 
@@ -904,7 +904,7 @@ class TestImageComposeSchema:
 
     def test_schema_required(self):
         """Test required fields are specified."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "image_compose")
         required = schema["input_schema"]["required"]
 
@@ -914,7 +914,7 @@ class TestImageComposeSchema:
 
     def test_schema_description_mentions_PIL_warning(self):
         """Test description warns against PIL usage."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "image_compose")
         desc = schema["description"]
 
@@ -922,7 +922,7 @@ class TestImageComposeSchema:
 
     def test_schema_description_warns_against_ffmpeg(self):
         """Test description warns against using ffmpeg for images."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "image_compose")
         desc = schema["description"]
 
@@ -930,13 +930,13 @@ class TestImageComposeSchema:
 
     def test_offline_schema_exists(self):
         """Test image_compose is in offline schema."""
-        from navixmind.tools import OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import OFFLINE_TOOLS_SCHEMA
         tool_names = [t["name"] for t in OFFLINE_TOOLS_SCHEMA]
         assert "image_compose" in tool_names
 
     def test_offline_schema_operations_match(self):
         """Test offline schema has same operations."""
-        from navixmind.tools import OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import OFFLINE_TOOLS_SCHEMA
         schema = next(t for t in OFFLINE_TOOLS_SCHEMA if t["name"] == "image_compose")
         ops = schema["input_schema"]["properties"]["operation"]["enum"]
 
@@ -950,13 +950,13 @@ class TestListFilesSchema:
 
     def test_schema_exists(self):
         """Test list_files schema is defined."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         tool_names = [t["name"] for t in TOOLS_SCHEMA]
         assert "list_files" in tool_names
 
     def test_schema_has_required_fields(self):
         """Test list_files schema has proper structure."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "list_files")
 
         props = schema["input_schema"]["properties"]
@@ -964,7 +964,7 @@ class TestListFilesSchema:
 
     def test_schema_directory_enum(self):
         """Test list_files directory options are constrained."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "list_files")
         dirs = schema["input_schema"]["properties"]["directory"]["enum"]
 
@@ -976,13 +976,13 @@ class TestListFilesSchema:
 
     def test_schema_required(self):
         """Test required fields."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "list_files")
         assert "directory" in schema["input_schema"]["required"]
 
     def test_offline_schema_exists(self):
         """Test list_files is in offline schema."""
-        from navixmind.tools import OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import OFFLINE_TOOLS_SCHEMA
         tool_names = [t["name"] for t in OFFLINE_TOOLS_SCHEMA]
         assert "list_files" in tool_names
 
@@ -992,8 +992,8 @@ class TestInputPathsResolution:
 
     def test_input_paths_resolved_by_basename(self):
         """Test input_paths array items are resolved via basename lookup."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         file_map = {
             "img1.jpg": "/data/user/0/ai.navixmind/files/navixmind_shared/img1.jpg",
@@ -1023,8 +1023,8 @@ class TestInputPathsResolution:
 
     def test_input_paths_resolved_by_full_path_basename(self):
         """Test full paths in input_paths are resolved via basename extraction."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         file_map = {
             "photo.jpg": "/data/user/0/ai.navixmind/files/navixmind_shared/photo.jpg",
@@ -1053,8 +1053,8 @@ class TestInputPathsResolution:
 
     def test_input_paths_passthrough_when_not_in_map(self):
         """Test paths not in file_map are passed through unchanged."""
-        from navixmind.tools import execute_tool
-        import navixmind.tools as tools_mod
+        from rastacoder.tools import execute_tool
+        import rastacoder.tools as tools_mod
 
         original = tools_mod._image_compose
         mock_compose = Mock(return_value={"success": True, "output_path": "/out.jpg"})
@@ -1080,8 +1080,8 @@ class TestToolMapCompleteness:
 
     def test_all_schema_tools_are_dispatchable(self):
         """Test every tool in TOOLS_SCHEMA is registered in the tool_map."""
-        from navixmind.tools import TOOLS_SCHEMA, execute_tool
-        from navixmind.bridge import ToolError
+        from rastacoder.tools import TOOLS_SCHEMA, execute_tool
+        from rastacoder.bridge import ToolError
 
         tool_names = [t["name"] for t in TOOLS_SCHEMA]
 
@@ -1113,8 +1113,8 @@ class TestToolMapCompleteness:
 
     def test_image_compose_in_tool_map(self):
         """Test image_compose is registered in execute_tool dispatch."""
-        from navixmind.tools import execute_tool
-        from navixmind.bridge import ToolError
+        from rastacoder.tools import execute_tool
+        from rastacoder.bridge import ToolError
 
         try:
             execute_tool("image_compose", {}, {})
@@ -1125,8 +1125,8 @@ class TestToolMapCompleteness:
 
     def test_list_files_in_tool_map(self):
         """Test list_files is registered in execute_tool dispatch."""
-        from navixmind.tools import execute_tool
-        from navixmind.bridge import ToolError
+        from rastacoder.tools import execute_tool
+        from rastacoder.bridge import ToolError
 
         try:
             execute_tool("list_files", {}, {})

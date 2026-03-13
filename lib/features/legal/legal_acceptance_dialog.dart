@@ -2,11 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import 'package:navixmind/app/theme.dart';
-import 'package:navixmind/core/services/analytics_service.dart';
-import 'package:navixmind/core/services/storage_service.dart';
-import 'package:navixmind/features/legal/terms_of_service.dart';
-import 'package:navixmind/features/legal/privacy_policy.dart';
+import 'package:coderasta/app/theme.dart';
+import 'package:coderasta/core/services/analytics_service.dart';
+import 'package:coderasta/core/services/storage_service.dart';
+import 'package:coderasta/features/legal/terms_of_service.dart';
+import 'package:coderasta/features/legal/privacy_policy.dart';
 
 /// Shows a legal acceptance dialog on first app launch.
 ///

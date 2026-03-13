@@ -1,30 +1,30 @@
-# NavixMind 🚀
+# RastaCoder 🚀🦁
 
-**The AI assistant that runs entirely on your phone — no internet required.**
+**The AI assistant that runs entirely on your phone — no internet required. Rastafarian vibes.**
 
-[![Website](https://img.shields.io/badge/Website-navixmind.ai-6366F1?style=for-the-badge)](https://navixmind.ai)
+[![Website](https://img.shields.io/badge/Website-rastacoder.ai-6366F1?style=for-the-badge)](https://rastacoder.ai)
 [![Google Play](https://img.shields.io/badge/Google_Play-Coming_Soon-4285F4?style=for-the-badge&logo=google-play)]()
-[![GitHub Release](https://img.shields.io/github/v/release/alexandertaboriskiy/navixmind?style=for-the-badge&color=green)](https://github.com/alexandertaboriskiy/navixmind/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/alexandertaboriskiy/rastacoder?style=for-the-badge&color=green)](https://github.com/alexandertaboriskiy/rastacoder/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/navixmind?style=for-the-badge&color=7289da)](https://discord.gg/navixmind)
 
-NavixMind embeds a Python 3.10 runtime directly inside the APK, enabling iterative, multi-step tasks that cloud-based AI apps cannot perform. Process files, execute logic, and automate workflows — all on-device. With on-device LLM support via MLC, NavixMind can operate entirely offline — no API key, no internet connection required.
+RastaCoder embeds a Python 3.10 runtime directly inside the APK, enabling iterative, multi-step tasks that cloud-based AI apps cannot perform. Process files, execute logic, and automate workflows — all on-device. With on-device LLM support via MLC, RastaCoder can operate entirely offline — no API key, no internet connection required.
 
 > 💰 **Monetization:** Free tier available. Pro ($9.99/mo) unlocks cloud AI and advanced tools. Enterprise ($497/mo) for teams. [Learn more](https://navixmind.ai#pricing)
 
-## Why NavixMind?
+## Why RastaCoder?
 
 Current mobile AI apps run on a "remote runtime" model. They're great for chat, but fail when tasks require:
 - **Iterative loops** — checking results and retrying with adjusted parameters
 - **Local file manipulation** — without uploading to cloud sandboxes
 - **Multi-step workflows** — combining multiple tools in sequence
 
-NavixMind fixes this by running Python locally via [Chaquopy](https://chaquo.com/chaquopy/), with Claude AI orchestrating the logic.
+RastaCoder fixes this by running Python locally via [Chaquopy](https://chaquo.com/chaquopy/), with Claude AI orchestrating the logic.
 
 ### Example Use Cases
 
-| Task | Cloud AI Apps | NavixMind |
-|------|---------------|-----------|
+| Task | Cloud AI Apps | RastaCoder |
+|------|---------------|------------|
 | "Compress this video to under 25MB with best quality" | One-shot attempt, no feedback loop | Runs FFmpeg iteratively, adjusting bitrate until target is met |
 | "Split this recording into 10-min MP3 segments and zip them" | Requires uploading huge files | Processes in-place, on-device |
 | "Generate a PDF summary for each meeting tomorrow" | Cannot create/save files locally | Creates files directly on your phone |

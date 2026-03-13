@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:navixmind/app/theme.dart';
+import 'package:coderasta/app/theme.dart';
 
 /// Privacy Policy screen for NavixMind.
 class PrivacyPolicyScreen extends StatelessWidget {
@@ -50,7 +50,7 @@ The App is not intended for children under 16.
 8. CHANGES
 This policy may be updated at any time. Continued use constitutes acceptance.
 
-Contact: support@navixmind.ai''';
+Contact: support@coderasta.ai''';
 
   @override
   Widget build(BuildContext context) {

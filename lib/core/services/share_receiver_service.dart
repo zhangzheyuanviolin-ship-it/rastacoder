@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 /// Receives files shared from other Android apps via the share sheet.
 ///
-/// Listens on the `ai.navixmind/share_receiver` MethodChannel for
+/// Listens on the `ai.rastacoder/share_receiver` MethodChannel for
 /// `onFilesShared` calls from Kotlin, and exposes them as a stream
 /// for ChatScreen to consume.
 class ShareReceiverService {
@@ -15,7 +15,7 @@ class ShareReceiverService {
   @visibleForTesting
   ShareReceiverService.forTest();
 
-  static const _channel = MethodChannel('ai.navixmind/share_receiver');
+  static const _channel = MethodChannel('ai.rastacoder/share_receiver');
 
   final _controller = StreamController<SharedFilesEvent>.broadcast();
   Stream<SharedFilesEvent> get stream => _controller.stream;

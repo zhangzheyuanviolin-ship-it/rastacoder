@@ -1,4 +1,4 @@
-package ai.navixmind.services
+package ai.rastacoder.services
 
 import ai.mlc.mlcllm.MLCEngine
 import ai.mlc.mlcllm.OpenAIProtocol
@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 /**
  * Wraps MLC LLM MLCEngine via MethodChannel for on-device inference.
  *
- * MethodChannel: ai.navixmind/mlc_inference
+ * MethodChannel: ai.rastacoder/mlc_inference
  *   - loadModel(modelId, modelPath, modelLib)
  *   - generate(messagesJson, toolsJson?, maxTokens)
  *   - unloadModel()
@@ -34,7 +34,7 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
 
     companion object {
         private const val TAG = "MLCInference"
-        private const val CHANNEL_NAME = "ai.navixmind/mlc_inference"
+        private const val CHANNEL_NAME = "ai.rastacoder/mlc_inference"
     }
 
     private val methodChannel = MethodChannel(

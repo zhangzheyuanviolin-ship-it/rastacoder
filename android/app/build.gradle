@@ -34,7 +34,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "ai.navixmind"
+    namespace "ai.rastacoder"
     compileSdk 35
     ndkVersion "25.1.8937393"
 
@@ -56,7 +56,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "ai.navixmind"
+        applicationId "ai.rastacoder"
         minSdk 24
         targetSdk 35
         versionCode flutterVersionCode.toInteger()
@@ -114,13 +114,13 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField "boolean", "NAVIXMIND_DEBUG", "true"
+            buildConfigField "boolean", "CODERASTA_DEBUG", "true"
         }
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            buildConfigField "boolean", "NAVIXMIND_DEBUG", "false"
+            buildConfigField "boolean", "CODERASTA_DEBUG", "false"
             signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug
         }
     }
@@ -138,7 +138,7 @@ android {
     }
 }
 
-// Chaquopy source sets - include the navixmind Python package
+// Chaquopy source sets - include the coderasta Python package
 chaquopy {
     sourceSets {
         getByName("main") {

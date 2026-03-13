@@ -20,8 +20,8 @@ Tests cover:
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
-from navixmind.bridge import ToolError
-from navixmind.tools.media import download_media
+from rastacoder.bridge import ToolError
+from rastacoder.tools.media import download_media
 
 
 class TestYouTubeBlocking:

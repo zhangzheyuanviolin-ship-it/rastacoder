@@ -17,7 +17,7 @@ class TestSessionState:
 
     def test_add_message(self):
         """Test adding a message to session."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "Hello")
@@ -28,7 +28,7 @@ class TestSessionState:
 
     def test_add_message_with_token_count(self):
         """Test message with explicit token count."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "Test", token_count=10)
@@ -38,7 +38,7 @@ class TestSessionState:
 
     def test_add_message_estimates_tokens(self):
         """Test message estimates tokens if not provided."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         content = "A" * 100  # 100 chars ~ 25 tokens
@@ -49,7 +49,7 @@ class TestSessionState:
 
     def test_get_context_empty(self):
         """Test getting context from empty session."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         context = session.get_context_for_llm(max_tokens=100000)
@@ -58,7 +58,7 @@ class TestSessionState:
 
     def test_get_context_with_messages(self):
         """Test getting context with messages."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "Hello")
@@ -72,7 +72,7 @@ class TestSessionState:
 
     def test_get_context_respects_token_limit(self):
         """Test context respects token limit."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         # Add messages with known token counts
@@ -88,7 +88,7 @@ class TestSessionState:
 
     def test_get_context_includes_summary(self):
         """Test context includes summary when available."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.summary = "Previous discussion about weather"
@@ -102,7 +102,7 @@ class TestSessionState:
 
     def test_clear(self):
         """Test clearing session state."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.conversation_id = 123
@@ -122,7 +122,7 @@ class TestApplyDelta:
 
     def test_apply_new_conversation(self):
         """Test applying new_conversation delta."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "Old message")
@@ -138,7 +138,7 @@ class TestApplyDelta:
 
     def test_apply_add_message(self):
         """Test applying add_message delta."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.apply_delta({
@@ -157,7 +157,7 @@ class TestApplyDelta:
 
     def test_apply_set_summary(self):
         """Test applying set_summary delta."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         # Add messages with IDs
@@ -187,7 +187,7 @@ class TestApplyDelta:
 
     def test_apply_sync_full(self):
         """Test applying sync_full delta."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.apply_delta({
@@ -211,7 +211,7 @@ class TestTokenEstimation:
 
     def test_estimate_tokens_simple(self):
         """Test simple token estimation."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "Test")  # 4 chars = 1 token
@@ -220,7 +220,7 @@ class TestTokenEstimation:
 
     def test_estimate_tokens_empty(self):
         """Test estimation for empty content."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "")
@@ -229,7 +229,7 @@ class TestTokenEstimation:
 
     def test_estimate_tokens_long_text(self):
         """Test estimation for long text."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         content = "A" * 1000  # 1000 chars = 250 tokens
@@ -287,7 +287,7 @@ class TestFormatMessage:
 
     def test_format_message_basic(self):
         """Test basic message formatting."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "Hello")
@@ -299,7 +299,7 @@ class TestFormatMessage:
 
     def test_format_message_with_attachments(self):
         """Test message with attachments."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.messages.append({
@@ -317,7 +317,7 @@ class TestFormatMessage:
 
     def test_format_message_tool_result_role(self):
         """Test tool_result role maps to user."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.messages.append({
@@ -336,7 +336,7 @@ class TestEdgeCases:
 
     def test_empty_summary_not_included(self):
         """Test empty summary is not included."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.summary = None
@@ -349,7 +349,7 @@ class TestEdgeCases:
 
     def test_multiple_messages_order_preserved(self):
         """Test message order is preserved."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         session.add_message("user", "First")
@@ -364,7 +364,7 @@ class TestEdgeCases:
 
     def test_message_id_auto_increments(self):
         """Test message IDs auto-increment."""
-        from navixmind.session import SessionState
+        from rastacoder.session import SessionState
 
         session = SessionState()
         msg1 = session.add_message("user", "First")

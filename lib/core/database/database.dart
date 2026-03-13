@@ -33,7 +33,7 @@ class NavixDatabase {
         PendingQuerySchema,
       ],
       directory: dir.path,
-      name: 'navixmind',
+      name: 'coderasta',
     );
 
     return _instance!;

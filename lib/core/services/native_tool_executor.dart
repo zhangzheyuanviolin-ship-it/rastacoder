@@ -59,8 +59,8 @@ class NativeToolExecutor {
     // Search app internal directories first
     final appDir = await getApplicationDocumentsDirectory();
     final internalDirs = [
-      '${appDir.path}/navixmind_output',
-      '${appDir.parent.path}/files/navixmind_shared',
+      '${appDir.path}/coderasta_output',
+      '${appDir.parent.path}/files/coderasta_shared',
     ];
 
     for (final dir in [...internalDirs, ..._searchDirectories]) {
@@ -69,7 +69,7 @@ class NativeToolExecutor {
         debugPrint('[NativeTool] Resolved $basename -> ${candidate.path}');
         // If file is in external storage, copy to internal for reliability
         if (!candidate.path.startsWith(appDir.path)) {
-          final internalCopy = File('${appDir.path}/navixmind_output/$basename');
+          final internalCopy = File('${appDir.path}/coderasta_output/$basename');
           await internalCopy.parent.create(recursive: true);
           await candidate.copy(internalCopy.path);
           debugPrint('[NativeTool] Copied to internal: ${internalCopy.path}');
@@ -1427,7 +1427,7 @@ class NativeToolExecutor {
     switch (directory) {
       case 'output':
         final appDir = await getApplicationDocumentsDirectory();
-        dirPath = '${appDir.path}/navixmind_output';
+        dirPath = '${appDir.path}/coderasta_output';
         break;
       case 'screenshots':
         dirPath = '/storage/emulated/0/Pictures/Screenshots';

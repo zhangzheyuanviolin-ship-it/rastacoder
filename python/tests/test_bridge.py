@@ -23,7 +23,7 @@ class TestNavixMindBridge:
 
     def test_singleton_pattern(self):
         """Test that get_instance returns singleton."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         instance1 = NavixMindBridge.get_instance()
         instance2 = NavixMindBridge.get_instance()
@@ -31,7 +31,7 @@ class TestNavixMindBridge:
 
     def test_set_send_callback(self):
         """Test setting send callback and _send puts messages in queue."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
         callback = Mock()
@@ -47,7 +47,7 @@ class TestNavixMindBridge:
 
     def test_log_sends_message(self):
         """Test log method sends log message."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -63,7 +63,7 @@ class TestNavixMindBridge:
 
     def test_log_without_progress(self):
         """Test log message without progress."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -76,7 +76,7 @@ class TestNavixMindBridge:
 
     def test_get_status(self):
         """Test getting bridge status."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
         bridge.set_status("ready")
@@ -84,7 +84,7 @@ class TestNavixMindBridge:
 
     def test_set_status(self):
         """Test setting bridge status."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
         bridge.set_status("initializing")
@@ -99,7 +99,7 @@ class TestCallNative:
 
     def test_call_native_success(self):
         """Test successful native call."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -131,7 +131,7 @@ class TestCallNative:
 
     def test_call_native_timeout(self):
         """Test native call timeout."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -144,7 +144,7 @@ class TestCallNative:
 
     def test_call_native_error_response(self):
         """Test native call with error response."""
-        from navixmind.bridge import NavixMindBridge, ToolError
+        from rastacoder.bridge import NavixMindBridge, ToolError
 
         bridge = NavixMindBridge.get_instance()
 
@@ -175,7 +175,7 @@ class TestCallNative:
 
     def test_call_native_message_format(self):
         """Test native call sends correct message format."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -201,7 +201,7 @@ class TestCallNative:
 
     def test_call_native_concurrent_calls(self):
         """Test multiple concurrent native calls."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
         sent_messages = []
@@ -263,7 +263,7 @@ class TestReceiveResponse:
 
     def test_receive_response_valid_json(self):
         """Test receiving valid JSON response."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
         # Set up a pending request with a unique ID to avoid conflicts
@@ -290,7 +290,7 @@ class TestReceiveResponse:
 
     def test_receive_response_invalid_json(self):
         """Test receiving invalid JSON is handled gracefully."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -299,7 +299,7 @@ class TestReceiveResponse:
 
     def test_receive_response_unknown_id(self):
         """Test receiving response for unknown ID."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -312,7 +312,7 @@ class TestToolError:
 
     def test_tool_error_default_code(self):
         """Test ToolError with default error code."""
-        from navixmind.bridge import ToolError
+        from rastacoder.bridge import ToolError
 
         error = ToolError("Something failed")
         assert error.code == -32000
@@ -320,7 +320,7 @@ class TestToolError:
 
     def test_tool_error_custom_code(self):
         """Test ToolError with custom error code."""
-        from navixmind.bridge import ToolError
+        from rastacoder.bridge import ToolError
 
         error = ToolError("Custom error", code=-32001)
         assert error.code == -32001
@@ -338,7 +338,7 @@ class TestModuleFunctions:
 
     def test_get_bridge(self):
         """Test get_bridge returns instance."""
-        from navixmind.bridge import get_bridge, NavixMindBridge
+        from rastacoder.bridge import get_bridge, NavixMindBridge
 
         result = get_bridge()
         assert isinstance(result, NavixMindBridge)
@@ -365,7 +365,7 @@ class TestThreadSafety:
 
     def test_concurrent_log_calls(self):
         """Test concurrent log calls don't cause issues."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
 
@@ -391,7 +391,7 @@ class TestThreadSafety:
 
     def test_concurrent_status_access(self):
         """Test concurrent status reads/writes."""
-        from navixmind.bridge import NavixMindBridge
+        from rastacoder.bridge import NavixMindBridge
 
         bridge = NavixMindBridge.get_instance()
         statuses = ["ready", "initializing", "importing", "error"]
@@ -426,7 +426,7 @@ class TestPrewarm:
 
     def test_start_prewarm_spawns_thread(self):
         """Test that _start_prewarm spawns a daemon thread."""
-        from navixmind.bridge import _start_prewarm
+        from rastacoder.bridge import _start_prewarm
         import threading
 
         initial_threads = threading.active_count()
@@ -441,7 +441,7 @@ class TestPrewarm:
 
     def test_prewarm_imports_handle_import_error(self):
         """Test that prewarm gracefully handles ImportError."""
-        from navixmind.bridge import _prewarm_imports
+        from rastacoder.bridge import _prewarm_imports
 
         # Should not raise even if modules are missing
         with patch('builtins.__import__', side_effect=ImportError("Module not found")):
@@ -449,7 +449,7 @@ class TestPrewarm:
 
     def test_prewarm_imports_success(self):
         """Test that prewarm function completes without error."""
-        from navixmind.bridge import _prewarm_imports
+        from rastacoder.bridge import _prewarm_imports
 
         # Prewarm should complete without raising, even if modules missing
         try:
@@ -462,7 +462,7 @@ class TestPrewarm:
 
     def test_prewarm_is_daemon_thread(self):
         """Test that prewarm thread is a daemon (won't block exit)."""
-        from navixmind.bridge import _start_prewarm
+        from rastacoder.bridge import _start_prewarm
         import threading
 
         _start_prewarm()
@@ -481,8 +481,8 @@ class TestPrewarm:
 
     def test_prewarm_logs_progress(self):
         """Test that prewarm logs progress messages."""
-        from navixmind.bridge import _prewarm_imports
-        from navixmind.crash_logger import CrashLogger
+        from rastacoder.bridge import _prewarm_imports
+        from rastacoder.crash_logger import CrashLogger
 
         with patch.object(CrashLogger, 'log_info') as mock_log:
             _prewarm_imports()
@@ -494,7 +494,7 @@ class TestPrewarm:
 
     def test_prewarm_imports_specific_modules(self):
         """Test that prewarm attempts to import specific heavy modules."""
-        from navixmind.bridge import _prewarm_imports
+        from rastacoder.bridge import _prewarm_imports
 
         import_attempts = []
 
@@ -535,7 +535,7 @@ class TestPrewarm:
 
     def test_prewarm_handles_partial_failures(self):
         """Test prewarm continues even if some imports fail."""
-        from navixmind.bridge import _prewarm_imports
+        from rastacoder.bridge import _prewarm_imports
 
         # The function should complete without raising even if imports fail
         # Each import is wrapped in try/except in _prewarm_imports

@@ -1,7 +1,7 @@
-name: navixmind
-description: A local-first AI Console Agent for Android
+name: rastacoder
+description: Coderasta - The Rastafarian AI Assistant 🦁🇯🇲 Jah Rastafari!
 publish_to: 'none'
-version: 0.5.2+16
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -33,7 +33,6 @@ dependencies:
   # Web
   flutter_inappwebview: ^6.0.0
 
-
   # Connectivity
   connectivity_plus: ^5.0.2
 
@@ -41,8 +40,16 @@ dependencies:
   file_picker: ^6.1.1
   share_plus: ^7.2.1
 
-  # UI
+  # UI & Fonts
   google_fonts: ^6.1.0
+  
+  # Rastafarian & Reggae Art Packages
+  # Vector icons for Lion of Judah, Ethiopian star, etc.
+  font_awesome_flutter: ^10.6.0
+  # Advanced gradient effects for Rasta colors
+  flutter_gradient_widgets: ^1.0.0
+  # Custom paint for Rastafarian symbols
+  flutter_custom_clippers: ^2.1.1
 
   # Utils
   uuid: ^4.2.2
@@ -59,3 +66,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   # Fonts loaded via google_fonts package at runtime
+  # Rastafarian assets:
+  # - Red, Gold, Green color scheme
+  # - Lion of Judah imagery
+  # - Ethiopian star symbols
+  # - Reggae culture artwork

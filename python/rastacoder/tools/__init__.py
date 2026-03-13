@@ -14,6 +14,14 @@ from .documents import (
 from .media import download_media
 from .google_api import google_calendar, gmail
 from .code_executor import python_execute
+from .system_tools import (
+    get_device_info, list_directory, create_directory, move_file,
+    delete_file, delete_directory, copy_file, get_file_hash
+)
+from .audio import (
+    extract_audio, trim_audio, merge_audio, change_speed, change_pitch,
+    normalize_audio, get_audio_info, convert_audio_format
+)
 
 from ..bridge import ToolError
 
@@ -685,6 +693,212 @@ OFFLINE_TOOLS_SCHEMA = [
             "required": ["file_path"]
         }
     },
+    {
+        "name": "get_device_info",
+        "description": "Get device information including manufacturer, model, Android version, storage, and memory status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "list_directory",
+        "description": "List directory contents with file information (name, size, modification date). Supports recursive listing.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Directory path to list"},
+                "recursive": {"type": "boolean", "default": False, "description": "List subdirectories recursively"},
+                "max_depth": {"type": "integer", "default": 2, "description": "Maximum depth for recursive listing"}
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "create_directory",
+        "description": "Create a new directory. Can create parent directories if needed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Directory path to create"},
+                "parents": {"type": "boolean", "default": True, "description": "Create parent directories if needed"}
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "move_file",
+        "description": "Move or rename a file within allowed directories.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_path": {"type": "string", "description": "Source file path"},
+                "dest_path": {"type": "string", "description": "Destination path"},
+                "overwrite": {"type": "boolean", "default": False, "description": "Overwrite if destination exists"}
+            },
+            "required": ["source_path", "dest_path"]
+        }
+    },
+    {
+        "name": "copy_file",
+        "description": "Copy a file within allowed directories.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_path": {"type": "string", "description": "Source file path"},
+                "dest_path": {"type": "string", "description": "Destination path"},
+                "overwrite": {"type": "boolean", "default": False, "description": "Overwrite if destination exists"}
+            },
+            "required": ["source_path", "dest_path"]
+        }
+    },
+    {
+        "name": "delete_file",
+        "description": "Delete a file. Use delete_directory for folders.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path to delete"}
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "delete_directory",
+        "description": "Delete a directory. Can delete recursively.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Directory path to delete"},
+                "recursive": {"type": "boolean", "default": False, "description": "Delete contents recursively"}
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "get_file_hash",
+        "description": "Calculate file hash using specified algorithm (MD5, SHA1, SHA256, SHA512).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path to hash"},
+                "algorithm": {
+                    "type": "string",
+                    "enum": ["md5", "sha1", "sha256", "sha512"],
+                    "default": "sha256",
+                    "description": "Hash algorithm to use"
+                }
+            },
+            "required": ["path"]
+        }
+    },
+    {
+        "name": "extract_audio",
+        "description": "Extract audio from video file. Supports MP3, M4A, WAV, FLAC, OPUS formats.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Input video file path"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "format": {"type": "string", "enum": ["mp3", "m4a", "wav", "flac", "opus"], "default": "mp3"},
+                "bitrate": {"type": "string", "default": "192k", "description": "Audio bitrate (e.g., 128k, 192k, 320k)"}
+            },
+            "required": ["input_path", "output_path"]
+        }
+    },
+    {
+        "name": "trim_audio",
+        "description": "Trim audio file by start/end time or duration.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Input audio file path"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "start": {"type": "string", "description": "Start time (e.g., '00:00:10' or '10')"},
+                "end": {"type": "string", "description": "End time (optional, use duration instead)"},
+                "duration": {"type": "string", "description": "Duration to keep (optional, use end instead)"}
+            },
+            "required": ["input_path", "output_path", "start"]
+        }
+    },
+    {
+        "name": "merge_audio",
+        "description": "Merge multiple audio files into one.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_paths": {"type": "array", "items": {"type": "string"}, "description": "List of input audio file paths"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "transition": {"type": "string", "enum": ["none", "crossfade"], "default": "none"}
+            },
+            "required": ["input_paths", "output_path"]
+        }
+    },
+    {
+        "name": "change_speed",
+        "description": "Change audio playback speed (0.25x to 4.0x).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Input audio file path"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "speed": {"type": "number", "description": "Speed multiplier (0.25-4.0)"}
+            },
+            "required": ["input_path", "output_path", "speed"]
+        }
+    },
+    {
+        "name": "change_pitch",
+        "description": "Change audio pitch by semitones (-24 to +24).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Input audio file path"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "semitones": {"type": "number", "description": "Pitch shift in semitones (-24 to +24)"}
+            },
+            "required": ["input_path", "output_path", "semitones"]
+        }
+    },
+    {
+        "name": "normalize_audio",
+        "description": "Normalize audio volume to target loudness (LUFS).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Input audio file path"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "target_db": {"type": "number", "default": -16.0, "description": "Target loudness in dB (default -16 LUFS)"}
+            },
+            "required": ["input_path", "output_path"]
+        }
+    },
+    {
+        "name": "get_audio_info",
+        "description": "Get detailed audio file information (duration, codec, sample rate, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Audio file path"}
+            },
+            "required": ["input_path"]
+        }
+    },
+    {
+        "name": "convert_audio_format",
+        "description": "Convert audio to different format (MP3, M4A, WAV, FLAC, OGG, OPUS).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_path": {"type": "string", "description": "Input audio file path"},
+                "output_path": {"type": "string", "description": "Output audio file path"},
+                "format": {"type": "string", "enum": ["mp3", "m4a", "wav", "flac", "ogg", "opus"]},
+                "quality": {"type": "string", "enum": ["low", "medium", "high", "lossless"], "default": "high"}
+            },
+            "required": ["input_path", "output_path", "format"]
+        }
+    },
 ]
 
 
@@ -732,6 +946,24 @@ def execute_tool(
         "file_info": _file_info,
         "read_file": read_file,
         "write_file": write_file,
+        # System tools
+        "get_device_info": get_device_info,
+        "list_directory": list_directory,
+        "create_directory": create_directory,
+        "move_file": move_file,
+        "copy_file": copy_file,
+        "delete_file": delete_file,
+        "delete_directory": delete_directory,
+        "get_file_hash": get_file_hash,
+        # Audio tools
+        "extract_audio": extract_audio,
+        "trim_audio": trim_audio,
+        "merge_audio": merge_audio,
+        "change_speed": change_speed,
+        "change_pitch": change_pitch,
+        "normalize_audio": normalize_audio,
+        "get_audio_info": get_audio_info,
+        "convert_audio_format": convert_audio_format,
     }
 
     if tool_name not in tool_map:

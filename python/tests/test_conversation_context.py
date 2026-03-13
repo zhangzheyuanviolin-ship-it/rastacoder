@@ -12,7 +12,7 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock, PropertyMock
 
-from navixmind.session import SessionState, get_session
+from rastacoder.session import SessionState, get_session
 
 
 class TestSessionMessageAlternation(unittest.TestCase):
@@ -74,7 +74,7 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
 
     def setUp(self):
         """Reset session and set up mocks."""
-        import navixmind.session as session_module
+        import rastacoder.session as session_module
         session_module._session = None
 
         self.bridge_patcher = patch("navixmind.agent.get_bridge")
@@ -84,18 +84,18 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
 
     def tearDown(self):
         self.bridge_patcher.stop()
-        import navixmind.session as session_module
+        import rastacoder.session as session_module
         session_module._session = None
 
     def _set_api_key(self):
         """Set a test API key."""
-        from navixmind.agent import set_api_key
+        from rastacoder.agent import set_api_key
         set_api_key("sk-test-key-for-context-tests")
 
     def test_successful_query_saves_both_messages(self):
         """Successful query saves user + assistant to session."""
         self._set_api_key()
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         with patch("navixmind.agent.ClaudeClient") as MockClient:
             mock_client = MockClient.return_value
@@ -119,7 +119,7 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
     def test_api_error_saves_assistant_message(self):
         """API error must still save an assistant message to session."""
         self._set_api_key()
-        from navixmind.agent import process_query, APIError
+        from rastacoder.agent import process_query, APIError
 
         with patch("navixmind.agent.ClaudeClient") as MockClient:
             mock_client = MockClient.return_value
@@ -140,7 +140,7 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
     def test_exception_saves_assistant_message(self):
         """General exception must still save an assistant message."""
         self._set_api_key()
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         with patch("navixmind.agent.ClaudeClient") as MockClient:
             mock_client = MockClient.return_value
@@ -157,8 +157,8 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
 
     def test_no_api_key_does_not_add_to_session(self):
         """No API key returns early without touching session."""
-        from navixmind.agent import process_query, set_api_key, _api_key
-        import navixmind.agent as agent_module
+        from rastacoder.agent import process_query, set_api_key, _api_key
+        import rastacoder.agent as agent_module
         old_key = agent_module._api_key
         agent_module._api_key = None
 
@@ -174,7 +174,7 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
     def test_consecutive_queries_preserve_context(self):
         """Multiple queries build up conversation history correctly."""
         self._set_api_key()
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         responses = ["Response 1", "Response 2", "Response 3"]
 
@@ -201,7 +201,7 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
     def test_error_then_success_preserves_alternation(self):
         """After an error, next query still works correctly."""
         self._set_api_key()
-        from navixmind.agent import process_query, APIError
+        from rastacoder.agent import process_query, APIError
 
         # First query: API error
         with patch("navixmind.agent.ClaudeClient") as MockClient:
@@ -233,7 +233,7 @@ class TestProcessQuerySessionSaves(unittest.TestCase):
     def test_max_iterations_saves_assistant_message(self):
         """Max iterations must save an assistant message to session."""
         self._set_api_key()
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         with patch("navixmind.agent.ClaudeClient") as MockClient:
             mock_client = MockClient.return_value
@@ -272,7 +272,7 @@ class TestContextSentToAPI(unittest.TestCase):
     """Verify that previous conversation is included in API calls."""
 
     def setUp(self):
-        import navixmind.session as session_module
+        import rastacoder.session as session_module
         session_module._session = None
 
         self.bridge_patcher = patch("navixmind.agent.get_bridge")
@@ -282,12 +282,12 @@ class TestContextSentToAPI(unittest.TestCase):
 
     def tearDown(self):
         self.bridge_patcher.stop()
-        import navixmind.session as session_module
+        import rastacoder.session as session_module
         session_module._session = None
 
     def test_second_query_includes_first_conversation(self):
         """Second query's API call includes messages from first query."""
-        from navixmind.agent import set_api_key, process_query
+        from rastacoder.agent import set_api_key, process_query
         set_api_key("sk-test-context-check")
 
         captured_messages = []

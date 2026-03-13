@@ -4,7 +4,7 @@ import os
 import tempfile
 import pytest
 from unittest.mock import patch, Mock
-from navixmind.utils.file_limits import (
+from rastacoder.utils.file_limits import (
     validate_file_for_processing,
     validate_pdf_for_processing,
     validate_image_for_processing,

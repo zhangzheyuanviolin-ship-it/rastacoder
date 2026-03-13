@@ -39,12 +39,12 @@ void main() async {
     await AnalyticsService.instance.appOpen();
   }
 
-  // Set system UI style for Cyber-Clean aesthetic
+  // Set system UI style for Rastafarian aesthetic (Red, Gold, Green)
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Color(0xFF0F0F12),
+      statusBarColor: Color(0xFF1A1A1A),
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0F0F12),
+      systemNavigationBarColor: Color(0xFF1A1A1A),
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -56,7 +56,7 @@ void main() async {
   ]);
 
   // Phase 1: Show UI immediately (skeleton state)
-  runApp(const NavixMindApp(initializing: true));
+  runApp(const CoderastaApp(initializing: true));
 
   // Phase 2: Parallel initialization of fast components
   final futures = <Future<dynamic>>[
@@ -101,7 +101,7 @@ void main() async {
   PythonBridge.instance.initialize(logDir);
 
   // Update app with initialized state
-  runApp(NavixMindApp(
+  runApp(CoderastaApp(
     initializing: false,
     isar: isar,
   ));

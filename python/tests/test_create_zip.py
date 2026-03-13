@@ -15,8 +15,8 @@ import zipfile
 import unittest
 from unittest.mock import patch, MagicMock
 
-from navixmind.tools.documents import create_zip
-from navixmind.bridge import ToolError
+from rastacoder.tools.documents import create_zip
+from rastacoder.bridge import ToolError
 
 
 class TestCreateZipHappyPath(unittest.TestCase):
@@ -527,14 +527,14 @@ class TestCreateZipToolIntegration(unittest.TestCase):
 
     def test_schema_registered(self):
         """create_zip should be in TOOLS_SCHEMA."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
 
         tool_names = [t["name"] for t in TOOLS_SCHEMA]
         self.assertIn("create_zip", tool_names)
 
     def test_schema_required_fields(self):
         """Schema should require output_path and file_paths."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
 
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "create_zip")
         required = schema["input_schema"]["required"]
@@ -543,7 +543,7 @@ class TestCreateZipToolIntegration(unittest.TestCase):
 
     def test_schema_compression_enum(self):
         """Schema compression should be enum with deflated and stored."""
-        from navixmind.tools import TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA
 
         schema = next(t for t in TOOLS_SCHEMA if t["name"] == "create_zip")
         compression_prop = schema["input_schema"]["properties"]["compression"]
@@ -551,7 +551,7 @@ class TestCreateZipToolIntegration(unittest.TestCase):
 
     def test_in_tool_map(self):
         """create_zip should be callable via execute_tool."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         temp_dir = tempfile.mkdtemp()
         try:
@@ -573,7 +573,7 @@ class TestCreateZipToolIntegration(unittest.TestCase):
 
     def test_file_paths_resolved_from_file_map(self):
         """file_paths should be resolved via _file_map context."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         temp_dir = tempfile.mkdtemp()
         try:
@@ -598,7 +598,7 @@ class TestCreateZipToolIntegration(unittest.TestCase):
 
     def test_output_path_resolved_from_output_dir(self):
         """Relative output_path should be resolved via output_dir context."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         temp_dir = tempfile.mkdtemp()
         try:

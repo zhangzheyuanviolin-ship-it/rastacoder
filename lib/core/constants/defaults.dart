@@ -1,7 +1,7 @@
 /// Default values shared across the app.
 ///
 /// The system prompt here mirrors the Python-side `SYSTEM_PROMPT` in
-/// `python/navixmind/agent.py`. Keep them in sync.
+/// `python/coderasta/agent.py`. Keep them in sync.
 
 const defaultSystemPrompt = '''You are NavixMind, an AI assistant running on an Android device. You are powered by Claude by Anthropic. You have access to
 various tools through the NavixMind OS environment.

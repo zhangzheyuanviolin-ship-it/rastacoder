@@ -1,4 +1,4 @@
-package ai.navixmind
+package ai.rastacoder
 
 import android.os.Handler
 import android.os.Looper
@@ -22,12 +22,12 @@ class PythonMethodChannel(private val flutterEngine: FlutterEngine) {
 
     private val methodChannel = MethodChannel(
         flutterEngine.dartExecutor.binaryMessenger,
-        "ai.navixmind/python_bridge"
+        "ai.rastacoder/python_bridge"
     )
 
     private val eventChannel = EventChannel(
         flutterEngine.dartExecutor.binaryMessenger,
-        "ai.navixmind/python_events"
+        "ai.rastacoder/python_events"
     )
 
     // Single-threaded executor dedicated to Python calls (queries)

@@ -25,14 +25,14 @@ class TestTracingManagerSingleton:
 
     def test_singleton_returns_same_instance(self):
         """TracingManager.instance() always returns the same object."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         a = TracingManager.instance()
         b = TracingManager.instance()
         assert a is b
 
     def test_singleton_thread_safe(self):
         """Multiple threads calling instance() get the same object."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         results = []
 
         def get_instance():
@@ -53,20 +53,20 @@ class TestTracingManagerEnabled:
 
     def test_disabled_by_default(self):
         """Tracing is disabled when no key is set."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         mgr = TracingManager()
         assert not mgr.enabled
 
     def test_enabled_after_set_key(self):
         """Tracing is enabled after setting a non-empty key."""
-        from navixmind.tracing import TracingManager, _HTTP_AVAILABLE
+        from rastacoder.tracing import TracingManager, _HTTP_AVAILABLE
         mgr = TracingManager()
         mgr.set_api_key("test-key-123")
         assert mgr.enabled == _HTTP_AVAILABLE
 
     def test_disabled_after_clear_key(self):
         """Tracing is disabled after setting key to empty string."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         mgr = TracingManager()
         mgr.set_api_key("test-key-123")
         mgr.set_api_key("")
@@ -74,7 +74,7 @@ class TestTracingManagerEnabled:
 
     def test_disabled_after_none_key(self):
         """Tracing is disabled when key is set to None-equivalent."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         mgr = TracingManager()
         mgr.set_api_key("test-key-123")
         mgr.set_api_key("")  # Empty string
@@ -82,7 +82,7 @@ class TestTracingManagerEnabled:
 
     def test_disabled_when_http_unavailable(self):
         """Tracing is disabled when requests is not importable."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         mgr = TracingManager()
         mgr.set_api_key("test-key-123")
         with patch('navixmind.tracing._HTTP_AVAILABLE', False):
@@ -90,7 +90,7 @@ class TestTracingManagerEnabled:
 
     def test_set_key_closes_old_client(self):
         """Setting a new key closes the previous HTTP client."""
-        from navixmind.tracing import TracingManager
+        from rastacoder.tracing import TracingManager
         mgr = TracingManager()
         old_client = Mock()
         mgr._client = old_client
@@ -103,14 +103,14 @@ class TestTracingManagerStartTrace:
 
     def test_returns_null_trace_when_disabled(self):
         """start_trace returns _NullQueryTrace when tracing disabled."""
-        from navixmind.tracing import TracingManager, _NullQueryTrace
+        from rastacoder.tracing import TracingManager, _NullQueryTrace
         mgr = TracingManager()
         trace = mgr.start_trace()
         assert isinstance(trace, _NullQueryTrace)
 
     def test_returns_query_trace_when_enabled(self):
         """start_trace returns QueryTrace when tracing enabled."""
-        from navixmind.tracing import TracingManager, QueryTrace, _HTTP_AVAILABLE
+        from rastacoder.tracing import TracingManager, QueryTrace, _HTTP_AVAILABLE
         if not _HTTP_AVAILABLE:
             pytest.skip("requests not available")
         mgr = TracingManager()
@@ -121,7 +121,7 @@ class TestTracingManagerStartTrace:
 
     def test_handles_exception_gracefully(self):
         """start_trace returns _NullQueryTrace on error."""
-        from navixmind.tracing import TracingManager, _NullQueryTrace
+        from rastacoder.tracing import TracingManager, _NullQueryTrace
         mgr = TracingManager()
         mgr.set_api_key("test-key")
         with patch('navixmind.tracing._HTTP_AVAILABLE', True), \
@@ -135,25 +135,25 @@ class TestMentioraHttpClient:
 
     def test_sets_auth_header(self):
         """Client sets Bearer authorization header."""
-        from navixmind.tracing import _MentioraHttpClient
+        from rastacoder.tracing import _MentioraHttpClient
         client = _MentioraHttpClient(api_key="my-key-123")
         assert client._session.headers["Authorization"] == "Bearer my-key-123"
 
     def test_sets_content_type(self):
         """Client sets JSON content type."""
-        from navixmind.tracing import _MentioraHttpClient
+        from rastacoder.tracing import _MentioraHttpClient
         client = _MentioraHttpClient(api_key="key")
         assert client._session.headers["Content-Type"] == "application/json"
 
     def test_sets_user_agent(self):
         """Client sets navixmind user agent."""
-        from navixmind.tracing import _MentioraHttpClient
+        from rastacoder.tracing import _MentioraHttpClient
         client = _MentioraHttpClient(api_key="key")
         assert "navixmind" in client._session.headers["User-Agent"]
 
     def test_send_trace_posts_to_correct_url(self):
         """send_trace POSTs to /api/v1/traces."""
-        from navixmind.tracing import _MentioraHttpClient, MENTIORA_BASE_URL
+        from rastacoder.tracing import _MentioraHttpClient, MENTIORA_BASE_URL
         client = _MentioraHttpClient(api_key="key")
         with patch.object(client._session, 'post') as mock_post:
             mock_post.return_value = Mock(status_code=200)
@@ -165,7 +165,7 @@ class TestMentioraHttpClient:
 
     def test_send_trace_sends_json_body(self):
         """send_trace passes event data as JSON body."""
-        from navixmind.tracing import _MentioraHttpClient
+        from rastacoder.tracing import _MentioraHttpClient
         client = _MentioraHttpClient(api_key="key")
         event = {"trace_id": "abc", "span_id": "def"}
         with patch.object(client._session, 'post') as mock_post:
@@ -176,7 +176,7 @@ class TestMentioraHttpClient:
 
     def test_close_closes_session(self):
         """close() closes the underlying session."""
-        from navixmind.tracing import _MentioraHttpClient
+        from rastacoder.tracing import _MentioraHttpClient
         client = _MentioraHttpClient(api_key="key")
         with patch.object(client._session, 'close') as mock_close:
             client.close()
@@ -188,7 +188,7 @@ class TestQueryTrace:
 
     def _make_trace(self):
         """Create a QueryTrace with a mock manager."""
-        from navixmind.tracing import QueryTrace, TracingManager
+        from rastacoder.tracing import QueryTrace, TracingManager
         mgr = TracingManager()
         mgr.set_api_key("test-key")
         mgr._client = Mock()  # Avoid real client creation
@@ -281,7 +281,7 @@ class TestQueryTrace:
 
     def test_max_spans_enforced(self):
         """Spans beyond MAX_SPANS are silently dropped."""
-        from navixmind.tracing import MAX_SPANS
+        from rastacoder.tracing import MAX_SPANS
         trace = self._make_trace()
         for i in range(MAX_SPANS + 50):
             trace.add_llm_span(model="m", messages=[], response=[], duration_ms=1)
@@ -367,7 +367,7 @@ class TestSpanToEvent:
     """Tests for QueryTrace._span_to_event conversion."""
 
     def _make_trace(self):
-        from navixmind.tracing import QueryTrace, TracingManager
+        from rastacoder.tracing import QueryTrace, TracingManager
         mgr = TracingManager()
         mgr.set_api_key("test-key")
         mgr._client = Mock()
@@ -441,7 +441,7 @@ class TestSpanToEvent:
 
     def test_no_thread_id_when_empty(self):
         """No thread_id field when conversation_id is None."""
-        from navixmind.tracing import QueryTrace, TracingManager
+        from rastacoder.tracing import QueryTrace, TracingManager
         mgr = TracingManager()
         mgr.set_api_key("key")
         mgr._client = Mock()
@@ -465,7 +465,7 @@ class TestQueryTraceThreadSafety:
     """Tests for concurrent access to QueryTrace."""
 
     def _make_trace(self):
-        from navixmind.tracing import QueryTrace, TracingManager
+        from rastacoder.tracing import QueryTrace, TracingManager
         mgr = TracingManager()
         mgr.set_api_key("test-key")
         mgr._client = Mock()
@@ -530,33 +530,33 @@ class TestNullQueryTrace:
 
     def test_trace_id_is_empty(self):
         """_NullQueryTrace has empty trace_id."""
-        from navixmind.tracing import _NullQueryTrace
+        from rastacoder.tracing import _NullQueryTrace
         trace = _NullQueryTrace()
         assert trace.trace_id == ""
 
     def test_add_llm_span_is_noop(self):
         """add_llm_span does nothing."""
-        from navixmind.tracing import _NullQueryTrace
+        from rastacoder.tracing import _NullQueryTrace
         trace = _NullQueryTrace()
         trace.add_llm_span(model="m", messages=[], response=[])
         # No exception, no state change
 
     def test_add_tool_span_is_noop(self):
         """add_tool_span does nothing."""
-        from navixmind.tracing import _NullQueryTrace
+        from rastacoder.tracing import _NullQueryTrace
         trace = _NullQueryTrace()
         trace.add_tool_span(tool_name="t", tool_input={}, tool_output={})
 
     def test_finish_is_noop(self):
         """finish does nothing."""
-        from navixmind.tracing import _NullQueryTrace
+        from rastacoder.tracing import _NullQueryTrace
         trace = _NullQueryTrace()
         trace.finish()
         trace.finish()  # Double-call is fine
 
     def test_accepts_all_kwargs(self):
         """All methods accept arbitrary kwargs without error."""
-        from navixmind.tracing import _NullQueryTrace
+        from rastacoder.tracing import _NullQueryTrace
         trace = _NullQueryTrace()
         trace.add_llm_span(
             model="m", messages=[], response=[],
@@ -574,12 +574,12 @@ class TestTruncation:
 
     def test_short_string_unchanged(self):
         """Short strings pass through unchanged."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         assert _truncate("hello") == "hello"
 
     def test_long_string_truncated(self):
         """Long strings are truncated with indicator."""
-        from navixmind.tracing import _truncate, MAX_FIELD_LENGTH
+        from rastacoder.tracing import _truncate, MAX_FIELD_LENGTH
         long_str = "x" * (MAX_FIELD_LENGTH + 1000)
         result = _truncate(long_str)
         assert len(result) <= MAX_FIELD_LENGTH
@@ -587,38 +587,38 @@ class TestTruncation:
 
     def test_dict_serialized(self):
         """Dicts are JSON-serialized."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         result = _truncate({"key": "value"})
         assert '"key"' in result
         assert '"value"' in result
 
     def test_list_serialized(self):
         """Lists are JSON-serialized."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         result = _truncate([1, 2, 3])
         assert result == "[1, 2, 3]"
 
     def test_none_returns_empty(self):
         """None returns empty string."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         assert _truncate(None) == ""
 
     def test_number_to_string(self):
         """Numbers are converted to strings."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         assert _truncate(42) == "42"
         assert _truncate(3.14) == "3.14"
 
     def test_custom_max_len(self):
         """Custom max_len is respected."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         result = _truncate("x" * 200, max_len=50)
         assert len(result) <= 50
         assert "truncated" in result
 
     def test_large_dict_truncated(self):
         """Large dicts are truncated after serialization."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
         large_dict = {f"key_{i}": "v" * 1000 for i in range(20)}
         result = _truncate(large_dict, max_len=500)
         assert len(result) <= 500
@@ -626,7 +626,7 @@ class TestTruncation:
 
     def test_unserializable_dict_fallback(self):
         """Non-JSON-serializable objects fall back to str()."""
-        from navixmind.tracing import _truncate
+        from rastacoder.tracing import _truncate
 
         class Custom:
             def __str__(self):
@@ -641,14 +641,14 @@ class TestIsoNow:
 
     def test_returns_utc_string(self):
         """Returns a UTC ISO 8601 string ending with Z."""
-        from navixmind.tracing import _iso_now
+        from rastacoder.tracing import _iso_now
         result = _iso_now()
         assert result.endswith("Z")
         assert "T" in result
 
     def test_returns_different_values(self):
         """Successive calls return different timestamps (or same in fast execution)."""
-        from navixmind.tracing import _iso_now
+        from rastacoder.tracing import _iso_now
         t1 = _iso_now()
         time.sleep(0.01)
         t2 = _iso_now()
@@ -661,7 +661,7 @@ class TestAgentTracingIntegration:
 
     def test_set_mentiora_key_handler(self):
         """handle_request routes set_mentiora_key correctly."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -679,7 +679,7 @@ class TestAgentTracingIntegration:
 
     def test_set_mentiora_key_empty(self):
         """handle_request handles empty mentiora key."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -697,7 +697,7 @@ class TestAgentTracingIntegration:
 
     def test_set_mentiora_key_missing_param(self):
         """handle_request handles missing api_key param (defaults to empty)."""
-        from navixmind.agent import handle_request
+        from rastacoder.agent import handle_request
 
         request = json.dumps({
             "jsonrpc": "2.0",
@@ -715,7 +715,7 @@ class TestAgentTracingIntegration:
 
     def test_set_mentiora_key_function(self):
         """set_mentiora_key() delegates to TracingManager."""
-        from navixmind.agent import set_mentiora_key
+        from rastacoder.agent import set_mentiora_key
 
         with patch('navixmind.agent.TracingManager') as MockTM:
             mock_instance = Mock()
@@ -726,8 +726,8 @@ class TestAgentTracingIntegration:
 
     def test_process_query_creates_trace(self):
         """process_query creates a trace and calls finish."""
-        import navixmind.agent
-        from navixmind.agent import process_query
+        import rastacoder.agent
+        from rastacoder.agent import process_query
 
         original_key = navixmind.agent._api_key
         navixmind.agent._api_key = "test-key"

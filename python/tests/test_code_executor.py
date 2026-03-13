@@ -5,7 +5,7 @@ Tests both functionality and security restrictions.
 """
 
 import pytest
-from navixmind.tools.code_executor import (
+from rastacoder.tools.code_executor import (
     execute_python,
     validate_code,
     python_execute,
@@ -280,7 +280,7 @@ class TestToolInterface:
 
     def test_python_execute_error(self):
         """python_execute should raise ToolError on failure."""
-        from navixmind.bridge import ToolError
+        from rastacoder.bridge import ToolError
         with pytest.raises(ToolError):
             python_execute("import os")
 
@@ -1560,7 +1560,7 @@ ax.plot([1, 2], [3, 4])
 
     def test_python_execute_error_has_no_output_paths(self, tmp_path):
         """On error, python_execute should raise ToolError, no output_paths."""
-        from navixmind.bridge import ToolError
+        from rastacoder.bridge import ToolError
         output_dir = str(tmp_path / "error")
 
         with pytest.raises(ToolError):
@@ -1589,7 +1589,7 @@ class TestSafeBuiltinsState:
 
     def test_output_dir_reset_between_calls(self, tmp_path):
         """output_dir should be cleared when not provided."""
-        from navixmind.tools.code_executor import SafeBuiltins
+        from rastacoder.tools.code_executor import SafeBuiltins
 
         output_dir = str(tmp_path / "state_test")
 
@@ -1603,7 +1603,7 @@ class TestSafeBuiltinsState:
 
     def test_allowed_paths_reset_between_calls(self, tmp_path):
         """allowed_file_paths should be reset between calls."""
-        from navixmind.tools.code_executor import SafeBuiltins
+        from rastacoder.tools.code_executor import SafeBuiltins
 
         file1 = str(tmp_path / "file1.txt")
 
@@ -1617,7 +1617,7 @@ class TestSafeBuiltinsState:
 
     def test_output_dir_none_resets(self, tmp_path):
         """Passing output_dir=None should reset the state."""
-        from navixmind.tools.code_executor import SafeBuiltins
+        from rastacoder.tools.code_executor import SafeBuiltins
 
         output_dir = str(tmp_path / "none_test")
         execute_python("print('a')", output_dir=output_dir)
@@ -1676,7 +1676,7 @@ class TestExecuteToolIntegration:
 
     def test_execute_tool_passes_output_dir(self, tmp_path):
         """execute_tool should pass output_dir from context to python_execute."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
         import os
 
         output_dir = str(tmp_path / "tool_integration")
@@ -1701,7 +1701,7 @@ print("tool integration")
 
     def test_execute_tool_no_output_dir_in_context(self):
         """python_execute via execute_tool without output_dir in context should work."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
 
         context = {}
         args = {'code': "print('no output dir')"}
@@ -1711,7 +1711,7 @@ print("tool integration")
 
     def test_execute_tool_csv_write_through_context(self, tmp_path):
         """CSV writing via pandas through execute_tool with context output_dir."""
-        from navixmind.tools import execute_tool
+        from rastacoder.tools import execute_tool
         import os
 
         output_dir = str(tmp_path / "tool_csv")

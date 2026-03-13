@@ -1,4 +1,4 @@
-package ai.navixmind.services
+package ai.rastacoder.services
 
 import android.content.Context
 import io.flutter.embedding.engine.FlutterEngine
@@ -9,7 +9,7 @@ import io.flutter.plugin.common.MethodChannel
  */
 class ForegroundServiceChannel(flutterEngine: FlutterEngine, private val context: Context) {
     companion object {
-        const val CHANNEL_NAME = "ai.navixmind/foreground_service"
+        const val CHANNEL_NAME = "ai.rastacoder/foreground_service"
     }
 
     private val channel = MethodChannel(

@@ -20,7 +20,7 @@ class TestLocalLLMClientToolConversion:
     """Tests for _convert_tools_to_openai static method."""
 
     def test_convert_single_tool(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         claude_tools = [{
             "name": "python_execute",
@@ -44,7 +44,7 @@ class TestLocalLLMClientToolConversion:
         assert "code" in result[0]["function"]["parameters"]["properties"]
 
     def test_convert_multiple_tools(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         claude_tools = [
             {"name": "tool_a", "description": "A", "input_schema": {"type": "object", "properties": {}}},
@@ -57,13 +57,13 @@ class TestLocalLLMClientToolConversion:
         assert [t["function"]["name"] for t in result] == ["tool_a", "tool_b", "tool_c"]
 
     def test_convert_empty_tools(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         result = LocalLLMClient._convert_tools_to_openai([])
         assert result == []
 
     def test_convert_tool_missing_schema(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         claude_tools = [{"name": "test", "description": "desc"}]
         result = LocalLLMClient._convert_tools_to_openai(claude_tools)
@@ -75,7 +75,7 @@ class TestLocalLLMClientMessageConversion:
     """Tests for _convert_messages method."""
 
     def test_simple_text_messages(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -90,7 +90,7 @@ class TestLocalLLMClientMessageConversion:
         assert result[2] == {"role": "assistant", "content": "Hi there!"}
 
     def test_assistant_with_tool_use_blocks(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -127,7 +127,7 @@ class TestLocalLLMClientMessageConversion:
         assert call_data["arguments"] == {"code": "print(2+2)"}
 
     def test_tool_result_messages(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -152,7 +152,7 @@ class TestLocalLLMClientMessageConversion:
         assert "4" in result[1]["content"]
 
     def test_empty_messages(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         result = client._convert_messages([], "system prompt")
@@ -165,7 +165,7 @@ class TestLocalLLMClientCreateMessage:
     """Tests for create_message method."""
 
     def test_successful_generation(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -191,7 +191,7 @@ class TestLocalLLMClientCreateMessage:
 
     def test_garbled_json_fallback(self):
         """Garbled response should be treated as plain text."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -211,7 +211,7 @@ class TestLocalLLMClientCreateMessage:
 
     def test_garbled_tool_call_fallback(self):
         """Invalid tool call input should be converted to text."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -246,7 +246,7 @@ class TestLocalLLMClientCreateMessage:
 
     def test_timeout_raises_api_error(self):
         """Timeout should raise APIError."""
-        from navixmind.agent import LocalLLMClient, APIError
+        from rastacoder.agent import LocalLLMClient, APIError
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -263,7 +263,7 @@ class TestLocalLLMClientCreateMessage:
 
     def test_max_tokens_capped_by_model_size(self):
         """Max tokens should be capped by OFFLINE_MAX_TOKENS."""
-        from navixmind.agent import LocalLLMClient, OFFLINE_MAX_TOKENS
+        from rastacoder.agent import LocalLLMClient, OFFLINE_MAX_TOKENS
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -293,7 +293,7 @@ class TestSelectModelOffline:
     """Tests for _select_model with offline model preferences."""
 
     def test_qwen_model_returns_as_is(self):
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         model, reason = _select_model("test query", {
             "preferred_model": "qwen2.5-coder-0.5b",
@@ -303,7 +303,7 @@ class TestSelectModelOffline:
         assert "offline" in reason.lower()
 
     def test_qwen_15b_model_returns_as_is(self):
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         model, reason = _select_model("test query", {
             "preferred_model": "qwen2.5-coder-1.5b",
@@ -312,7 +312,7 @@ class TestSelectModelOffline:
         assert model == "qwen2.5-coder-1.5b"
 
     def test_qwen_3b_model_returns_as_is(self):
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         model, reason = _select_model("test query", {
             "preferred_model": "qwen2.5-coder-3b",
@@ -321,7 +321,7 @@ class TestSelectModelOffline:
         assert model == "qwen2.5-coder-3b"
 
     def test_ministral_model_returns_as_is(self):
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         model, reason = _select_model("test query", {
             "preferred_model": "ministral-3-3b",
@@ -331,7 +331,7 @@ class TestSelectModelOffline:
         assert "offline" in reason.lower()
 
     def test_qwen3_4b_model_returns_as_is(self):
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         model, reason = _select_model("test query", {
             "preferred_model": "qwen3-4b",
@@ -342,7 +342,7 @@ class TestSelectModelOffline:
 
     def test_offline_overrides_cost_threshold(self):
         """Offline model should be selected even when cost budget is high."""
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         model, _ = _select_model("test", {
             "preferred_model": "qwen2.5-coder-0.5b",
@@ -353,7 +353,7 @@ class TestSelectModelOffline:
 
     def test_non_offline_falls_through(self):
         """Non-offline model should use normal selection logic."""
-        from navixmind.agent import _select_model, DEFAULT_MODEL
+        from rastacoder.agent import _select_model, DEFAULT_MODEL
 
         model, _ = _select_model("analyze this data", {"preferred_model": "auto"})
         # "analyze" is a complex pattern, should use default model
@@ -361,7 +361,7 @@ class TestSelectModelOffline:
 
     def test_offline_detection_uses_context_not_name(self):
         """Offline detection should use offline_model_info, not model name prefix."""
-        from navixmind.agent import _select_model
+        from rastacoder.agent import _select_model
 
         # A model name starting with 'qwen' but without offline_model_info
         # should NOT be treated as offline
@@ -375,7 +375,7 @@ class TestProcessQueryOffline:
 
     def test_offline_model_no_api_key_allowed(self):
         """Process query should work without API key when offline model selected."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         with patch('navixmind.agent.get_api_key', return_value=None), \
              patch('navixmind.agent.get_bridge') as mock_bridge_fn, \
@@ -408,7 +408,7 @@ class TestProcessQueryOffline:
 
     def test_no_api_key_no_offline_model_returns_error(self):
         """Without API key and without offline model, should return error."""
-        from navixmind.agent import process_query
+        from rastacoder.agent import process_query
 
         with patch('navixmind.agent.get_api_key', return_value=None), \
              patch('navixmind.agent.get_bridge') as mock_bridge_fn, \
@@ -429,7 +429,7 @@ class TestProcessQueryOffline:
 
     def test_offline_model_uses_simplified_system_prompt(self):
         """Offline models should use OFFLINE_SYSTEM_PROMPT."""
-        from navixmind.agent import process_query, OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import process_query, OFFLINE_SYSTEM_PROMPT
 
         captured_system = None
 
@@ -471,7 +471,7 @@ class TestOfflineSystemPrompt:
     """Tests for OFFLINE_SYSTEM_PROMPT content."""
 
     def test_prompt_is_compact(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT, SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT, SYSTEM_PROMPT
 
         # Compact prompt should be much shorter than the full SYSTEM_PROMPT.
         assert len(OFFLINE_SYSTEM_PROMPT) > 0
@@ -480,7 +480,7 @@ class TestOfflineSystemPrompt:
         assert len(OFFLINE_SYSTEM_PROMPT) < 3000
 
     def test_prompt_lists_key_tools(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         assert "python_execute" in OFFLINE_SYSTEM_PROMPT
         assert "ffmpeg_process" in OFFLINE_SYSTEM_PROMPT
@@ -492,25 +492,25 @@ class TestOfflineSystemPrompt:
         assert "create_pdf" in OFFLINE_SYSTEM_PROMPT
 
     def test_prompt_mentions_navixmind(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         assert "NavixMind" in OFFLINE_SYSTEM_PROMPT
 
     def test_prompt_includes_tool_call_format(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         # Must show <tool_call> format so model knows how to call tools
         assert "<tool_call>" in OFFLINE_SYSTEM_PROMPT
         assert "</tool_call>" in OFFLINE_SYSTEM_PROMPT
 
     def test_prompt_includes_one_shot_example(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         # One-shot example helps small models follow the format
         assert "print(2+2)" in OFFLINE_SYSTEM_PROMPT
 
     def test_prompt_instructs_tool_calling(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         assert "Always call a tool" in OFFLINE_SYSTEM_PROMPT
         assert "Never" in OFFLINE_SYSTEM_PROMPT
@@ -520,37 +520,37 @@ class TestOfflineMaxTokens:
     """Tests for max token capping per model size."""
 
     def test_05b_max_tokens(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         assert OFFLINE_MAX_TOKENS['qwen2.5-coder-0.5b'] == 512
 
     def test_15b_max_tokens(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         assert OFFLINE_MAX_TOKENS['qwen2.5-coder-1.5b'] == 1024
 
     def test_3b_max_tokens(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         assert OFFLINE_MAX_TOKENS['qwen2.5-coder-3b'] == 1024
 
     def test_ministral_3b_max_tokens(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         assert OFFLINE_MAX_TOKENS['ministral-3-3b'] == 2048
 
     def test_qwen3_4b_max_tokens(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         assert OFFLINE_MAX_TOKENS['qwen3-4b'] == 2048
 
     def test_unknown_model_defaults_to_2048(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         assert OFFLINE_MAX_TOKENS.get('unknown-model', 2048) == 2048
 
     def test_all_known_offline_models_have_max_tokens(self):
-        from navixmind.agent import OFFLINE_MAX_TOKENS
+        from rastacoder.agent import OFFLINE_MAX_TOKENS
 
         expected_models = [
             'qwen2.5-coder-0.5b',
@@ -567,7 +567,7 @@ class TestOfflineToolsSchema:
     """Tests for OFFLINE_TOOLS_SCHEMA — compact tool set for small models."""
 
     def test_offline_tools_are_subset(self):
-        from navixmind.tools import TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
 
         full_names = {t["name"] for t in TOOLS_SCHEMA}
         offline_names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
@@ -576,7 +576,7 @@ class TestOfflineToolsSchema:
 
     def test_offline_tools_are_compact(self):
         import json
-        from navixmind.tools import TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
 
         full_size = len(json.dumps(TOOLS_SCHEMA))
         offline_size = len(json.dumps(OFFLINE_TOOLS_SCHEMA))
@@ -586,7 +586,7 @@ class TestOfflineToolsSchema:
         assert len(OFFLINE_TOOLS_SCHEMA) <= 15
 
     def test_offline_tools_include_essentials(self):
-        from navixmind.tools import OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import OFFLINE_TOOLS_SCHEMA
 
         names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
         assert "python_execute" in names
@@ -600,7 +600,7 @@ class TestOfflineToolsSchema:
         assert "create_pdf" in names
 
     def test_offline_tools_exclude_online_only(self):
-        from navixmind.tools import OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import OFFLINE_TOOLS_SCHEMA
 
         names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
         # Tools that require internet or Google auth should NOT be in offline schema
@@ -611,7 +611,7 @@ class TestOfflineToolsSchema:
         assert "gmail" not in names
 
     def test_offline_prompt_includes_ffmpeg_patterns(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         # Must include key FFmpeg usage patterns so model knows how to use the tool
         assert "trim" in OFFLINE_SYSTEM_PROMPT
@@ -620,14 +620,14 @@ class TestOfflineToolsSchema:
         assert "hue=s=0" in OFFLINE_SYSTEM_PROMPT
 
     def test_offline_prompt_warns_against_python_for_ffmpeg(self):
-        from navixmind.agent import OFFLINE_SYSTEM_PROMPT
+        from rastacoder.agent import OFFLINE_SYSTEM_PROMPT
 
         # Must tell model NOT to use python_execute for FFmpeg
         assert "ffmpeg_process" in OFFLINE_SYSTEM_PROMPT
         assert "FORBIDDEN" in OFFLINE_SYSTEM_PROMPT
 
     def test_offline_tools_have_valid_schemas(self):
-        from navixmind.tools import OFFLINE_TOOLS_SCHEMA
+        from rastacoder.tools import OFFLINE_TOOLS_SCHEMA
 
         for tool in OFFLINE_TOOLS_SCHEMA:
             assert "name" in tool
@@ -639,7 +639,7 @@ class TestOfflineToolsSchema:
             assert "required" in schema
 
     def test_cloud_system_prompt_has_all_tools(self):
-        from navixmind.agent import SYSTEM_PROMPT
+        from rastacoder.agent import SYSTEM_PROMPT
 
         # The cloud prompt should mention all key tools
         assert "python_execute" in SYSTEM_PROMPT
@@ -652,7 +652,7 @@ class TestOfflineToolsSchema:
         assert "smart_crop" in SYSTEM_PROMPT
 
     def test_cloud_prompt_has_forbidden_modules(self):
-        from navixmind.agent import SYSTEM_PROMPT
+        from rastacoder.agent import SYSTEM_PROMPT
 
         assert "subprocess" in SYSTEM_PROMPT
         assert "os" in SYSTEM_PROMPT
@@ -664,7 +664,7 @@ class TestLocalLLMClientConversionEdgeCases:
     """Edge cases for message conversion."""
 
     def test_multiple_tool_uses_in_single_assistant_message(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -703,7 +703,7 @@ class TestLocalLLMClientConversionEdgeCases:
         assert "I'll do both." in assistant_msg["content"]
 
     def test_tool_result_with_json_content(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         json_content = json.dumps({"output": "42", "success": True})
@@ -728,7 +728,7 @@ class TestLocalLLMClientConversionEdgeCases:
         assert json_content in result[1]["content"]
 
     def test_tool_result_with_empty_content(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -751,7 +751,7 @@ class TestLocalLLMClientConversionEdgeCases:
         assert "call_empty" in result[1]["content"]
 
     def test_tool_result_with_error(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -776,7 +776,7 @@ class TestLocalLLMClientConversionEdgeCases:
         assert "NameError" in result[1]["content"]
 
     def test_assistant_message_with_only_tool_use_no_text(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -802,7 +802,7 @@ class TestLocalLLMClientConversionEdgeCases:
         assert "python_execute" in assistant_msg["content"]
 
     def test_nested_tool_input_with_complex_json(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         complex_input = {
@@ -841,7 +841,7 @@ class TestLocalLLMClientConversionEdgeCases:
 
     def test_full_tool_loop_conversation(self):
         """Test a full tool-call → tool-result → response cycle is flattened correctly."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
         messages = [
@@ -890,7 +890,7 @@ class TestLocalLLMClientBridgeInteraction:
     """Tests for bridge call behavior."""
 
     def test_bridge_called_with_correct_tool_name(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -915,7 +915,7 @@ class TestLocalLLMClientBridgeInteraction:
             assert call_args[0][0] == 'llm_generate'
 
     def test_bridge_receives_serialized_messages(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -948,8 +948,8 @@ class TestLocalLLMClientBridgeInteraction:
             assert args_dict['model_id'] == 'qwen2.5-coder-0.5b'
 
     def test_bridge_error_propagates(self):
-        from navixmind.agent import LocalLLMClient, APIError
-        from navixmind.bridge import ToolError
+        from rastacoder.agent import LocalLLMClient, APIError
+        from rastacoder.bridge import ToolError
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -967,7 +967,7 @@ class TestLocalLLMClientBridgeInteraction:
             assert "Local inference error" in str(exc.value)
 
     def test_empty_response_from_bridge(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -987,7 +987,7 @@ class TestLocalLLMClientBridgeInteraction:
             assert result.get('content', []) == []
 
     def test_null_response_from_bridge(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-0.5b")
 
@@ -1009,7 +1009,7 @@ class TestParseToolCallsFromText:
     """Tests for _parse_tool_calls_from_text — Hermes format extraction."""
 
     def test_single_tool_call_in_text(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1029,7 +1029,7 @@ class TestParseToolCallsFromText:
         assert result["content"][0]["input"] == {"code": "print(2+2)"}
 
     def test_tool_call_with_surrounding_text(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1049,7 +1049,7 @@ class TestParseToolCallsFromText:
         assert result["content"][1]["name"] == "python_execute"
 
     def test_multiple_tool_calls(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1068,7 +1068,7 @@ class TestParseToolCallsFromText:
         assert tool_uses[1]["name"] == "read_file"
 
     def test_no_tool_calls_returns_unchanged(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1081,7 +1081,7 @@ class TestParseToolCallsFromText:
         assert result["content"][0]["text"] == "Here is the answer: 42"
 
     def test_already_tool_use_stop_reason_skipped(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "tool_use",
@@ -1095,7 +1095,7 @@ class TestParseToolCallsFromText:
         assert result["content"][0]["type"] == "tool_use"
 
     def test_invalid_json_in_tool_call_tag(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1113,7 +1113,7 @@ class TestParseToolCallsFromText:
 
     def test_tool_call_with_string_arguments(self):
         """Arguments might be a JSON string instead of object."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1130,7 +1130,7 @@ class TestParseToolCallsFromText:
         assert result["content"][0]["input"] == {"code": "print(1)"}
 
     def test_tool_call_missing_name(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1147,7 +1147,7 @@ class TestParseToolCallsFromText:
 
     def test_non_dict_arguments_fallback(self):
         """If arguments is not a string or dict, fall back to empty dict."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1163,7 +1163,7 @@ class TestParseToolCallsFromText:
         assert result["content"][0]["input"] == {}
 
     def test_tool_call_ids_are_unique(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1181,7 +1181,7 @@ class TestParseToolCallsFromText:
 
     def test_mixed_text_and_tool_use_blocks(self):
         """Non-text blocks should be preserved as-is."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1200,7 +1200,7 @@ class TestParseToolCallsFromText:
         assert result["content"][1]["name"] == "python_execute"
 
     def test_whitespace_variations_in_tool_call_tag(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         # Various whitespace patterns the model might produce
         for text in [
@@ -1218,7 +1218,7 @@ class TestParseToolCallsFromText:
 
     def test_end_to_end_with_bridge(self):
         """Full pipeline: bridge returns text with <tool_call>, should be parsed."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-3b")
 
@@ -1253,7 +1253,7 @@ class TestParseToolCallsFromText:
         assert "calculate" in text_blocks[0]["text"]
 
     def test_empty_content_list(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1266,7 +1266,7 @@ class TestParseToolCallsFromText:
 
     def test_raw_json_tool_call(self):
         """Model outputs raw JSON without <tool_call> tags."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1285,7 +1285,7 @@ class TestParseToolCallsFromText:
         assert result["content"][0]["input"] == {"code": "print(2+2)"}
 
     def test_raw_json_with_surrounding_text(self):
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1304,7 +1304,7 @@ class TestParseToolCallsFromText:
 
     def test_raw_json_end_to_end_with_bridge(self):
         """Full pipeline: model returns raw JSON tool call as text."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen2.5-coder-3b")
 
@@ -1336,7 +1336,7 @@ class TestParseToolCallsFromText:
 
     def test_raw_json_with_nested_objects(self):
         """Model outputs ffmpeg_process with nested params object — must be parsed."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1358,7 +1358,7 @@ class TestParseToolCallsFromText:
 
     def test_raw_json_with_deeply_nested_objects(self):
         """Handle multiple levels of nested braces."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1376,7 +1376,7 @@ class TestParseToolCallsFromText:
 
     def test_raw_json_ffmpeg_filter_with_nested_params(self):
         """ffmpeg_process filter operation with nested vf params."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1394,7 +1394,7 @@ class TestParseToolCallsFromText:
 
     def test_tool_call_tag_with_nested_objects(self):
         """<tool_call> tags with nested params should also work."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1412,7 +1412,7 @@ class TestParseToolCallsFromText:
 
     def test_malformed_json_missing_one_closing_brace(self):
         """3B model often drops the outermost closing brace."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         # Real example from device logs: 3 opening braces, only 2 closing
         response = {
@@ -1434,7 +1434,7 @@ class TestParseToolCallsFromText:
 
     def test_malformed_json_missing_two_closing_braces(self):
         """Handle deeply truncated JSON with 2 missing closing braces."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1453,7 +1453,7 @@ class TestParseToolCallsFromText:
 
     def test_malformed_json_with_preceding_text(self):
         """Malformed JSON with text before it should still be repaired."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1474,7 +1474,7 @@ class TestParseToolCallsFromText:
 
     def test_malformed_json_simple_tool_no_nesting(self):
         """Simple tool call (no nested params) with missing closing brace."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1493,7 +1493,7 @@ class TestParseToolCallsFromText:
 
     def test_complete_json_still_works_after_repair_logic(self):
         """Complete (well-formed) JSON should still work correctly."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1512,7 +1512,7 @@ class TestParseToolCallsFromText:
 
     def test_malformed_json_not_repaired_if_no_name(self):
         """Incomplete JSON without 'name' key should NOT be repaired."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1528,7 +1528,7 @@ class TestParseToolCallsFromText:
 
     def test_extract_json_objects_repair_directly(self):
         """Directly test _extract_json_objects with malformed input."""
-        from navixmind.agent import _extract_json_objects
+        from rastacoder.agent import _extract_json_objects
 
         # Missing 1 closing brace (depth=1 at end)
         text = '{"name": "ffmpeg_process", "arguments": {"operation": "trim", "params": {"start": "0"}}'
@@ -1541,7 +1541,7 @@ class TestParseToolCallsFromText:
 
     def test_extract_json_objects_repair_missing_two_braces(self):
         """Directly test _extract_json_objects with 2 missing braces."""
-        from navixmind.agent import _extract_json_objects
+        from rastacoder.agent import _extract_json_objects
 
         text = '{"name": "x", "arguments": {"a": {"b": "c"}'
         results = _extract_json_objects(text)
@@ -1556,7 +1556,7 @@ class TestThinkTagStripping:
 
     def test_think_tags_stripped_before_tool_call(self):
         """Qwen3 wraps output in <think>...</think> — must be stripped."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1576,7 +1576,7 @@ class TestThinkTagStripping:
 
     def test_think_tags_stripped_with_raw_json(self):
         """<think> block followed by raw JSON (no <tool_call> tags)."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1595,7 +1595,7 @@ class TestThinkTagStripping:
 
     def test_think_tags_with_multiline_content(self):
         """<think> block with lots of reasoning text."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1616,7 +1616,7 @@ class TestThinkTagStripping:
 
     def test_empty_think_block(self):
         """Empty <think></think> should be stripped without issue."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1633,7 +1633,7 @@ class TestThinkTagStripping:
 
     def test_no_think_tags_still_works(self):
         """Responses without <think> tags should still parse normally."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1654,7 +1654,7 @@ class TestToolKeyAlternate:
 
     def test_tool_key_in_json(self):
         """Model outputs {"tool":"python_execute"} instead of {"name":"python_execute"}."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1673,7 +1673,7 @@ class TestToolKeyAlternate:
 
     def test_tool_key_in_tool_call_tags(self):
         """<tool_call> with {"tool":"..."} key."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1690,7 +1690,7 @@ class TestToolKeyAlternate:
 
     def test_tool_key_with_nested_arguments(self):
         """'tool' key with nested params."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1708,7 +1708,7 @@ class TestToolKeyAlternate:
 
     def test_tool_key_malformed_json_repair(self):
         """'tool' key with missing closing brace should still be repaired."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1727,7 +1727,7 @@ class TestToolKeyAlternate:
 
     def test_extract_json_objects_accepts_tool_key(self):
         """_extract_json_objects should find objects with 'tool' key."""
-        from navixmind.agent import _extract_json_objects
+        from rastacoder.agent import _extract_json_objects
 
         text = '{"tool": "python_execute", "arguments": {"code": "x=1"}}'
         results = _extract_json_objects(text)
@@ -1737,7 +1737,7 @@ class TestToolKeyAlternate:
 
     def test_extract_json_objects_repairs_tool_key_malformed(self):
         """_extract_json_objects should repair malformed JSON with 'tool' key."""
-        from navixmind.agent import _extract_json_objects
+        from rastacoder.agent import _extract_json_objects
 
         text = '{"tool": "ffmpeg_process", "arguments": {"operation": "trim", "params": {"start": "0"}}'
         results = _extract_json_objects(text)
@@ -1751,7 +1751,7 @@ class TestMarkdownCodeFenceStripping:
 
     def test_json_code_fence(self):
         """Tool call wrapped in ```json ... ``` fences."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1769,7 +1769,7 @@ class TestMarkdownCodeFenceStripping:
 
     def test_plain_code_fence(self):
         """Tool call wrapped in ``` ... ``` (no language tag)."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1786,7 +1786,7 @@ class TestMarkdownCodeFenceStripping:
 
     def test_python_code_fence(self):
         """Tool call wrapped in ```python ... ``` fences."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1803,7 +1803,7 @@ class TestMarkdownCodeFenceStripping:
 
     def test_code_fence_with_surrounding_text(self):
         """Code fence with text before it."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1829,7 +1829,7 @@ class TestOpenAIFunctionFormat:
 
     def test_openai_function_format(self):
         """Model outputs OpenAI format: {"type":"function","function":{"name":"...","arguments":{...}}}."""
-        from navixmind.agent import _try_parse_tool_json
+        from rastacoder.agent import _try_parse_tool_json
 
         json_str = json.dumps({
             "type": "function",
@@ -1848,7 +1848,7 @@ class TestOpenAIFunctionFormat:
 
     def test_openai_function_format_string_arguments(self):
         """OpenAI format with arguments as JSON string."""
-        from navixmind.agent import _try_parse_tool_json
+        from rastacoder.agent import _try_parse_tool_json
 
         json_str = json.dumps({
             "type": "function",
@@ -1866,7 +1866,7 @@ class TestOpenAIFunctionFormat:
 
     def test_openai_function_format_in_text(self):
         """Full pipeline: OpenAI function format embedded in text response."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1883,7 +1883,7 @@ class TestOpenAIFunctionFormat:
 
     def test_openai_function_format_missing_function_key(self):
         """Missing function key should not crash."""
-        from navixmind.agent import _try_parse_tool_json
+        from rastacoder.agent import _try_parse_tool_json
 
         json_str = json.dumps({"type": "function"})
 
@@ -1893,7 +1893,7 @@ class TestOpenAIFunctionFormat:
 
     def test_openai_function_format_non_dict_function(self):
         """function key is a string instead of dict."""
-        from navixmind.agent import _try_parse_tool_json
+        from rastacoder.agent import _try_parse_tool_json
 
         json_str = json.dumps({"type": "function", "function": "not a dict"})
 
@@ -1907,7 +1907,7 @@ class TestCombinedQwen3Output:
 
     def test_think_plus_markdown_plus_tool_call(self):
         """Realistic Qwen3 output with <think>, markdown fence, and tool JSON."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1931,7 +1931,7 @@ class TestCombinedQwen3Output:
 
     def test_think_plus_tool_call_tags(self):
         """Qwen3 output: <think> followed by <tool_call> tags."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1951,7 +1951,7 @@ class TestCombinedQwen3Output:
 
     def test_think_plus_markdown_plus_tool_key(self):
         """Combined: <think> + code fence + 'tool' key (instead of 'name')."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -1969,7 +1969,7 @@ class TestCombinedQwen3Output:
 
     def test_end_to_end_qwen3_with_bridge(self):
         """Full pipeline: bridge returns Qwen3-style output with <think> block."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         client = LocalLLMClient("qwen3-4b")
 
@@ -2005,7 +2005,7 @@ class TestToolCallNestedJSON:
 
     def test_tool_call_tags_deeply_nested_params(self):
         """<tool_call> with 3 levels of nested braces."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",
@@ -2024,7 +2024,7 @@ class TestToolCallNestedJSON:
 
     def test_tool_call_tags_with_code_containing_braces(self):
         """<tool_call> with Python code that has dict literals."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         code = 'data = {"a": 1, "b": 2}\nprint(data)'
         tool_json = json.dumps({
@@ -2047,7 +2047,7 @@ class TestToolCallNestedJSON:
 
     def test_tool_call_tags_triple_nesting(self):
         """<tool_call> with triple-nested objects."""
-        from navixmind.agent import LocalLLMClient
+        from rastacoder.agent import LocalLLMClient
 
         response = {
             "stop_reason": "end_turn",

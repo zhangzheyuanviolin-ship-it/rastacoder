@@ -19,7 +19,7 @@ BLOCKED_DOMAINS = [
 
 # Allowed path roots for file access
 ALLOWED_PATH_ROOTS = [
-    '/data/data/ai.navixmind/',
+    '/data/data/ai.coderasta/',
     '/storage/emulated/',
     '/sdcard/',
 ]

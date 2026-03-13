@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:navixmind/app/theme.dart';
+import 'package:coderasta/app/theme.dart';
 
 /// Terms of Service screen for NavixMind.
 class TermsOfServiceScreen extends StatelessWidget {

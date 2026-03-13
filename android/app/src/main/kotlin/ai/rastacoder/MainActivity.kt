@@ -1,7 +1,7 @@
-package ai.navixmind
+package ai.rastacoder
 
-import ai.navixmind.services.MLCInferenceChannel
-import ai.navixmind.services.ModelDownloadChannel
+import ai.rastacoder.services.MLCInferenceChannel
+import ai.rastacoder.services.ModelDownloadChannel
 import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.net.Uri
@@ -25,8 +25,8 @@ class MainActivity : FlutterActivity() {
     private lateinit var pythonChannel: PythonMethodChannel
     private lateinit var modelDownloadChannel: ModelDownloadChannel
     private lateinit var mlcInferenceChannel: MLCInferenceChannel
-    private val FILE_CHANNEL = "ai.navixmind/file_opener"
-    private val SHARE_CHANNEL = "ai.navixmind/share_receiver"
+    private val FILE_CHANNEL = "ai.rastacoder/file_opener"
+    private val SHARE_CHANNEL = "ai.rastacoder/share_receiver"
 
     private var shareChannel: MethodChannel? = null
     private var pendingShareData: Map<String, Any?>? = null

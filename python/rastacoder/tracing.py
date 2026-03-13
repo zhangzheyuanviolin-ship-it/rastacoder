@@ -170,7 +170,7 @@ class _MentioraHttpClient:
         self._session.headers.update({
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "navixmind/1.0",
+            "User-Agent": "coderasta/1.0",
         })
 
     def send_trace(self, event_data: Dict[str, Any]) -> None:
@@ -398,7 +398,7 @@ class QueryTrace:
             "output": output_record,
             "start_time": span.get("start_time", _iso_now()),
             "duration_ms": span.get("duration_ms", 0),
-            "tags": ["navixmind"],
+            "tags": ["coderasta"],
         }
 
         if span.get("error"):

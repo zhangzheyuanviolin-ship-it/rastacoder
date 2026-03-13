@@ -8,8 +8,8 @@ from the first query without needing self-improve iterations.
 
 import unittest
 
-from navixmind.agent import SYSTEM_PROMPT, self_improve, TOOLS_SCHEMA
-from navixmind.tools import TOOLS_SCHEMA as TOOLS_SCHEMA_FROM_TOOLS
+from rastacoder.agent import SYSTEM_PROMPT, self_improve, TOOLS_SCHEMA
+from rastacoder.tools import TOOLS_SCHEMA as TOOLS_SCHEMA_FROM_TOOLS
 
 
 class TestSystemPromptToolCoverage(unittest.TestCase):
@@ -469,7 +469,7 @@ class TestStoredResponseNoCreatedFiles(unittest.TestCase):
         """process_query should store plain assistant text without file annotations."""
         from unittest.mock import patch, Mock
 
-        import navixmind.agent
+        import rastacoder.agent
         original_key = navixmind.agent._api_key
         navixmind.agent._api_key = "test-key"
 

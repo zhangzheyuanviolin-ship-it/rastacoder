@@ -9,7 +9,7 @@ import '../../../../core/services/auth_service.dart';
 import '../chat_screen.dart';
 
 /// Platform channel for native file operations
-const _fileChannel = MethodChannel('ai.navixmind/file_opener');
+const _fileChannel = MethodChannel('ai.rastacoder/file_opener');
 
 /// Individual message bubble with role-based styling
 class MessageBubble extends StatelessWidget {

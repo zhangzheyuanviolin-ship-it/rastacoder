@@ -952,7 +952,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final filePath = '${directory.path}/navixmind_usage_$timestamp.csv';
+      final filePath = '${directory.path}/coderasta_usage_$timestamp.csv';
 
       final file = File(filePath);
       await file.writeAsString(csvData);

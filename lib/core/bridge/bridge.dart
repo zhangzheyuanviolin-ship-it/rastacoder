@@ -32,8 +32,8 @@ class PythonBridge {
 
   PythonBridge._();
 
-  static const _methodChannel = MethodChannel('ai.navixmind/python_bridge');
-  static const _eventChannel = EventChannel('ai.navixmind/python_events');
+  static const _methodChannel = MethodChannel('ai.rastacoder/python_bridge');
+  static const _eventChannel = EventChannel('ai.rastacoder/python_events');
 
   final _statusController = StreamController<PythonStatus>.broadcast();
   final _logController = StreamController<LogMessage>.broadcast();
@@ -186,7 +186,7 @@ class PythonBridge {
     final extDir = await getExternalStorageDirectory();
     final outputDir = extDir != null
         ? '${extDir.path}/output'
-        : '${(await getApplicationDocumentsDirectory()).path}/navixmind_output';
+        : '${(await getApplicationDocumentsDirectory()).path}/coderasta_output';
 
     // Get Google access token if user is signed in
     final googleToken = await AuthService.instance.getValidAccessToken();
@@ -454,7 +454,7 @@ class PythonBridge {
   /// Returns the list of persistent paths.
   Future<List<String>> _persistAttachedFiles(List<String> cachePaths) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final filesDir = Directory('${appDir.path}/navixmind_files');
+    final filesDir = Directory('${appDir.path}/coderasta_files');
     if (!await filesDir.exists()) {
       await filesDir.create(recursive: true);
     }

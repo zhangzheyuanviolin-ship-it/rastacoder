@@ -1,4 +1,4 @@
-package ai.navixmind.services
+package ai.rastacoder.services
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -21,9 +21,9 @@ class TaskForegroundService : Service() {
         const val CHANNEL_ID = "navixmind_task_channel"
         const val NOTIFICATION_ID = 1001
 
-        const val ACTION_START = "ai.navixmind.START_TASK"
-        const val ACTION_STOP = "ai.navixmind.STOP_TASK"
-        const val ACTION_UPDATE = "ai.navixmind.UPDATE_TASK"
+        const val ACTION_START = "ai.rastacoder.START_TASK"
+        const val ACTION_STOP = "ai.rastacoder.STOP_TASK"
+        const val ACTION_UPDATE = "ai.rastacoder.UPDATE_TASK"
 
         const val EXTRA_TASK_ID = "task_id"
         const val EXTRA_TASK_TITLE = "task_title"
@@ -119,7 +119,7 @@ class TaskForegroundService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("NavixMind - $currentTitle")
+            .setContentTitle("Coderasta - $currentTitle")
             .setContentText(message)
             .setSmallIcon(android.R.drawable.ic_popup_sync)
             .setProgress(100, progress, progress == 0)

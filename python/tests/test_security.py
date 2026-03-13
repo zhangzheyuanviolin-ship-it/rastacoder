@@ -11,14 +11,14 @@ Tests cover:
 
 import os
 import pytest
-from navixmind.utils.security import (
+from rastacoder.utils.security import (
     is_blocked_domain,
     sanitize_filename,
     sanitize_path,
     BLOCKED_DOMAINS,
     SecurityError,
 )
-from navixmind.utils.file_limits import FILE_SIZE_LIMITS
+from rastacoder.utils.file_limits import FILE_SIZE_LIMITS
 
 
 class TestBlockedDomains:

@@ -29,8 +29,8 @@ sys.modules['pptx.util'] = Mock()
 sys.modules['openpyxl'] = Mock()
 
 # Import the module under test directly
-from navixmind.tools import documents
-from navixmind.bridge import ToolError
+from rastacoder.tools import documents
+from rastacoder.bridge import ToolError
 
 
 class TestReadPdf:

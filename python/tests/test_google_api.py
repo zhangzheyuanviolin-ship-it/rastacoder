@@ -17,8 +17,8 @@ from unittest.mock import Mock, patch, MagicMock
 
 import requests
 
-from navixmind.bridge import ToolError
-from navixmind.tools.google_api import (
+from rastacoder.bridge import ToolError
+from rastacoder.tools.google_api import (
     google_calendar,
     gmail,
     _list_events,

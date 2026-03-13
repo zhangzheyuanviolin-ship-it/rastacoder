@@ -23,7 +23,7 @@ class TestWebFetchTextMode:
 
     def test_fetch_text_from_main_element(self):
         """Test extracting text from <main> element."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -48,7 +48,7 @@ class TestWebFetchTextMode:
 
     def test_fetch_text_from_article_element(self):
         """Test extracting text from <article> element when no <main>."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -69,7 +69,7 @@ class TestWebFetchTextMode:
 
     def test_fetch_text_from_body_fallback(self):
         """Test extracting text from body when no main/article elements."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -88,7 +88,7 @@ class TestWebFetchTextMode:
 
     def test_fetch_removes_scripts_and_styles(self):
         """Test that scripts, styles, nav, footer, header are removed."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -117,7 +117,7 @@ class TestWebFetchTextMode:
 
     def test_fetch_cleans_whitespace(self):
         """Test that excessive whitespace is cleaned up."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -143,7 +143,7 @@ class TestWebFetchTextMode:
 
     def test_fetch_returns_none_title_when_missing(self):
         """Test that missing title returns None."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -161,7 +161,7 @@ class TestWebFetchHtmlMode:
 
     def test_fetch_html_returns_processed_html(self):
         """Test fetching in HTML mode returns processed HTML."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -185,7 +185,7 @@ class TestWebFetchHtmlMode:
 
     def test_fetch_html_removes_nav_footer_header(self):
         """Test HTML mode also removes nav, footer, header elements."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -213,7 +213,7 @@ class TestWebFetchLinksMode:
 
     def test_fetch_links_extracts_all_links(self):
         """Test extracting links from page."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -237,7 +237,7 @@ class TestWebFetchLinksMode:
 
     def test_fetch_links_ignores_relative_urls(self):
         """Test that relative URLs are ignored."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -258,7 +258,7 @@ class TestWebFetchLinksMode:
 
     def test_fetch_links_limits_to_50(self):
         """Test that links are limited to 50."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             # Create HTML with 100 links
@@ -275,7 +275,7 @@ class TestWebFetchLinksMode:
 
     def test_fetch_links_strips_text(self):
         """Test that link text is stripped."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -299,8 +299,8 @@ class TestWebFetchHttpErrors:
 
     def test_fetch_handles_404_error(self):
         """Test handling of 404 Not Found error."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
 
         with patch('requests.get') as mock_get:
             mock_response = Mock()
@@ -317,8 +317,8 @@ class TestWebFetchHttpErrors:
 
     def test_fetch_handles_500_error(self):
         """Test handling of 500 Internal Server Error."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
 
         with patch('requests.get') as mock_get:
             mock_response = Mock()
@@ -335,8 +335,8 @@ class TestWebFetchHttpErrors:
 
     def test_fetch_handles_timeout(self):
         """Test handling of request timeout."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
 
         with patch('requests.get') as mock_get:
             mock_get.side_effect = requests.Timeout("Connection timed out")
@@ -348,8 +348,8 @@ class TestWebFetchHttpErrors:
 
     def test_fetch_handles_connection_error(self):
         """Test handling of connection error."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
 
         with patch('requests.get') as mock_get:
             mock_get.side_effect = requests.ConnectionError("Failed to connect")
@@ -361,8 +361,8 @@ class TestWebFetchHttpErrors:
 
     def test_fetch_handles_ssl_error(self):
         """Test handling of SSL/TLS error."""
-        from navixmind.tools.web import web_fetch
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import web_fetch
+        from rastacoder.bridge import ToolError
 
         with patch('requests.get') as mock_get:
             mock_get.side_effect = requests.exceptions.SSLError("SSL handshake failed")
@@ -378,7 +378,7 @@ class TestWebFetchContentTruncation:
 
     def test_truncates_content_over_50000_chars(self):
         """Test that content over 50000 chars is truncated."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             # Create content with exactly 60000 characters
@@ -394,7 +394,7 @@ class TestWebFetchContentTruncation:
 
     def test_does_not_truncate_short_content(self):
         """Test that content under 50000 chars is not truncated."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             content = "Normal length content"
@@ -408,7 +408,7 @@ class TestWebFetchContentTruncation:
 
     def test_truncation_message_format(self):
         """Test the format of the truncation message."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             long_content = "a" * 100000
@@ -425,7 +425,7 @@ class TestWebFetchUrlHandling:
 
     def test_adds_https_to_url_without_scheme(self):
         """Test that URLs without scheme get https:// added."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -438,7 +438,7 @@ class TestWebFetchUrlHandling:
 
     def test_preserves_existing_https_scheme(self):
         """Test that existing https:// scheme is preserved."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -451,7 +451,7 @@ class TestWebFetchUrlHandling:
 
     def test_preserves_existing_http_scheme(self):
         """Test that existing http:// scheme is preserved."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -464,7 +464,7 @@ class TestWebFetchUrlHandling:
 
     def test_returns_final_url(self):
         """Test that the URL in result matches what was fetched."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -480,7 +480,7 @@ class TestWebFetchUserAgent:
 
     def test_uses_mobile_user_agent(self):
         """Test that a mobile User-Agent is used."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -497,7 +497,7 @@ class TestWebFetchUserAgent:
 
     def test_user_agent_contains_chrome(self):
         """Test that User-Agent contains Chrome identifier."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -517,7 +517,7 @@ class TestWebFetchTimeout:
 
     def test_uses_30_second_timeout(self):
         """Test that a 30 second timeout is used."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -534,7 +534,7 @@ class TestHeadlessBrowser:
 
     def test_delegates_to_native_bridge(self):
         """Test that headless_browser delegates to native bridge."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -548,7 +548,7 @@ class TestHeadlessBrowser:
 
     def test_passes_url_to_native(self):
         """Test that URL is passed correctly to native."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -562,7 +562,7 @@ class TestHeadlessBrowser:
 
     def test_passes_wait_seconds_to_native(self):
         """Test that wait_seconds is passed correctly."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -576,7 +576,7 @@ class TestHeadlessBrowser:
 
     def test_passes_css_selector_to_native(self):
         """Test that CSS selector is passed correctly."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -590,7 +590,7 @@ class TestHeadlessBrowser:
 
     def test_default_wait_seconds_is_5(self):
         """Test that default wait_seconds is 5."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -604,7 +604,7 @@ class TestHeadlessBrowser:
 
     def test_default_selector_is_none(self):
         """Test that default extract_selector is None."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -618,7 +618,7 @@ class TestHeadlessBrowser:
 
     def test_calculates_timeout_based_on_wait_seconds(self):
         """Test that timeout is calculated as (wait_seconds + 10) * 1000."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -633,7 +633,7 @@ class TestHeadlessBrowser:
 
     def test_calls_headless_browser_native_tool(self):
         """Test that the correct native tool name is called."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -647,7 +647,7 @@ class TestHeadlessBrowser:
 
     def test_handles_native_timeout(self):
         """Test handling of native timeout."""
-        from navixmind.tools.web import headless_browser
+        from rastacoder.tools.web import headless_browser
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -659,8 +659,8 @@ class TestHeadlessBrowser:
 
     def test_handles_native_tool_error(self):
         """Test handling of native ToolError."""
-        from navixmind.tools.web import headless_browser
-        from navixmind.bridge import ToolError
+        from rastacoder.tools.web import headless_browser
+        from rastacoder.bridge import ToolError
 
         with patch('navixmind.tools.web.get_bridge') as mock_get_bridge:
             mock_bridge = Mock()
@@ -776,43 +776,43 @@ class TestYouTubeDomainBlocking:
 
     def test_youtube_com_blocked(self):
         """Test that youtube.com is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://youtube.com/watch?v=abc") is True
 
     def test_www_youtube_com_blocked(self):
         """Test that www.youtube.com is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://www.youtube.com/watch?v=abc") is True
 
     def test_youtu_be_blocked(self):
         """Test that youtu.be is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://youtu.be/abc123") is True
 
     def test_m_youtube_com_blocked(self):
         """Test that m.youtube.com is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://m.youtube.com/watch?v=abc") is True
 
     def test_music_youtube_com_blocked(self):
         """Test that music.youtube.com is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://music.youtube.com/watch?v=abc") is True
 
     def test_youtube_nocookie_blocked(self):
         """Test that youtube-nocookie.com is blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://youtube-nocookie.com/embed/abc") is True
 
     def test_youtube_with_path_blocked(self):
         """Test that YouTube URLs with various paths are blocked."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://youtube.com/channel/abc") is True
         assert is_blocked_domain("https://youtube.com/playlist?list=abc") is True
@@ -820,7 +820,7 @@ class TestYouTubeDomainBlocking:
 
     def test_case_insensitive_blocking(self):
         """Test that YouTube blocking is case-insensitive."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://YOUTUBE.COM/watch?v=abc") is True
         assert is_blocked_domain("https://YouTube.com/watch?v=abc") is True
@@ -832,28 +832,28 @@ class TestAllowedDomains:
 
     def test_instagram_allowed(self):
         """Test that Instagram is allowed."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://instagram.com/p/abc") is False
         assert is_blocked_domain("https://www.instagram.com/reel/abc") is False
 
     def test_tiktok_allowed(self):
         """Test that TikTok is allowed."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://tiktok.com/@user/video/123") is False
         assert is_blocked_domain("https://www.tiktok.com/@user") is False
 
     def test_twitter_allowed(self):
         """Test that Twitter/X is allowed."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://twitter.com/user/status/123") is False
         assert is_blocked_domain("https://x.com/user/status/123") is False
 
     def test_general_websites_allowed(self):
         """Test that general websites are allowed."""
-        from navixmind.utils.security import is_blocked_domain
+        from rastacoder.utils.security import is_blocked_domain
 
         assert is_blocked_domain("https://example.com") is False
         assert is_blocked_domain("https://wikipedia.org/wiki/Test") is False
@@ -910,7 +910,7 @@ class TestEdgeCases:
 
     def test_empty_page_handling(self):
         """Test handling of empty page content."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -922,7 +922,7 @@ class TestEdgeCases:
 
     def test_page_with_only_whitespace(self):
         """Test handling of page with only whitespace."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -934,7 +934,7 @@ class TestEdgeCases:
 
     def test_malformed_html_handling(self):
         """Test handling of malformed HTML."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -955,7 +955,7 @@ class TestEdgeCases:
 
     def test_unicode_content_handling(self):
         """Test handling of unicode content."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -981,7 +981,7 @@ class TestEdgeCases:
 
     def test_links_with_empty_href(self):
         """Test handling of links with empty href."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -1002,7 +1002,7 @@ class TestEdgeCases:
 
     def test_links_without_href_attribute(self):
         """Test handling of anchor tags without href."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -1025,7 +1025,7 @@ class TestDefaultExtractMode:
 
     def test_default_mode_is_text(self):
         """Test that default extract mode is 'text'."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200
@@ -1049,7 +1049,7 @@ class TestInvalidExtractMode:
 
     def test_unknown_mode_defaults_to_text(self):
         """Test that unknown extract mode defaults to text mode."""
-        from navixmind.tools.web import web_fetch
+        from rastacoder.tools.web import web_fetch
 
         with patch('requests.get') as mock_get:
             mock_get.return_value.status_code = 200

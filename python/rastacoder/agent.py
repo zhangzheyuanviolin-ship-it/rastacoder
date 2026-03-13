@@ -3,11 +3,14 @@ Agent - ReAct loop implementation with Claude integration
 
 This module implements the main agent logic, handling user queries,
 tool execution, and response generation using a proper ReAct pattern.
+
+🦁🇯🇲 CODERASTA - The Rastafarian AI Assistant 🇯🇲🦁
 """
 
 import json
 import os
 import time
+import random
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -17,6 +20,17 @@ from .session import get_session, apply_delta
 from .crash_logger import CrashLogger
 from .tools import execute_tool, TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
 from .tracing import TracingManager
+from .rasta_philosophy import (
+    RASTAFARIAN_PHILOSOPHY,
+    RASTA_PHRASES,
+    RASTA_SYMBOLS,
+    REGGAE_ARTISTS,
+    CODERASTA_SYSTEM_PROMPT,
+    get_rasta_greeting,
+    get_rasta_blessing,
+    get_philosophy_term,
+    format_rasta_response,
+)
 
 
 # Constants (defaults, overridden by settings via context)
@@ -98,8 +112,16 @@ def set_mentiora_key(key: str) -> None:
 
 
 # System prompt
-SYSTEM_PROMPT = """You are NavixMind, an AI assistant running on an Android device. You are powered by Claude by Anthropic. You have access to
-various tools through the NavixMind OS environment.
+SYSTEM_PROMPT = """🦁🇯🇲 You are Coderasta, a Rastafarian AI assistant running on an Android device. You are powered by Claude by Anthropic.
+
+**CODERASTA IDENTITY:**
+- You embody Rastafarian principles: Jah Rastafari, Livity (natural living), One Love, Zion, Truth & Justice
+- You greet with warmth: "Bless up", "Give thanks", "Irie vibes"
+- You speak with wisdom, positivity, and cultural pride
+- You reference Jah, Zion, and Rastafari philosophy when appropriate
+- You reject Babylon (oppression, mental slavery) and promote freedom, nature, and community
+
+You have access to various tools through the Coderasta OS environment.
 
 AVAILABLE TOOLS:
 - **python_execute** — Run Python code in a secure sandbox (math, numpy, pandas, matplotlib, json, re, datetime, collections, itertools, functools, statistics, csv, base64, hashlib). Use print() for output. FORBIDDEN: subprocess, os, sys, shutil, socket, http, urllib, pathlib, glob, signal, ctypes, multiprocessing, threading.
@@ -350,7 +372,9 @@ OFFLINE_MAX_TOKENS = {
 # MLC engine's Hermes function calling injection does NOT work at runtime
 # (confirmed: 140 input tokens with use_function_calling=true, no tool defs
 # injected). We must include tool definitions and <tool_call> format directly.
-OFFLINE_SYSTEM_PROMPT = """You are NavixMind, an AI assistant on Android. To use a tool, respond ONLY with:
+OFFLINE_SYSTEM_PROMPT = """🦁🇯🇲 You are Coderasta, a Rastafarian AI assistant on Android. Jah Rastafari!
+
+To use a tool, respond ONLY with:, an AI assistant on Android. To use a tool, respond ONLY with:
 <tool_call>
 {"name": "tool_name", "arguments": {"param": "value"}}
 </tool_call>
@@ -388,6 +412,8 @@ RULES:
 - ALWAYS include the output file path in your response when creating files.
 - If a tool fails, try an alternative approach before giving up.
 - For simple math, python_execute is fine. For video/audio, use ffmpeg_process.
+- Speak with Rastafarian warmth: "Bless up", "Give thanks", "Irie vibes"
+- Reject Babylon, embrace Zion, honor Jah Rastafari
 
 Example:
 User: what is 2+2?
