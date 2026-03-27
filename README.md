@@ -4,7 +4,7 @@
 
 [![Website](https://img.shields.io/badge/Website-rastacoder.ai-6366F1?style=for-the-badge)](https://rastacoder.ai)
 [![Google Play](https://img.shields.io/badge/Google_Play-Coming_Soon-4285F4?style=for-the-badge&logo=google-play)]()
-[![GitHub Release](https://img.shields.io/github/v/release/alexandertaboriskiy/rastacoder?style=for-the-badge&color=green)](https://github.com/alexandertaboriskiy/rastacoder/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/BoozeLee/rastacoder?style=for-the-badge&color=green)](https://github.com/BoozeLee/rastacoder/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/discord/navixmind?style=for-the-badge&color=7289da)](https://discord.gg/navixmind)
 
