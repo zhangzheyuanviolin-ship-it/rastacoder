@@ -150,7 +150,7 @@ class _InputBarState extends State<InputBar> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$name is too large ($sizeStr). Max: $limitStr'),
-        backgroundColor: NavixTheme.error,
+        backgroundColor: RastaTheme.red,
       ),
     );
   }
@@ -159,7 +159,7 @@ class _InputBarState extends State<InputBar> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: NavixTheme.error,
+        backgroundColor: RastaTheme.red,
       ),
     );
   }
@@ -185,10 +185,10 @@ class _InputBarState extends State<InputBar> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: NavixTheme.surface,
+        color: RastaTheme.surface,
         border: Border(
           top: BorderSide(
-            color: NavixTheme.surfaceVariant,
+            color: RastaTheme.surfaceVariant,
             width: 1,
           ),
         ),
@@ -224,7 +224,7 @@ class _InputBarState extends State<InputBar> {
             children: [
               // Add context button
               _IconButton(
-                icon: NavixTheme.iconAdd,
+                icon: RastaTheme.iconAdd,
                 onPressed: widget.enabled ? _pickFiles : null,
                 tooltip: 'Add file',
               ),
@@ -246,7 +246,7 @@ class _InputBarState extends State<InputBar> {
                         ? 'Type a message...'
                         : 'Connecting...',
                     filled: true,
-                    fillColor: NavixTheme.background,
+                    fillColor: RastaTheme.background,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 12,
@@ -267,7 +267,7 @@ class _InputBarState extends State<InputBar> {
                       ),
                     )
                   : _IconButton(
-                      icon: NavixTheme.iconSend,
+                      icon: RastaTheme.iconSend,
                       onPressed: widget.enabled ? _onSubmit : null,
                       tooltip: 'Send',
                       primary: true,
@@ -304,8 +304,8 @@ class _IconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null;
     final color = isEnabled
-        ? (primary ? NavixTheme.primary : NavixTheme.textPrimary)
-        : NavixTheme.textTertiary;
+        ? (primary ? RastaTheme.gold : RastaTheme.textPrimary)
+        : RastaTheme.textTertiary;
 
     return Semantics(
       label: tooltip,
@@ -315,7 +315,7 @@ class _IconButton extends StatelessWidget {
         height: 48,
         child: Material(
           color: primary && isEnabled
-              ? NavixTheme.primary.withOpacity(0.1)
+              ? RastaTheme.gold.withOpacity(0.1)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(24),
           child: InkWell(
@@ -383,7 +383,7 @@ class _FileChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: NavixTheme.surfaceVariant,
+        color: RastaTheme.surfaceVariant,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -397,17 +397,17 @@ class _FileChip extends StatelessWidget {
           Text(
             name.length > 15 ? '${name.substring(0, 12)}...' : name,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.textPrimary,
             ),
           ),
           const SizedBox(width: 6),
           GestureDetector(
             onTap: onRemove,
             child: Text(
-              NavixTheme.iconClose,
+              RastaTheme.iconClose,
               style: TextStyle(
                 fontSize: 14,
-                color: NavixTheme.textSecondary,
+                color: RastaTheme.textSecondary,
               ),
             ),
           ),
@@ -476,7 +476,7 @@ class _SuggestionPills extends StatelessWidget {
 
   List<SlashCommand> _getSuggestions(String text) {
     final query = text.toLowerCase().substring(1); // Remove leading /
-    return NavixTheme.slashCommands.values
+    return RastaTheme.slashCommands.values
         .where((c) => c.name.toLowerCase().contains(query) ||
             c.description.toLowerCase().contains(query))
         .take(4)
@@ -525,7 +525,7 @@ class _SlashCommandPill extends StatelessWidget {
                 Text(
                   command.name,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: NavixTheme.textPrimary,
+                    color: RastaTheme.textPrimary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -540,13 +540,13 @@ class _SlashCommandPill extends StatelessWidget {
   Color _getCategoryColor() {
     switch (command.category) {
       case 'media':
-        return NavixTheme.accentPurple;
+        return RastaTheme.accentPurple;
       case 'text':
-        return NavixTheme.accentBlue;
+        return RastaTheme.info;
       case 'google':
-        return NavixTheme.accentOrange;
+        return RastaTheme.accentOrange;
       default:
-        return NavixTheme.accentCyan;
+        return RastaTheme.info;
     }
   }
 }

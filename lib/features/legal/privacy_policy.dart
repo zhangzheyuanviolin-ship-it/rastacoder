@@ -55,16 +55,16 @@ Contact: support@coderasta.ai''';
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: NavixTheme.background,
+      backgroundColor: RastaTheme.background,
       appBar: AppBar(
-        backgroundColor: NavixTheme.background,
+        backgroundColor: RastaTheme.background,
         title: const Text('Privacy Policy'),
         leading: IconButton(
           icon: Text(
-            NavixTheme.iconClose,
+            RastaTheme.iconClose,
             style: TextStyle(
               fontSize: 24,
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.textPrimary,
             ),
           ),
           onPressed: () => Navigator.pop(context),
@@ -75,7 +75,7 @@ Contact: support@coderasta.ai''';
         child: Text(
           privacyText,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: NavixTheme.textPrimary,
+                color: RastaTheme.textPrimary,
                 height: 1.6,
               ),
         ),

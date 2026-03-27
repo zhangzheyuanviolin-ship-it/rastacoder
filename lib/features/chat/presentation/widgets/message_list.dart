@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme.dart';
+import '../../../../app/rasta_theme.dart';
 import '../chat_screen.dart';
 import 'message_bubble.dart';
 
@@ -58,14 +58,14 @@ class MessageList extends StatelessWidget {
                         '✦',
                         style: TextStyle(
                           fontSize: 14,
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                       ),
                       label: Text(
                         'Self Improve',
                         style: TextStyle(
                           fontSize: 12,
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                       ),
                       style: TextButton.styleFrom(
@@ -102,24 +102,24 @@ class _EmptyState extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            '⊕',
-            style: TextStyle(
+            RastaTheme.iconAdd,
+            style: const TextStyle(
               fontSize: 48,
-              color: NavixTheme.textTertiary,
+              color: RastaTheme.textTertiary,
             ),
           ),
           const SizedBox(height: 16),
           Text(
             'Start a conversation',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: NavixTheme.textSecondary,
+              color: RastaTheme.textSecondary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Ask me anything or share a file to get started',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: NavixTheme.textTertiary,
+              color: RastaTheme.textTertiary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -142,7 +142,7 @@ class _TimestampDivider extends StatelessWidget {
         children: [
           Expanded(
             child: Divider(
-              color: NavixTheme.surfaceVariant,
+              color: RastaTheme.surfaceVariant,
               thickness: 1,
             ),
           ),
@@ -151,13 +151,13 @@ class _TimestampDivider extends StatelessWidget {
             child: Text(
               _formatTimestamp(timestamp),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: NavixTheme.textTertiary,
+                color: RastaTheme.textTertiary,
               ),
             ),
           ),
           Expanded(
             child: Divider(
-              color: NavixTheme.surfaceVariant,
+              color: RastaTheme.surfaceVariant,
               thickness: 1,
             ),
           ),

@@ -508,16 +508,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: NavixTheme.background,
+      backgroundColor: RastaTheme.background,
       appBar: AppBar(
-        backgroundColor: NavixTheme.background,
+        backgroundColor: RastaTheme.background,
         title: const Text('Settings'),
         leading: IconButton(
           icon: Text(
-            NavixTheme.iconClose,
+            RastaTheme.iconClose,
             style: TextStyle(
               fontSize: 24,
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.textPrimary,
             ),
           ),
           onPressed: () => Navigator.pop(context),
@@ -541,10 +541,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   )
                 : (_hasApiKey
                     ? Text(
-                        NavixTheme.iconCheck,
+                        RastaTheme.iconCheck,
                         style: TextStyle(
                           fontSize: 20,
-                          color: NavixTheme.success,
+                          color: RastaTheme.green,
                         ),
                       )
                     : null),
@@ -559,10 +559,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? null
                 : (_hasMentioraKey
                     ? Text(
-                        NavixTheme.iconCheck,
+                        RastaTheme.iconCheck,
                         style: TextStyle(
                           fontSize: 20,
-                          color: NavixTheme.success,
+                          color: RastaTheme.green,
                         ),
                       )
                     : null),
@@ -607,7 +607,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onPressed: () => Navigator.pop(context, true),
                       child: Text(
                         'Delete',
-                        style: TextStyle(color: NavixTheme.error),
+                        style: TextStyle(color: RastaTheme.red),
                       ),
                     ),
                   ],
@@ -651,7 +651,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await StorageService.instance.setSelfImproveEnabled(value);
                 setState(() => _selfImproveEnabled = value);
               },
-              activeColor: NavixTheme.primary,
+              activeColor: RastaTheme.gold,
             ),
           ),
 
@@ -774,7 +774,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await StorageService.instance.setCostLimitEnabled(value);
                 setState(() => _limitEnabled = value);
               },
-              activeColor: NavixTheme.primary,
+              activeColor: RastaTheme.gold,
             ),
           ),
 
@@ -991,7 +991,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: NavixTheme.textSecondary,
+          color: RastaTheme.textSecondary,
         ),
       ),
     );
@@ -1063,7 +1063,7 @@ class _ModelSelector extends StatelessWidget {
             Text(
               'Cloud Models (API Key Required)',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: NavixTheme.textSecondary,
+                    color: RastaTheme.textSecondary,
                   ),
             ),
             const SizedBox(height: 8),
@@ -1080,7 +1080,7 @@ class _ModelSelector extends StatelessWidget {
                   child: Text(
                     'Offline Models (On-Device)',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: NavixTheme.textSecondary,
+                          color: RastaTheme.textSecondary,
                         ),
                   ),
                 ),
@@ -1088,7 +1088,7 @@ class _ModelSelector extends StatelessWidget {
                   Text(
                     'GPU: ${(gpuMemoryMB / 1024).toStringAsFixed(1)} GB',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                   ),
               ],
@@ -1118,7 +1118,7 @@ class _ModelSelector extends StatelessWidget {
               onChanged: (value) {
                 if (value != null) onChanged(value);
               },
-              activeColor: NavixTheme.primary,
+              activeColor: RastaTheme.gold,
             ),
             Expanded(
               child: Column(
@@ -1128,8 +1128,8 @@ class _ModelSelector extends StatelessWidget {
                     model.displayName,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           color: isSelected
-                              ? NavixTheme.textPrimary
-                              : NavixTheme.textSecondary,
+                              ? RastaTheme.textPrimary
+                              : RastaTheme.textSecondary,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w400,
                         ),
@@ -1137,7 +1137,7 @@ class _ModelSelector extends StatelessWidget {
                   Text(
                     model.description,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                   ),
                 ],
@@ -1178,7 +1178,7 @@ class _ModelSelector extends StatelessWidget {
                       if (value != null) onChanged(value);
                     }
                   : null,
-              activeColor: NavixTheme.primary,
+              activeColor: RastaTheme.gold,
             ),
             Expanded(
               child: Column(
@@ -1190,8 +1190,8 @@ class _ModelSelector extends StatelessWidget {
                         model.displayName,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                               color: isSelected && isDownloaded
-                                  ? NavixTheme.textPrimary
-                                  : NavixTheme.textSecondary,
+                                  ? RastaTheme.textPrimary
+                                  : RastaTheme.textSecondary,
                               fontWeight: isSelected && isDownloaded
                                   ? FontWeight.w600
                                   : FontWeight.w400,
@@ -1201,7 +1201,7 @@ class _ModelSelector extends StatelessWidget {
                       Text(
                         '~${model.estimatedSizeFormatted}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: NavixTheme.textTertiary,
+                              color: RastaTheme.textTertiary,
                             ),
                       ),
                       if (model.isResearchOnly) ...[
@@ -1210,14 +1210,14 @@ class _ModelSelector extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 1),
                           decoration: BoxDecoration(
-                            color: NavixTheme.warning.withOpacity(0.15),
+                            color: RastaTheme.gold.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             'Research only',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: NavixTheme.warning,
+                                      color: RastaTheme.gold,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -1229,7 +1229,7 @@ class _ModelSelector extends StatelessWidget {
                   Text(
                     model.description,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                   ),
                   if (tooLargeForGpu)
@@ -1238,7 +1238,7 @@ class _ModelSelector extends StatelessWidget {
                       child: Text(
                         'May exceed GPU memory (${estimatedVramMB} MB > ${gpuMemoryMB} MB)',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: NavixTheme.error,
+                              color: RastaTheme.red,
                               fontSize: 11,
                             ),
                       ),
@@ -1273,7 +1273,7 @@ class _ModelSelector extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               textStyle: const TextStyle(fontSize: 12),
-              side: BorderSide(color: NavixTheme.primary),
+              side: BorderSide(color: RastaTheme.gold),
             ),
           ),
         );
@@ -1287,9 +1287,9 @@ class _ModelSelector extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: progress,
-                backgroundColor: NavixTheme.surfaceVariant,
+                backgroundColor: RastaTheme.surfaceVariant,
                 valueColor:
-                    AlwaysStoppedAnimation<Color>(NavixTheme.primary),
+                    AlwaysStoppedAnimation<Color>(RastaTheme.gold),
                 minHeight: 6,
               ),
             ),
@@ -1299,7 +1299,7 @@ class _ModelSelector extends StatelessWidget {
                 Text(
                   '${(progress * 100).toInt()}%',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: NavixTheme.textTertiary,
+                        color: RastaTheme.textTertiary,
                       ),
                 ),
                 const SizedBox(width: 8),
@@ -1310,7 +1310,7 @@ class _ModelSelector extends StatelessWidget {
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       textStyle: const TextStyle(fontSize: 11),
-                      foregroundColor: NavixTheme.error,
+                      foregroundColor: RastaTheme.red,
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
@@ -1333,27 +1333,27 @@ class _ModelSelector extends StatelessWidget {
                 height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: NavixTheme.primary,
+                  color: RastaTheme.gold,
                 ),
               ),
               const SizedBox(width: 4),
               Text(
                 'Loading...',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: NavixTheme.primary,
+                      color: RastaTheme.gold,
                     ),
               ),
             ] else if (isLoaded && modelLoadState == ModelLoadState.loaded) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: NavixTheme.success.withOpacity(0.15),
+                  color: RastaTheme.green.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   'Loaded',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: NavixTheme.success,
+                        color: RastaTheme.green,
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1367,7 +1367,7 @@ class _ModelSelector extends StatelessWidget {
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     textStyle: const TextStyle(fontSize: 11),
-                    foregroundColor: NavixTheme.textTertiary,
+                    foregroundColor: RastaTheme.textTertiary,
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -1376,17 +1376,17 @@ class _ModelSelector extends StatelessWidget {
               ),
             ] else ...[
               Text(
-                NavixTheme.iconCheck,
+                RastaTheme.iconCheck,
                 style: TextStyle(
                   fontSize: 14,
-                  color: NavixTheme.success,
+                  color: RastaTheme.green,
                 ),
               ),
               const SizedBox(width: 4),
               Text(
                 state?.diskUsageFormatted ?? '',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: NavixTheme.success,
+                      color: RastaTheme.green,
                     ),
               ),
             ],
@@ -1399,7 +1399,7 @@ class _ModelSelector extends StatelessWidget {
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     textStyle: const TextStyle(fontSize: 12),
-                    foregroundColor: NavixTheme.error,
+                    foregroundColor: RastaTheme.red,
                   ),
                   child: const Text('Delete'),
                 ),
@@ -1411,10 +1411,10 @@ class _ModelSelector extends StatelessWidget {
         return Row(
           children: [
             Text(
-              NavixTheme.iconError,
+              RastaTheme.iconError,
               style: TextStyle(
                 fontSize: 14,
-                color: NavixTheme.error,
+                color: RastaTheme.red,
               ),
             ),
             const SizedBox(width: 4),
@@ -1422,7 +1422,7 @@ class _ModelSelector extends StatelessWidget {
               child: Text(
                 state?.errorMessage ?? 'Download failed',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: NavixTheme.error,
+                      color: RastaTheme.red,
                     ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1435,7 +1435,7 @@ class _ModelSelector extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   textStyle: const TextStyle(fontSize: 12),
-                  side: BorderSide(color: NavixTheme.primary),
+                  side: BorderSide(color: RastaTheme.gold),
                 ),
                 child: const Text('Retry'),
               ),
@@ -1503,10 +1503,10 @@ class _TokenUsageCard extends StatelessWidget {
     final isOver = progress >= 1.0;
 
     final progressColor = isOver
-        ? NavixTheme.error
+        ? RastaTheme.red
         : isWarning
-            ? NavixTheme.warning
-            : NavixTheme.primary;
+            ? RastaTheme.gold
+            : RastaTheme.gold;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1536,7 +1536,7 @@ class _TokenUsageCard extends StatelessWidget {
                       Text(
                         ' / ${_formatTokens(tokenLimit)} tokens',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: NavixTheme.textTertiary,
+                              color: RastaTheme.textTertiary,
                             ),
                       ),
                       const SizedBox(width: 4),
@@ -1544,7 +1544,7 @@ class _TokenUsageCard extends StatelessWidget {
                         '✎',
                         style: TextStyle(
                           fontSize: 12,
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                       ),
                     ],
@@ -1557,9 +1557,9 @@ class _TokenUsageCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: enabled ? progress : 0,
-                backgroundColor: NavixTheme.surfaceVariant,
+                backgroundColor: RastaTheme.surfaceVariant,
                 valueColor: AlwaysStoppedAnimation<Color>(
-                  enabled ? progressColor : NavixTheme.textTertiary,
+                  enabled ? progressColor : RastaTheme.textTertiary,
                 ),
                 minHeight: 8,
               ),
@@ -1569,7 +1569,7 @@ class _TokenUsageCard extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    NavixTheme.iconWarning,
+                    RastaTheme.iconWarning,
                     style: TextStyle(
                       fontSize: 12,
                       color: progressColor,
@@ -1657,9 +1657,9 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: NavixTheme.background,
+      backgroundColor: RastaTheme.background,
       appBar: AppBar(
-        backgroundColor: NavixTheme.background,
+        backgroundColor: RastaTheme.background,
         title: const Text('System Prompt'),
         actions: [
           TextButton(
@@ -1682,14 +1682,14 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
                   Text(
                     _isCustom ? 'Custom prompt' : 'Default prompt',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textSecondary,
+                          color: RastaTheme.textSecondary,
                         ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '${_controller.text.length} characters',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textTertiary,
+                          color: RastaTheme.textTertiary,
                         ),
                   ),
                   const SizedBox(height: 12),

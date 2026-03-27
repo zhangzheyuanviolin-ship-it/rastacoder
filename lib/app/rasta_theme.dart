@@ -116,13 +116,57 @@ class RastaTheme {
   /// Reggae guitar 🎸
   static const String iconGuitar = '🎸';
 
-  // Spinner frames (Rasta colors)
+  // Braille spinner animation frames (Rasta colors)
   static const List<String> spinnerFrames = [
-    '🔴', '🟡', '🟢', '🟡',
+    '⣷', '⣯', '⣟', '⡿', '⢿', '⣻', '⣽', '⣾',
   ];
 
-  // Voice waveform (Rasta style)
+  // Voice waveform characters
   static const List<String> waveformChars = ['▂', '▃', '▅', '▇', '█'];
+
+  // Status indicators
+  static const String iconCheck = '✓';
+  static const String iconError = '✗';
+  static const String iconWarning = '⚠';
+  static const String iconInfo = 'ℹ';
+  static const String iconSend = '➤';
+  static const String iconClose = '✕';
+  static const String iconMenu = '☰';
+  static const String iconAdd = '⊕';
+  static const String iconSearch = '🔍';
+  static const String iconSettings = '⚙';
+  static const String iconHome = '🏠';
+  static const String iconBack = '◀';
+  static const String iconForward = '▶';
+  static const String iconRefresh = '🔄';
+  static const String iconDownload = '⬇';
+  static const String iconUpload = '⬆';
+  static const String iconShare = '↗';
+  static const String iconCopy = '📋';
+  static const String iconDelete = '🗑';
+  static const String iconEdit = '✏';
+  static const String iconSave = '💾';
+  static const String iconLock = '🔒';
+  static const String iconUnlock = '🔓';
+  static const String iconUser = '👤';
+  static const String iconAI = '🤖';
+  static const String iconBrain = '🧠';
+  static const String iconSparkle = '✨';
+  static const String iconZion = '🏔';
+  static const String iconBabylon = '🏙';
+
+  // Voice icons
+  static const String iconVoiceIdle = '●';
+  static const String iconVoiceRecording = '■';
+
+  // File type icons
+  static const String iconFile = '◰';
+  static const String iconImage = '◫';
+  static const String iconVideo = '▶';
+  static const String iconAudio = '♪';
+  static const String iconLocation = '◉';
+  static const String iconCalendar = '◫';
+  static const String iconEmail = '✉';
 
   // Status indicators
   static const String iconCheck = '✓';
@@ -469,4 +513,96 @@ class RastaTheme {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
+
+  /// Zion sunrise (Green → Gold → Red)
+  static const LinearGradient zionSunriseGradient = LinearGradient(
+    colors: [green, gold, red],
+    begin: Alignment.bottomCenter,
+    end: Alignment.topCenter,
+  );
+
+  /// Babylon night (Deep Black → Purple → Red)
+  static const LinearGradient babylonNightGradient = LinearGradient(
+    colors: [charcoal, accentPurple, redDark],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  /// Fractal depth gradient (Black → Purple → Electric Blue)
+  static const LinearGradient fractalDepthGradient = LinearGradient(
+    colors: [charcoal, Color(0xFF2D004E), Color(0xFF00F0FF)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  // ═══════════════════════════════════════════════════════════════
+  // SLASH COMMANDS
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Common slash commands for quick actions
+  static const Map<String, SlashCommand> slashCommands = {
+    '/crop': SlashCommand(
+      name: '/crop',
+      description: 'Crop a video to focus on faces',
+      icon: '✂',
+      category: 'media',
+    ),
+    '/extract': SlashCommand(
+      name: '/extract',
+      description: 'Extract audio from video',
+      icon: '♪',
+      category: 'media',
+    ),
+    '/summarize': SlashCommand(
+      name: '/summarize',
+      description: 'Summarize a document or webpage',
+      icon: '◰',
+      category: 'text',
+    ),
+    '/ocr': SlashCommand(
+      name: '/ocr',
+      description: 'Extract text from an image',
+      icon: '◫',
+      category: 'text',
+    ),
+    '/calendar': SlashCommand(
+      name: '/calendar',
+      description: 'View or create calendar events',
+      icon: '◫',
+      category: 'google',
+    ),
+    '/email': SlashCommand(
+      name: '/email',
+      description: 'Read or send emails',
+      icon: '✉',
+      category: 'google',
+    ),
+    '/download': SlashCommand(
+      name: '/download',
+      description: 'Download media from URL',
+      icon: '↓',
+      category: 'media',
+    ),
+    '/pdf': SlashCommand(
+      name: '/pdf',
+      description: 'Create or read PDF documents',
+      icon: '◰',
+      category: 'text',
+    ),
+  };
+}
+
+/// Slash command definition
+class SlashCommand {
+  final String name;
+  final String description;
+  final String icon;
+  final String category;
+
+  const SlashCommand({
+    required this.name,
+    required this.description,
+    required this.icon,
+    required this.category,
+  });
 }

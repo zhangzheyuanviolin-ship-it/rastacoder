@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
+import '../../../app/rasta_theme.dart';
 import '../../../core/bridge/bridge.dart';
 import '../../../core/constants/defaults.dart';
 import '../../../core/services/analytics_service.dart';
@@ -14,6 +14,7 @@ import '../../../core/services/offline_queue_manager.dart';
 import '../../../core/services/share_receiver_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../shared/widgets/spinner.dart';
+import '../../../shared/widgets/rasta_widgets.dart';
 import 'widgets/message_list.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/status_banner.dart';
@@ -695,16 +696,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final isPythonReady = PythonBridge.instance.status == PythonStatus.ready;
 
     return Scaffold(
-      backgroundColor: NavixTheme.background,
-      appBar: AppBar(
-        backgroundColor: NavixTheme.background,
-        title: const Text('NavixMind'),
+      backgroundColor: RastaTheme.background,
+      appBar: RastaAppBar(
+        title: '🦁 RastaCoder',
         leading: IconButton(
-          icon: Text(
-            NavixTheme.iconMenu,
+          icon: const Text(
+            RastaTheme.iconMenu,
             style: TextStyle(
               fontSize: 24,
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.black,
             ),
           ),
           onPressed: _openMenu,
@@ -714,7 +714,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           if (_isProcessing)
             const Padding(
               padding: EdgeInsets.only(right: 16),
-              child: BrailleSpinner(size: 20),
+              child: RastaBrailleSpinner(size: 20),
             ),
         ],
       ),

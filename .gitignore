@@ -133,3 +133,17 @@ android/mlc4j/output/
 # Firebase deployment cache
 www/.firebase/
 www/.firebaserc
+
+# Python vendor dependencies (jedi typeshed, etc.)
+python/vendor/
+python/**/vendor/
+**/third_party/typeshed/
+**/*.pyi
+
+# Python cache
+python/**/*.cache/
+python/**/__pycache__/
+**/*.pyc
+
+# Build outputs
+nanobanana-output/

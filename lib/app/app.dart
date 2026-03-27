@@ -65,7 +65,7 @@ class _LegalGateState extends State<_LegalGate> {
     if (!_checked) {
       // Show a minimal splash while the legal dialog is pending.
       return Scaffold(
-        backgroundColor: NavixTheme.background,
+        backgroundColor: RastaTheme.background,
         body: const Center(
           child: CircularProgressIndicator(),
         ),

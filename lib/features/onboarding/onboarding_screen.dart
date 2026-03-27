@@ -73,7 +73,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: NavixTheme.background,
+      backgroundColor: RastaTheme.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -89,8 +89,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 2),
                       decoration: BoxDecoration(
                         color: index <= _currentPage
-                            ? NavixTheme.primary
-                            : NavixTheme.surfaceVariant,
+                            ? RastaTheme.gold
+                            : RastaTheme.surfaceVariant,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -177,7 +177,7 @@ class _OnboardingPage extends StatelessWidget {
             icon,
             style: TextStyle(
               fontSize: 64,
-              color: NavixTheme.primary,
+              color: RastaTheme.gold,
             ),
           ),
           const SizedBox(height: 32),
@@ -190,7 +190,7 @@ class _OnboardingPage extends StatelessWidget {
           Text(
             description,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: NavixTheme.textSecondary,
+              color: RastaTheme.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -216,7 +216,7 @@ class _ApiKeyPage extends StatelessWidget {
             '⊕',
             style: TextStyle(
               fontSize: 64,
-              color: NavixTheme.primary,
+              color: RastaTheme.gold,
             ),
           ),
           const SizedBox(height: 32),
@@ -230,7 +230,7 @@ class _ApiKeyPage extends StatelessWidget {
             'NavixMind uses Claude AI to understand your requests. '
             'Get your API key from console.anthropic.com',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: NavixTheme.textSecondary,
+              color: RastaTheme.textSecondary,
             ),
             textAlign: TextAlign.center,
           ),
@@ -248,7 +248,7 @@ class _ApiKeyPage extends StatelessWidget {
             'Your API key is stored securely on your device '
             'and never sent to our servers.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: NavixTheme.textTertiary,
+              color: RastaTheme.textTertiary,
             ),
             textAlign: TextAlign.center,
           ),

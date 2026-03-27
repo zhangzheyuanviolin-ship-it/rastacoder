@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
+import '../../app/rasta_theme.dart';
 
 /// Braille pattern spinner animation
 class BrailleSpinner extends StatefulWidget {
@@ -32,7 +32,7 @@ class _BrailleSpinnerState extends State<BrailleSpinner> {
   void _startAnimation() {
     _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       setState(() {
-        _frameIndex = (_frameIndex + 1) % NavixTheme.spinnerFrames.length;
+        _frameIndex = (_frameIndex + 1) % RastaTheme.spinnerFrames.length;
       });
     });
   }
@@ -47,11 +47,11 @@ class _BrailleSpinnerState extends State<BrailleSpinner> {
       height: widget.size,
       child: Center(
         child: Text(
-          reduceMotion ? '●' : NavixTheme.spinnerFrames[_frameIndex],
+          reduceMotion ? '●' : RastaTheme.spinnerFrames[_frameIndex],
           style: TextStyle(
             fontSize: widget.size * 0.9,
             height: 1.0,
-            color: widget.color ?? NavixTheme.primary,
+            color: widget.color ?? RastaTheme.gold,
           ),
           textAlign: TextAlign.center,
           textHeightBehavior: const TextHeightBehavior(
@@ -90,10 +90,10 @@ class _VoiceWaveformState extends State<VoiceWaveform> {
   Widget build(BuildContext context) {
     if (!widget.isRecording) {
       return Text(
-        NavixTheme.iconVoiceIdle,
-        style: TextStyle(
+        RastaTheme.iconVoiceIdle,
+        style: const TextStyle(
           fontSize: 24,
-          color: NavixTheme.textSecondary,
+          color: RastaTheme.textSecondary,
         ),
       );
     }
@@ -105,19 +105,19 @@ class _VoiceWaveformState extends State<VoiceWaveform> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          NavixTheme.iconVoiceRecording,
-          style: TextStyle(
+          RastaTheme.iconVoiceRecording,
+          style: const TextStyle(
             fontSize: 16,
-            color: NavixTheme.error,
+            color: RastaTheme.red,
           ),
         ),
         const SizedBox(width: 8),
         Text(
           waveform,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 16,
-            color: NavixTheme.primary,
-            fontFamily: NavixTheme.fontFamilyMono,
+            color: RastaTheme.gold,
+            fontFamily: 'JetBrains Mono',
           ),
         ),
       ],
@@ -125,7 +125,7 @@ class _VoiceWaveformState extends State<VoiceWaveform> {
   }
 
   String _generateWaveform(double level) {
-    final chars = NavixTheme.waveformChars;
+    final chars = RastaTheme.waveformChars;
     final buffer = StringBuffer();
 
     // Generate 8 bars based on level with some variation
@@ -181,14 +181,14 @@ class _PulsingIndicatorState extends State<PulsingIndicator>
             '●',
             style: TextStyle(
               fontSize: 12,
-              color: NavixTheme.accentCyan,
+              color: RastaTheme.green,
             ),
           ),
           const SizedBox(width: 8),
           Text(
             widget.label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: NavixTheme.textSecondary,
+              color: RastaTheme.textSecondary,
             ),
           ),
         ],
@@ -207,7 +207,7 @@ class _PulsingIndicatorState extends State<PulsingIndicator>
                 '●',
                 style: TextStyle(
                   fontSize: 12,
-                  color: NavixTheme.accentCyan,
+                  color: RastaTheme.green,
                 ),
               ),
             ),
@@ -215,7 +215,7 @@ class _PulsingIndicatorState extends State<PulsingIndicator>
             Text(
               widget.label,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: NavixTheme.textSecondary,
+                color: RastaTheme.textSecondary,
               ),
             ),
           ],

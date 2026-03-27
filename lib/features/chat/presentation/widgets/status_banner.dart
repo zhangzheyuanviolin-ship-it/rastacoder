@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme.dart';
+import '../../../../app/rasta_theme.dart';
 import '../../../../shared/widgets/spinner.dart';
 
 /// Status banner showing connection state or processing status
@@ -22,28 +22,28 @@ class StatusBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: isError
-          ? NavixTheme.error.withOpacity(0.15)
-          : NavixTheme.surface,
+          ? RastaTheme.red.withOpacity(0.15)
+          : RastaTheme.surface,
       child: Row(
         children: [
           if (isError)
             Text(
-              NavixTheme.iconWarning,
-              style: TextStyle(
+              RastaTheme.iconWarning,
+              style: const TextStyle(
                 fontSize: 16,
-                color: NavixTheme.error,
+                color: RastaTheme.red,
               ),
             )
           else
-            const BrailleSpinner(size: 16),
+            const RastaBrailleSpinner(size: 16),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               message,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: isError
-                    ? NavixTheme.error
-                    : NavixTheme.textSecondary,
+                    ? RastaTheme.red
+                    : RastaTheme.textSecondary,
               ),
             ),
           ),

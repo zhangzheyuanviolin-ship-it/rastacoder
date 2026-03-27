@@ -78,7 +78,7 @@ class _LegalDialogState extends State<_LegalDialog>
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: NavixTheme.surface,
+      backgroundColor: RastaTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Column(
@@ -90,7 +90,7 @@ class _LegalDialogState extends State<_LegalDialog>
             child: Text(
               'Legal Terms',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: NavixTheme.textPrimary,
+                    color: RastaTheme.textPrimary,
                   ),
             ),
           ),
@@ -100,7 +100,7 @@ class _LegalDialogState extends State<_LegalDialog>
           Text(
             'Please review before continuing',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: NavixTheme.textSecondary,
+                  color: RastaTheme.textSecondary,
                 ),
           ),
 
@@ -109,9 +109,9 @@ class _LegalDialogState extends State<_LegalDialog>
           // Tab bar
           TabBar(
             controller: _tabController,
-            indicatorColor: NavixTheme.primary,
-            labelColor: NavixTheme.primary,
-            unselectedLabelColor: NavixTheme.textSecondary,
+            indicatorColor: RastaTheme.gold,
+            labelColor: RastaTheme.gold,
+            unselectedLabelColor: RastaTheme.textSecondary,
             tabs: const [
               Tab(text: 'Terms of Service'),
               Tab(text: 'Privacy Policy'),
@@ -129,7 +129,7 @@ class _LegalDialogState extends State<_LegalDialog>
                   child: Text(
                     TermsOfServiceScreen.tosText,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textPrimary,
+                          color: RastaTheme.textPrimary,
                           height: 1.5,
                           fontSize: 12,
                         ),
@@ -140,7 +140,7 @@ class _LegalDialogState extends State<_LegalDialog>
                   child: Text(
                     PrivacyPolicyScreen.privacyText,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: NavixTheme.textPrimary,
+                          color: RastaTheme.textPrimary,
                           height: 1.5,
                           fontSize: 12,
                         ),

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../../../app/theme.dart';
+import '../../../../app/rasta_theme.dart';
 import '../../../../core/services/auth_service.dart';
 import '../chat_screen.dart';
 
@@ -87,19 +87,25 @@ class MessageBubble extends StatelessWidget {
   Color get _backgroundColor {
     switch (message.role) {
       case MessageRole.user:
-        return NavixTheme.primary.withOpacity(0.15);
+        return RastaTheme.gold.withOpacity(0.15);
       case MessageRole.assistant:
-        return NavixTheme.surface;
+        return RastaTheme.surface;
       case MessageRole.system:
-        return NavixTheme.surfaceVariant;
+        return RastaTheme.surfaceVariant;
       case MessageRole.error:
-        return NavixTheme.error.withOpacity(0.15);
+        return RastaTheme.red.withOpacity(0.15);
     }
   }
 
   Border? get _border {
+    // Add gold left border for AI messages (Rasta styling)
+    if (message.role == MessageRole.assistant) {
+      return Border(
+        left: BorderSide(color: RastaTheme.gold, width: 3),
+      );
+    }
     if (message.role == MessageRole.error) {
-      return Border.all(color: NavixTheme.error.withOpacity(0.5));
+      return Border.all(color: RastaTheme.red.withOpacity(0.5));
     }
     return null;
   }
@@ -110,10 +116,10 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            NavixTheme.iconWarning,
-            style: TextStyle(
+            RastaTheme.iconWarning,
+            style: const TextStyle(
               fontSize: 16,
-              color: NavixTheme.error,
+              color: RastaTheme.red,
             ),
           ),
           const SizedBox(width: 8),
@@ -121,7 +127,7 @@ class MessageBubble extends StatelessWidget {
             child: SelectableText(
               message.content,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: NavixTheme.error,
+                color: RastaTheme.red,
               ),
             ),
           ),
@@ -151,7 +157,7 @@ class MessageBubble extends StatelessWidget {
           SelectableText(
             message.content,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.textPrimary,
             ),
           ),
           const SizedBox(height: 12),
@@ -179,8 +185,8 @@ class MessageBubble extends StatelessWidget {
             icon: const Icon(Icons.account_circle, size: 18),
             label: const Text('Connect Google Account'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: NavixTheme.primary,
-              foregroundColor: Colors.white,
+              backgroundColor: RastaTheme.gold,
+              foregroundColor: RastaTheme.black,
             ),
           ),
         ],
@@ -190,7 +196,7 @@ class MessageBubble extends StatelessWidget {
     return SelectableText(
       message.content,
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-        color: NavixTheme.textPrimary,
+        color: RastaTheme.textPrimary,
       ),
     );
   }
@@ -241,13 +247,13 @@ class MessageBubble extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.insert_drive_file, size: 20, color: NavixTheme.primary),
+                Icon(Icons.insert_drive_file, size: 20, color: RastaTheme.gold),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Text(
                     fileName,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: NavixTheme.primary,
+                      color: RastaTheme.gold,
                       decoration: TextDecoration.underline,
                     ),
                   ),
@@ -268,7 +274,7 @@ class MessageBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: Icon(Icons.share, size: 18, color: NavixTheme.textTertiary),
+            child: Icon(Icons.share, size: 18, color: RastaTheme.textTertiary),
           ),
         ),
       ],
@@ -289,7 +295,7 @@ class MessageBubble extends StatelessWidget {
           parts.add(SelectableText(
             text.trim(),
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.textPrimary,
             ),
           ));
         }
@@ -310,7 +316,7 @@ class MessageBubble extends StatelessWidget {
         parts.add(SelectableText(
           text.trim(),
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: NavixTheme.textPrimary,
+            color: RastaTheme.textPrimary,
           ),
         ));
       }
@@ -398,13 +404,13 @@ class _RoleIndicator extends StatelessWidget {
   Color get _color {
     switch (role) {
       case MessageRole.user:
-        return NavixTheme.primary;
+        return RastaTheme.gold;
       case MessageRole.assistant:
-        return NavixTheme.accentCyan;
+        return RastaTheme.green;
       case MessageRole.system:
-        return NavixTheme.textTertiary;
+        return RastaTheme.textTertiary;
       case MessageRole.error:
-        return NavixTheme.error;
+        return RastaTheme.red;
     }
   }
 }
@@ -424,9 +430,9 @@ class _CodeBlock extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: NavixTheme.background,
+        color: RastaTheme.background,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: NavixTheme.surfaceVariant),
+        border: Border.all(color: RastaTheme.surfaceVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -437,13 +443,13 @@ class _CodeBlock extends StatelessWidget {
               child: Text(
                 language,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: NavixTheme.textTertiary,
+                  color: RastaTheme.textTertiary,
                 ),
               ),
             ),
           SelectableText(
             code,
-            style: NavixTheme.monoStyle,
+            style: RastaTheme.monoStyle,
           ),
         ],
       ),

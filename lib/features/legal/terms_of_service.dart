@@ -55,16 +55,16 @@ By using NavixMind, you acknowledge that you have read, understood, and agree to
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: NavixTheme.background,
+      backgroundColor: RastaTheme.background,
       appBar: AppBar(
-        backgroundColor: NavixTheme.background,
+        backgroundColor: RastaTheme.background,
         title: const Text('Terms of Service'),
         leading: IconButton(
           icon: Text(
-            NavixTheme.iconClose,
+            RastaTheme.iconClose,
             style: TextStyle(
               fontSize: 24,
-              color: NavixTheme.textPrimary,
+              color: RastaTheme.textPrimary,
             ),
           ),
           onPressed: () => Navigator.pop(context),
@@ -75,7 +75,7 @@ By using NavixMind, you acknowledge that you have read, understood, and agree to
         child: Text(
           tosText,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: NavixTheme.textPrimary,
+                color: RastaTheme.textPrimary,
                 height: 1.6,
               ),
         ),

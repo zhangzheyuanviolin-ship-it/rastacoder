@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme.dart';
+import '../../../../app/rasta_theme.dart';
 
 /// Smart Context Bar showing current conversation context
 ///
@@ -36,7 +36,7 @@ class SmartContextBar extends StatelessWidget {
       chips.add(_ContextChip(
         icon: '⚠',
         label: 'Offline',
-        color: NavixTheme.warning,
+        color: RastaTheme.gold,
         tooltip: 'No internet connection. Messages will be queued.',
       ));
     }
@@ -46,7 +46,7 @@ class SmartContextBar extends StatelessWidget {
       chips.add(_ContextChip(
         icon: _getModeIcon(activeMode!),
         label: activeMode!,
-        color: NavixTheme.accentCyan,
+        color: RastaTheme.info,
         onTap: onClearMode,
         showClose: true,
       ));
@@ -58,7 +58,7 @@ class SmartContextBar extends StatelessWidget {
       chips.add(_ContextChip(
         icon: '⊕',
         label: 'Connect Google',
-        color: NavixTheme.accentOrange,
+        color: RastaTheme.accentOrange,
         onTap: onConnectGoogle,
       ));
     }
@@ -66,9 +66,9 @@ class SmartContextBar extends StatelessWidget {
     // File count
     if (attachedFileCount > 0) {
       chips.add(_ContextChip(
-        icon: NavixTheme.iconFile,
+        icon: RastaTheme.iconFile,
         label: '$attachedFileCount file${attachedFileCount > 1 ? 's' : ''}',
-        color: NavixTheme.accentBlue,
+        color: RastaTheme.info,
       ));
     }
 
@@ -91,13 +91,13 @@ class SmartContextBar extends StatelessWidget {
   String _getModeIcon(String mode) {
     switch (mode.toLowerCase()) {
       case 'calendar':
-        return NavixTheme.iconCalendar;
+        return RastaTheme.iconCalendar;
       case 'email':
-        return NavixTheme.iconEmail;
+        return RastaTheme.iconEmail;
       case 'media':
-        return NavixTheme.iconVideo;
+        return RastaTheme.iconVideo;
       case 'ocr':
-        return NavixTheme.iconImage;
+        return RastaTheme.iconImage;
       default:
         return '●';
     }
@@ -154,7 +154,7 @@ class _ContextChip extends StatelessWidget {
           if (showClose) ...[
             const SizedBox(width: 6),
             Text(
-              NavixTheme.iconClose,
+              RastaTheme.iconClose,
               style: TextStyle(
                 fontSize: 10,
                 color: color.withOpacity(0.7),
@@ -262,7 +262,7 @@ class _ActionPill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: NavixTheme.surfaceVariant,
+            color: RastaTheme.surfaceVariant,
             borderRadius: BorderRadius.circular(18),
           ),
           child: Row(
@@ -278,7 +278,7 @@ class _ActionPill extends StatelessWidget {
               Text(
                 label,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: NavixTheme.textSecondary,
+                      color: RastaTheme.textSecondary,
                     ),
               ),
             ],
