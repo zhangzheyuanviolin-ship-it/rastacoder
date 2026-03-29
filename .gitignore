@@ -1,149 +1,137 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-*.lock
-migrate_working_dir/
+# ════════════════════════════════════════════════════════
+# Bakertreet Labs — Master .gitignore
+# Protects against accidental secret and artifact commits
+# ════════════════════════════════════════════════════════
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
+# ─── SECRETS (NEVER COMMIT) ──────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.pub
+id_rsa
+id_ed25519
+*.secret
+secrets.json
+secrets.yaml
+secrets.yml
+credentials.json
+service-account*.json
+*_credentials.json
+*_service_account.json
+.netrc
+.htpasswd
+kubeconfig
+*.kubeconfig
+.aws/credentials
+.aws/config
+gcloud/application_default_credentials.json
 
-# VS Code
-.vscode/
+# ─── API KEYS & TOKENS ───────────────────────────────────
+*.token
+*.apikey
+api_keys.*
+config/secrets.*
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
+# ─── DETECT-SECRETS BASELINE ─────────────────────────────
+# Keep this file — it tracks known false positives
+# .secrets.baseline  ← do NOT ignore this one
 
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Android
-/android/local.properties
-/android/.gradle/
-/android/captures/
-/android/gradlew
-/android/gradlew.bat
-/android/gradle/wrapper/
-*.apk
-*.aab
-*.jks
-*.keystore
-key.properties
-
-# iOS
-/ios/.symlinks/
-/ios/Pods/
-/ios/Flutter/Flutter.framework
-/ios/Flutter/Flutter.podspec
-/ios/Flutter/flutter_export_environment.sh
-/ios/Flutter/Generated.xcconfig
-/ios/Flutter/app.flx
-/ios/Flutter/app.zip
-/ios/Flutter/engine
-/ios/ServiceDefinitions.json
-/ios/Runner/GeneratedPluginRegistrant.*
-
-# macOS
-/macos/Flutter/GeneratedPluginRegistrant.swift
-/macos/Flutter/ephemeral/
-
-# Exceptions to above rules
-!/android/gradle/wrapper/gradle-wrapper.jar
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
+# ─── BUILD ARTIFACTS ─────────────────────────────────────
+dist/
+build/
+out/
+target/
+*.exe
+*.dll
 *.so
+*.dylib
+*.wasm
+bin/
+obj/
+
+# ─── Go ──────────────────────────────────────────────────
+vendor/
+*.test
+*.out
+go.work.sum
+
+# ─── Python ──────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 .Python
 env/
 venv/
 .venv/
 ENV/
-.pytest_cache/
-.coverage
-htmlcov/
 *.egg-info/
 dist/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
 
-# Environment and secrets
-.env
-.env.*
-*.env
-secrets/
-credentials/
+# ─── Node / JS ───────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+.yarn/
 
-# Firebase config with API keys
-google-services.json
-GoogleService-Info.plist
+# ─── Flutter / Dart ──────────────────────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+build/
+pubspec.lock   # commit this for apps, ignore for packages
 
-# Play Store assets
-store/
+# ─── Docker ──────────────────────────────────────────────
+.docker/
+docker-compose.override.yml
 
-# Release APKs (uploaded to GitHub Releases, not committed)
-*.apk
+# ─── IDE / OS ────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+*.sublime-workspace
 
-# Claude Code dev notes (contains local paths)
-CLAUDE.md
+# ─── LOGS & TEMP ─────────────────────────────────────────
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
 
-# Coverage
-coverage/
-*.lcov
-
-# Native binaries
-*.dylib
-*.so
-*.dll
-
-# Test outputs
-test-results/
-
-# Local build scripts (machine-specific paths)
-build_now.sh
-
-# MLC LLM native libraries (built via mlc_llm package, ~50MB)
-# Rebuild with: mlc_llm package --config mlc-package-config.json
-android/mlc4j/output/
-
-# Firebase deployment cache
-www/.firebase/
-www/.firebaserc
-
-# Python vendor dependencies (jedi typeshed, etc.)
-python/vendor/
-python/**/vendor/
-**/third_party/typeshed/
-**/*.pyi
-
-# Python cache
-python/**/*.cache/
-python/**/__pycache__/
-**/*.pyc
-
-# Build outputs
-nanobanana-output/
+# ─── AI / ML ─────────────────────────────────────────────
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.h5
+*.hdf5
+wandb/
+mlruns/
+*.safetensors
