@@ -1,0 +1,21 @@
+# CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global ownership
+* @BoozeLee
+
+# Flutter/Dart
+*.dart @BoozeLee
+pubspec.yaml @BoozeLee
+pubspec.lock @BoozeLee
+
+# Python agent
+python/ @BoozeLee
+
+# Android native
+android/ @BoozeLee
+
+# Security-critical files — explicit review required
+SECURITY.md @BoozeLee
+.github/workflows/ @BoozeLee
+android/app/src/main/kotlin/ @BoozeLee
