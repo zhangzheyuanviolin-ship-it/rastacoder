@@ -1,0 +1,55 @@
+# Bakertreet Labs — Pre-commit Security Hooks
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # ─── Secret Leak Prevention ───────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: 🔐 Gitleaks — detect secrets before commit
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        name: 🕵️ detect-secrets — entropy-based scan
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
+
+  # ─── Prevent Accidental .env Commits ─────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+        name: 🔑 Detect private keys
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: no-commit-to-branch
+        name: 🚫 Block direct commits to main
+        args: ['--branch', 'main', '--branch', 'master']
+      - id: check-case-conflict
+      - id: mixed-line-ending
+
+  # ─── Go Security ──────────────────────────────────────────────────────────
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+      - id: go-vet-repo-mod
+      - id: go-mod-tidy
+
+  # ─── General Code Quality ─────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types_or: [markdown, yaml, json]
+        exclude: '(CHANGELOG|\.min\.)'
