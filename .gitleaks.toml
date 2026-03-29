@@ -1,0 +1,36 @@
+# Bakertreet Labs — Gitleaks Configuration
+# Extends default ruleset with custom patterns
+title = "Bakertreet Labs Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nvidia-api-key"
+description = "NVIDIA NIM API Key"
+regex = '''nvapi-[A-Za-z0-9_\-]{36,}'''
+tags = ["nvidia", "nim", "api-key"]
+
+[[rules]]
+id = "generic-secret-assignment"
+description = "Generic secret in assignment"
+regex = '''(?i)(secret|password|passwd|api_key|apikey|token|auth|credential)['":\s=]+['""]?([A-Za-z0-9+/=_\-]{20,})['""]?'''
+tags = ["generic", "secret"]
+
+[allowlist]
+description = "Allowlist for known false positives"
+regexes = [
+  '''\.env\.example''',
+  '''\.env\.template''',
+  '''CHANGELOG''',
+  '''change-me''',
+  '''xxxx+''',
+  '''example\.com''',
+]
+paths = [
+  '''.env.example''',
+  '''.env.template''',
+  '''docs/''',
+  '''README''',
+  '''SECURITY''',
+]
