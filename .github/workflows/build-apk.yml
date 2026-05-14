@@ -51,14 +51,14 @@ jobs:
           flutter build apk --release --split-per-abi
 
       - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rastacoder-debug-apk
           path: build/app/outputs/flutter-apk/app-*-debug.apk
           retention-days: 14
 
       - name: Upload Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rastacoder-release-apk
           path: build/app/outputs/flutter-apk/app-*-release.apk
