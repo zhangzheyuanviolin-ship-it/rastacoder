@@ -1,4 +1,4 @@
-name: Build RastaCoder Chinese Live Tools v3
+name: Build RastaCoder ARM64 Tool Hardened v4
 
 on:
   push:
@@ -9,6 +9,9 @@ on:
       - 'scripts/apply_iteration_v2.py'
       - 'scripts/apply_iteration_v2_stage2.py'
       - 'scripts/apply_iteration_v2_stage3.py'
+      - 'scripts/apply_iteration_v4_tools.py'
+      - 'scripts/apply_iteration_v4_android.py'
+      - 'python/navixmind/**'
       - 'ITERATION_V2_TRIGGER.md'
   workflow_dispatch:
 
@@ -17,7 +20,7 @@ permissions:
 
 jobs:
   build-release:
-    name: Build, verify upgrade compatibility, and release APK
+    name: Build, verify ARM64 tools, and release APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -27,10 +30,10 @@ jobs:
       EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
       EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
       EXPECTED_PACKAGE: ai.navixmind
-      BUILD_NAME: 0.0.2
-      BUILD_NUMBER: '16'
-      OUTPUT_APK: RastaCoder-Qwen3-4B-cn-live-tools-v3-update.apk
-      RELEASE_TAG: qwen3-cn-live-tools-v3
+      BUILD_NAME: 0.0.3
+      BUILD_NUMBER: '17'
+      OUTPUT_APK: RastaCoder-Qwen3-4B-arm64-tools-v4-update.apk
+      RELEASE_TAG: qwen3-arm64-tools-v4
 
     steps:
       - name: Checkout iteration branch
@@ -55,9 +58,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Successful v2 builds persist their patched Dart source on this branch.
-          # Reset only application-layer files which the iteration scripts patch,
-          # while retaining branch-level TVM4J build fixes and CI infrastructure.
+          # Restore the application-layer files patched by the iteration scripts.
+          # Python v4 patches are applied from the current branch and persisted after
+          # a successful build; each v4 patch script is idempotent.
           git checkout "$BASELINE_COMMIT" -- lib android/app/build.gradle
           grep -F 'applicationId "ai.navixmind"' android/app/build.gradle
           echo 'Restored clean known-good application source from' "$BASELINE_COMMIT"
@@ -69,6 +72,8 @@ jobs:
           python3 scripts/apply_iteration_v2.py
           python3 scripts/apply_iteration_v2_stage2.py
           python3 scripts/apply_iteration_v2_stage3.py
+          python3 scripts/apply_iteration_v4_tools.py
+          python3 scripts/apply_iteration_v4_android.py
 
           python3 - <<'PY'
           from pathlib import Path
@@ -79,6 +84,21 @@ jobs:
           text = text.replace('    id "com.google.firebase.crashlytics"\n', '')
           p.write_text(text)
           PY
+
+          grep -F 'abiFilters "arm64-v8a"' android/app/build.gradle
+          grep -F 'RASTACODER_V4_TOOL_CONTRACT' python/navixmind/agent.py
+          grep -F '"create_docx": create_docx' python/navixmind/tools/__init__.py
+
+      - name: Validate Python tool sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/documents.py \
+            python/navixmind/tools/google_api.py \
+            python/navixmind/tools/compat.py
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -169,14 +189,14 @@ jobs:
           print('Configured stable project signing for upgrade build')
           PY
 
-      - name: Build signed in-place update APK
+      - name: Build signed ARM64 in-place update APK
         shell: bash
         run: |
           set -euo pipefail
           flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
           cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
 
-      - name: Verify package, version, signature and Qwen3 runtime
+      - name: Verify package, ARM64-only ABI, signature and Qwen3 runtime
         id: verify
         shell: bash
         run: |
@@ -205,7 +225,16 @@ jobs:
           apk = os.environ['OUTPUT_APK']
           with zipfile.ZipFile(apk) as z:
               names = z.namelist()
-              matches = [n for n in names if n.endswith('lib/arm64-v8a/libtvm4j_runtime_packed.so') or n == 'lib/arm64-v8a/libtvm4j_runtime_packed.so']
+              abis = sorted({
+                  n.split('/')[1]
+                  for n in names
+                  if n.startswith('lib/') and len(n.split('/')) >= 3
+              })
+              print('Native ABIs packaged:', abis)
+              assert abis == ['arm64-v8a'], f'APK is not ARM64-only: {abis}'
+              assert not any(n.startswith('lib/armeabi-v7a/') for n in names)
+              assert not any(n.startswith('lib/x86_64/') for n in names)
+              matches = [n for n in names if n == 'lib/arm64-v8a/libtvm4j_runtime_packed.so']
               assert matches, 'arm64 MLC runtime missing from built APK'
               data = z.read(matches[0])
               assert len(data) == 38786520, len(data)
@@ -227,9 +256,9 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib android/app/build.gradle
+          git add lib android/app/build.gradle python/navixmind
           if ! git diff --cached --quiet; then
-            git commit -m 'feat: finalize hidden reasoning and upgrade-compatible v3 source [skip ci]'
+            git commit -m 'feat: persist ARM64 tool-hardened v4 source [skip ci]'
             git push origin HEAD:iteration/qwen3-cn-ui-live-tools-google
           fi
 
@@ -243,21 +272,27 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<EOF
-          RastaCoder Qwen3 4B Chinese Live Tools v3 — in-place update APK.
+          RastaCoder Qwen3 4B ARM64 Tool Hardened v4 — in-place update APK.
 
           Upgrade compatibility verified during CI:
-          - package/applicationId: $EXPECTED_PACKAGE (same as v2)
-          - Android versionCode: $BUILD_NUMBER (higher than v2's 15)
+          - package/applicationId: $EXPECTED_PACKAGE
+          - Android versionCode: $BUILD_NUMBER
           - versionName: $BUILD_NAME
-          - signing certificate SHA-256: $CERT_SHA (same stable RastaCoder certificate as v2)
-          - installing this APK over v2 preserves the app data directory and previously downloaded local model files.
+          - signing certificate SHA-256: $CERT_SHA (same stable RastaCoder certificate)
+          - known-good Qwen3 4B MLC runtime byte-verified
+          - native APK ABI verified as arm64-v8a only; x86_64 and armeabi-v7a are absent
 
-          Changes:
-          - Chinese-first primary UI and settings localization.
-          - Assistant <think> reasoning is collapsed by default; live progress exposes only generic thinking status, never reasoning previews.
-          - Python and native tool calls/results are surfaced live during execution.
-          - Google OAuth Web Client ID is configurable in Settings; Gmail remains read-only and Calendar list/create continues through the existing token pipeline.
-          - Known-good Qwen3 4B MLC runtime preserved and byte-verified.
+          Tool/runtime changes:
+          - Preserves full Python, FFmpeg, ML Kit, Office, web and MLC capabilities while reducing ABI duplication.
+          - Aligns system prompts, tool schemas and actual document conversion behavior.
+          - Adds TXT/DOCX/PDF/HTML text-oriented conversion plus direct DOCX creation.
+          - Adds tolerant small-model parsing for common tool/function JSON variants, aliases and parameter layouts.
+          - Adds model-argument versus tool-runtime error classification and more useful live parameter summaries.
+          - Exposes app-side web, Office modification, Gmail and Calendar tools to the local Qwen agent when their network/auth requirements are met.
+          - Calendar delete now accepts event_id; Gmail remains read-only.
+          - FFmpeg audio extraction now honors mp3/aac/m4a/wav/flac/ogg/opus; smart-crop validates common aspect-ratio variants and preserves PNG output.
+          - Google ApiException 10 is diagnosed with the exact Android OAuth package/SHA-1 requirements. A matching Google Cloud Android OAuth client is still required externally.
+          - Existing Chinese UI, collapsed reasoning and live tool progress are preserved.
 
           Verification:
           - APK: $OUTPUT_APK
@@ -269,5 +304,5 @@ jobs:
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
           gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
             --target iteration/qwen3-cn-ui-live-tools-google \
-            --title 'RastaCoder Qwen3 4B Chinese Live Tools v3' \
+            --title 'RastaCoder Qwen3 4B ARM64 Tool Hardened v4' \
             --notes-file release-notes.md
