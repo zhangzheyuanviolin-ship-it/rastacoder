@@ -16,11 +16,14 @@ permissions:
 
 jobs:
   validate-v5:
-    name: Apply v5 and run static/compile gates
+    name: Apply v5 and run static/native compile gates
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       BASELINE_COMMIT: e165c311eb464722c5db0883426e82af69468330
+      SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+      EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
 
     steps:
       - name: Checkout iteration branch
@@ -119,15 +122,44 @@ jobs:
       - name: Flutter static analysis
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Kotlin compile gate
+      - name: Restore exact known-good MLC runtime for native compile gate
         shell: bash
         run: |
           set -euo pipefail
-          cd android
-          ./gradlew :app:compileDebugKotlin --stacktrace
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Flutter Android native compile gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This repository intentionally does not check in android/gradlew.
+          # Flutter's Android build command is the proven path which invokes
+          # assembleDebug and therefore compiles Kotlin, Java, Chaquopy and MLC.
+          flutter build apk --debug --build-name=0.0.4 --build-number=18
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          echo 'Native Android compile/package gate passed; temporary APK remains only in this CI workspace.'
 
       - name: Validation summary
         shell: bash
         run: |
-          echo 'RastaCoder v5 validation passed without building an APK.'
+          echo 'RastaCoder v5 pre-release validation passed.'
           echo '21 manually controlled skills cover all 23 original local tool functions.'
+          echo 'Thinking mode remains independently user controlled.'
+          echo 'Token budgets use precise integer settings.'
+          echo 'Benchmark save/copy and MLC stream telemetry passed source/static/native compile gates.'
+          echo 'No release asset was published by this validation workflow.'
