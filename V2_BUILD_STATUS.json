@@ -1,0 +1,12 @@
+{
+  "workflow": "Build RastaCoder Qwen3 Chinese UI v2",
+  "run_id": 32818171105,
+  "run_number": 2,
+  "status": "failure",
+  "head_sha": "825df8fa2bfd986184ef429c79492a527ae59ea4",
+  "apk": "RastaCoder-Qwen3-4B-zh-ui-v2.apk",
+  "apk_sha256": "",
+  "apk_size": "",
+  "release_tag": "qwen3-zh-ui-v2",
+  "run_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32818171105"
+}
