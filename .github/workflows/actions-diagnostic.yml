@@ -9,28 +9,28 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: write
+  pull-requests: write
 
 jobs:
   report:
     runs-on: ubuntu-latest
     steps:
-      - name: Report recent workflow runs into repository issue
+      - name: Prove the workflow started and report recent runs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          gh pr comment "$PR_NUMBER" --body "RastaCoder Actions diagnostic started. Run ID: $GITHUB_RUN_ID"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=30" \
             --jq '.workflow_runs[] | [.id,.name,.event,.status,(.conclusion // "null"),.head_sha,.html_url] | @tsv' \
             > recent-runs.tsv
           {
-            echo 'GitHub Actions diagnostic snapshot.'
+            echo 'Recent GitHub Actions runs:'
             echo
             echo '```'
             cat recent-runs.tsv
             echo '```'
-          } > issue-body.md
-          gh issue create \
-            --title "CI diagnostic $GITHUB_RUN_ID" \
-            --body-file issue-body.md
+          } > pr-comment.md
+          gh pr comment "$PR_NUMBER" --body-file pr-comment.md
