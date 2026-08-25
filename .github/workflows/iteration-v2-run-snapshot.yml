@@ -1,0 +1,36 @@
+name: Snapshot Iteration v2 Build
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-cn-ui-live-tools-google
+    paths:
+      - 'V2_SNAPSHOT_TRIGGER.md'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout iteration branch
+        uses: actions/checkout@v4
+        with:
+          ref: iteration/qwen3-cn-ui-live-tools-google
+          fetch-depth: 0
+      - name: Record latest v2 run snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run list --repo "$REPO" --workflow 'Build RastaCoder Chinese Live Tools v2' --branch 'iteration/qwen3-cn-ui-live-tools-google' --limit 1 --json databaseId,status,conclusion,url,headSha,number,attempt,event,createdAt,updatedAt > ITERATION_V2_RUN_SNAPSHOT.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ITERATION_V2_RUN_SNAPSHOT.json
+          git commit -m 'ci: snapshot iteration v2 workflow [skip ci]' || exit 0
+          git pull --rebase origin iteration/qwen3-cn-ui-live-tools-google
+          git push origin HEAD:iteration/qwen3-cn-ui-live-tools-google
