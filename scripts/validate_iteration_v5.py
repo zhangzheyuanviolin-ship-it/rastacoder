@@ -78,7 +78,12 @@ if 'FFMPEG PATTERNS:' in agent:
     errors.append('legacy all-tool FFmpeg pattern block still present in agent prompt')
 if 'tools_schema = OFFLINE_TOOLS_SCHEMA if is_offline else TOOLS_SCHEMA' in agent:
     errors.append('legacy full offline schema injection still present')
-if re.search(r'enabled_skills.{0,300}(thinking|/think|/no_think)', agent, flags=re.S|re.I):
+dependency_patterns = [
+    r'(?:thinking_mode|directive)\s*=.*enabled_skills',
+    r'if\s+[^\n]*enabled_skills[^\n]*(?:thinking|/think|/no_think)',
+    r'if\s+[^\n]*(?:thinking|/think|/no_think)[^\n]*enabled_skills',
+]
+if any(re.search(pattern, agent, flags=re.I) for pattern in dependency_patterns):
     errors.append('thinking mode appears to be inferred from enabled skills')
 
 exec_text=tools_text
