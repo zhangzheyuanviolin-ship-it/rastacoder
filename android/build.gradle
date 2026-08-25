@@ -37,15 +37,18 @@ subprojects {
             }
             // Force compileSdk for lStar compatibility
             compileSdk 35
-        }
-    }
 
-    // flutter_inappwebview_android 1.0.13 + Flutter 3.22 has a known
-    // release-only R8 failure on android.window.BackEvent. Keep app release
-    // compilation intact, but disable minification only for this library.
-    afterEvaluate {
-        if (project.name == "flutter_inappwebview_android") {
-            project.android.buildTypes.release.minifyEnabled = false
+            // flutter_inappwebview_android 1.0.13 + Flutter 3.22 has a known
+            // release-only R8 failure on android.window.BackEvent. Configure
+            // only that library's release build type, without using
+            // afterEvaluate (Flutter may have already evaluated subprojects).
+            if (project.name == "flutter_inappwebview_android") {
+                buildTypes.configureEach { buildType ->
+                    if (buildType.name == "release") {
+                        buildType.minifyEnabled = false
+                    }
+                }
+            }
         }
     }
 
