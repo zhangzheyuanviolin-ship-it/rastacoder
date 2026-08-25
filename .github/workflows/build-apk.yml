@@ -1,75 +1,20 @@
-name: Build RastaCoder APK
+name: Build RastaCoder APK (legacy source build)
 
+# The current post-rename main source tree is known to contain compile-time
+# inconsistencies introduced by the March 13 RastaCoder rename. Keep this
+# workflow manual-only so pushes do not burn Actions runs on a baseline that
+# has not yet been repaired against the known-good Qwen3 source snapshot.
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build APK
+  legacy-source-build:
+    name: Legacy source build (manual only)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.0'
-          channel: 'stable'
-          cache: true
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Dependencies
+      - name: Explain current status
         run: |
-          flutter pub get
-          cd android
-          # Generate gradle wrapper if missing
-          if [ ! -f gradlew ]; then
-            gradle wrapper
-          fi
-          chmod +x gradlew
-
-      - name: Build Debug APK
-        run: |
-          flutter build apk --debug --split-per-abi
-
-      - name: Build Release APK
-        run: |
-          flutter build apk --release --split-per-abi
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: rastacoder-debug-apk
-          path: build/app/outputs/flutter-apk/app-*-debug.apk
-          retention-days: 14
-
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: rastacoder-release-apk
-          path: build/app/outputs/flutter-apk/app-*-release.apk
-          retention-days: 14
-
-      - name: Create Release (if tagged)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            build/app/outputs/flutter-apk/app-*-release.apk
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Automatic source builds are intentionally disabled."
+          echo "Use the Qwen3 known-good baseline workflow for the validated APK baseline."
+          echo "Source reconstruction continues from baseline/qwen3-official-v0.5.0."
