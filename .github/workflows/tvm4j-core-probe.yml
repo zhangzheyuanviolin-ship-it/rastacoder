@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tvm4j-classes android/mlc4j/output
-          mapfile -t SOURCES < <(find tvm-src/jvm/core/src/main/java/org/apache/tvm -maxdepth 1 -name '*.java' -type f | sort)
+          mapfile -t SOURCES < <(find tvm-src/jvm/core/src/main/java/org/apache/tvm -name '*.java' -type f | sort)
           test "${#SOURCES[@]}" -gt 10
           javac -encoding UTF-8 -source 8 -target 8 -d tvm4j-classes "${SOURCES[@]}"
           jar --create --file android/mlc4j/output/tvm4j_core.jar -C tvm4j-classes .
@@ -51,6 +51,7 @@ jobs:
           for cls in Device Function Module TVMValue; do
             grep -qx "org/apache/tvm/${cls}.class" tvm4j-classes.txt
           done
+          grep -qx 'org/apache/tvm/rpc/RPC.class' tvm4j-classes.txt
           sha256sum android/mlc4j/output/tvm4j_core.jar | tee tvm4j-core.sha256
 
       - name: Compile current JSONFFIEngine against generated jar
@@ -64,12 +65,8 @@ jobs:
           javac -encoding UTF-8 -source 8 -target 8 \
             -cp "android/mlc4j/output/tvm4j_core.jar:$ANDROID_JAR" \
             -d probe-classes \
-            android/mlc4j/src/main/java/ai/mlc/mlcllm/JSONFFIEngine.java \
-            android/mlc4j/src/main/java/ai/mlc/mlcllm/KotlinFunction.java 2>/dev/null || \
-          javac -encoding UTF-8 -source 8 -target 8 \
-            -cp "android/mlc4j/output/tvm4j_core.jar:$ANDROID_JAR" \
-            -d probe-classes \
             android/mlc4j/src/main/java/ai/mlc/mlcllm/JSONFFIEngine.java
+          test -f probe-classes/ai/mlc/mlcllm/JSONFFIEngine.class
 
       - name: Record probe result
         shell: bash
