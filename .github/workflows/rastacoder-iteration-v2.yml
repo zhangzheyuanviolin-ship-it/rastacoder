@@ -80,8 +80,14 @@ jobs:
           p = candidates[-1]
           text = p.read_text()
           original = text
-          for old in ('compileSdkVersion 33', 'compileSdkVersion 34', 'compileSdk 33', 'compileSdk 34'):
-              text = text.replace(old, old.split()[0] + ('Version 35' if 'Version' in old else ' 35'))
+          replacements = {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
           if text == original:
               print('No compileSdk replacement needed; current file follows root SDK configuration')
           else:
@@ -128,9 +134,6 @@ jobs:
           keyPassword=RastaCoderDev2026!
           EOF
 
-          # Use the stable project certificate for this debug/test build too.
-          # Debug avoids the upstream R8/android.window.BackEvent toolchain failure
-          # while keeping an install/upgrade identity that is deterministic.
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/build.gradle')
