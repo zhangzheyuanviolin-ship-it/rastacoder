@@ -1,8 +1,10 @@
-name: Observe Qwen3 Baseline Run
+name: Observe Qwen3 Build Runs
 
 on:
   workflow_run:
-    workflows: ["Produce Qwen3 Known-Good Baseline APK"]
+    workflows:
+      - "Produce Qwen3 Known-Good Baseline APK"
+      - "Build RastaCoder Chinese Live Tools v2"
     types: [completed]
 
 permissions:
@@ -19,6 +21,7 @@ jobs:
 
       - name: Record completed workflow run
         env:
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
@@ -34,8 +37,13 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json, os
+          workflow = os.environ["WORKFLOW_NAME"]
+          if workflow == "Build RastaCoder Chinese Live Tools v2":
+              output = "ITERATION_V2_RUN_STATUS.json"
+          else:
+              output = "QWEN3_RUN_STATUS.json"
           data = {
-              "workflow": "Produce Qwen3 Known-Good Baseline APK",
+              "workflow": workflow,
               "run_id": int(os.environ["RUN_ID"]),
               "run_number": int(os.environ["RUN_NUMBER"]),
               "run_attempt": int(os.environ["RUN_ATTEMPT"]),
@@ -47,13 +55,14 @@ jobs:
               "created_at": os.environ["CREATED_AT"],
               "updated_at": os.environ["UPDATED_AT"],
           }
-          with open("QWEN3_RUN_STATUS.json", "w", encoding="utf-8") as f:
+          with open(output, "w", encoding="utf-8") as f:
               json.dump(data, f, ensure_ascii=False, indent=2)
               f.write("\n")
+          print(output)
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add QWEN3_RUN_STATUS.json
-          git commit -m "ci: record Qwen3 baseline workflow result" || exit 0
+          git add QWEN3_RUN_STATUS.json ITERATION_V2_RUN_STATUS.json 2>/dev/null || true
+          git commit -m "ci: record completed Qwen3 workflow result" || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
