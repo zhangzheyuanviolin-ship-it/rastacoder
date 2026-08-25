@@ -8,6 +8,7 @@ on:
       - '.github/workflows/rastacoder-iteration-v2.yml'
       - 'scripts/apply_iteration_v2.py'
       - 'scripts/apply_iteration_v2_stage2.py'
+      - 'scripts/apply_iteration_v2_stage3.py'
       - 'ITERATION_V2_TRIGGER.md'
   workflow_dispatch:
 
@@ -52,6 +53,7 @@ jobs:
           set -euo pipefail
           python3 scripts/apply_iteration_v2.py
           python3 scripts/apply_iteration_v2_stage2.py
+          python3 scripts/apply_iteration_v2_stage3.py
 
           python3 - <<'PY'
           from pathlib import Path
@@ -221,7 +223,7 @@ jobs:
 
           Changes:
           - Chinese-first primary UI and settings localization.
-          - Assistant <think> reasoning is separated from the final answer and collapsed by default.
+          - Assistant <think> reasoning is separated from the final answer and collapsed by default; live progress never exposes reasoning previews.
           - Python and native tool activity is surfaced during execution instead of waiting only for the final reply.
           - Google OAuth Web Client ID is configurable in Settings so this fork is no longer permanently tied to the upstream developer's hard-coded client. Gmail remains read-only; Calendar list/create uses the existing access-token pipeline.
           - Known-good Qwen3 4B MLC runtime preserved and byte-verified.
