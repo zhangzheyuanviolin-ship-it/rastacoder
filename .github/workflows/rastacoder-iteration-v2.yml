@@ -128,12 +128,31 @@ jobs:
           keyPassword=RastaCoderDev2026!
           EOF
 
-      - name: Build release APK from patched source
+          # Use the stable project certificate for this debug/test build too.
+          # Debug avoids the upstream R8/android.window.BackEvent toolchain failure
+          # while keeping an install/upgrade identity that is deterministic.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          old = '''        debug {
+              buildConfigField "boolean", "NAVIXMIND_DEBUG", "true"
+          }'''
+          new = '''        debug {
+              buildConfigField "boolean", "NAVIXMIND_DEBUG", "true"
+              signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug
+          }'''
+          if old not in text:
+              raise SystemExit('debug buildType anchor not found')
+          p.write_text(text.replace(old, new))
+          PY
+
+      - name: Build signed test APK from patched source
         shell: bash
         run: |
           set -euo pipefail
-          flutter build apk --release
-          cp build/app/outputs/flutter-apk/app-release.apk "$OUTPUT_APK"
+          flutter build apk --debug
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
 
       - name: Verify APK signature and known-good Qwen3 runtime
         id: verify
@@ -143,7 +162,7 @@ jobs:
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           if [ -z "$APKSIGNER" ]; then
-            yes | sdkmanager 'build-tools;35.0.0' >/dev/null
+            sdkmanager 'build-tools;35.0.0' >/dev/null
             APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
           fi
           "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
@@ -194,7 +213,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<EOF
-          RastaCoder Qwen3 4B iteration v2 for device testing.
+          RastaCoder Qwen3 4B iteration v2 test APK.
 
           Changes:
           - Chinese-first primary UI and settings localization.
@@ -202,6 +221,7 @@ jobs:
           - Python and native tool activity is surfaced during execution instead of waiting only for the final reply.
           - Google OAuth Web Client ID is configurable in Settings so this fork is no longer permanently tied to the upstream developer's hard-coded client. Gmail remains read-only; Calendar list/create uses the existing access-token pipeline.
           - Known-good Qwen3 4B MLC runtime preserved and byte-verified.
+          - This device-test artifact uses a debug Flutter build signed with the stable RastaCoder project certificate to avoid the upstream release R8/android.window.BackEvent build-tool incompatibility.
 
           Verification:
           - APK: $OUTPUT_APK
