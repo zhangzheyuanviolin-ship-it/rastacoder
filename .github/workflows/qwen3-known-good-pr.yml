@@ -1,0 +1,149 @@
+name: Qwen3 Known-Good Observable Build
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'CI_QWEN3_VISIBLE_RUN.md'
+      - '.github/workflows/qwen3-known-good-pr.yml'
+      - '.github/signing/rastacoder-dev-keystore.p12.b64'
+
+permissions:
+  contents: write
+
+jobs:
+  produce-baseline:
+    name: Verify, re-sign, and release known-good Qwen3 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+      SOURCE_COMMIT: e165c311eb464722c5db0883426e82af69468330
+      EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+      KEYSTORE_PASSWORD: RastaCoderDev2026!
+      KEY_ALIAS: rastacoder-dev
+      OUTPUT_APK: RastaCoder-Qwen3-4B-known-good-v1.apk
+      RELEASE_TAG: qwen3-known-good-observable-v1
+
+    steps:
+      - name: Checkout repository metadata
+        uses: actions/checkout@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Download exact upstream APK and verify provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_URL"
+          echo "$SOURCE_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+
+      - name: Locate Android signing tools
+        id: tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDK_ROOT"
+          BUILD_TOOLS_DIR="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          if [ -z "$BUILD_TOOLS_DIR" ] || [ ! -x "$BUILD_TOOLS_DIR/apksigner" ] || [ ! -x "$BUILD_TOOLS_DIR/zipalign" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            BUILD_TOOLS_DIR="$SDK_ROOT/build-tools/35.0.0"
+          fi
+          test -x "$BUILD_TOOLS_DIR/apksigner"
+          test -x "$BUILD_TOOLS_DIR/zipalign"
+          echo "apksigner=$BUILD_TOOLS_DIR/apksigner" >> "$GITHUB_OUTPUT"
+          echo "zipalign=$BUILD_TOOLS_DIR/zipalign" >> "$GITHUB_OUTPUT"
+
+      - name: Restore stable RastaCoder development signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .github/signing/rastacoder-dev-keystore.p12.b64 > rastacoder-dev.p12
+          echo '7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169  rastacoder-dev.p12' | sha256sum -c -
+
+      - name: Re-sign exact known-good executable
+        shell: bash
+        env:
+          APKSIGNER: ${{ steps.tools.outputs.apksigner }}
+          ZIPALIGN: ${{ steps.tools.outputs.zipalign }}
+        run: |
+          set -euo pipefail
+          cp upstream-known-good.apk unsigned-baseline.apk
+          zip -q -d unsigned-baseline.apk 'META-INF/*.RSA' 'META-INF/*.SF' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF' || true
+          "$ZIPALIGN" -f -p 4 unsigned-baseline.apk aligned-baseline.apk
+          "$APKSIGNER" sign \
+            --ks rastacoder-dev.p12 \
+            --ks-type PKCS12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --key-pass "pass:$KEYSTORE_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$OUTPUT_APK" \
+            aligned-baseline.apk
+
+      - name: Verify signature, arm64 runtime, and Qwen3 registration
+        id: verify
+        shell: bash
+        env:
+          APKSIGNER: ${{ steps.tools.outputs.apksigner }}
+        run: |
+          set -euo pipefail
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner-verify.txt
+          CERT_SHA="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}' apksigner-verify.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+
+          unzip -l "$OUTPUT_APK" 'lib/arm64-v8a/libtvm4j_runtime_packed.so' | grep -F 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+          CONFIG_PATH="$(unzip -Z1 "$OUTPUT_APK" | grep 'mlc-app-config.json$' | head -n 1)"
+          test -n "$CONFIG_PATH"
+          unzip -p "$OUTPUT_APK" "$CONFIG_PATH" > mlc-app-config.json
+          grep -F 'Qwen3-4B-q4f16_0-MLC' mlc-app-config.json
+          grep -F 'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc' mlc-app-config.json
+
+          unzip -p "$OUTPUT_APK" lib/arm64-v8a/libtvm4j_runtime_packed.so > libtvm4j_runtime_packed.so
+          echo '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48  libtvm4j_runtime_packed.so' | sha256sum -c -
+          test "$(stat -c '%s' libtvm4j_runtime_packed.so)" -eq 38786520
+
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Publish verified APK to this repository Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify.outputs.cert_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          Verified binary baseline for local Qwen3 4B tool calling.
+
+          - Upstream exact source commit: $SOURCE_COMMIT
+          - Preserved source branch: baseline/qwen3-official-v0.5.0
+          - Upstream APK SHA-256: $SOURCE_SHA256
+          - Upstream APK size: 593655513 bytes
+          - Output APK: $OUTPUT_APK
+          - Output APK SHA-256: $OUT_SHA
+          - Output APK size: $OUT_SIZE bytes
+          - Project development signing certificate SHA-256: $CERT_SHA
+          - ABI verified: arm64-v8a
+          - MLC runtime SHA-256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+          - Qwen3 model_id: Qwen3-4B-q4f16_0-MLC
+          - Qwen3 model_lib: qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc
+          - bundle_weight: false
+          EOF
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target "$HEAD_SHA" \
+            --title 'RastaCoder Qwen3 4B Verified Baseline v1' \
+            --notes-file release-notes.md
