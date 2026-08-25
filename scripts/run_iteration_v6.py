@@ -2,10 +2,10 @@
 """Execute apply_iteration_v6.py after repairing embedded regex delimiters.
 
 The initial v6 patcher embeds the generated compat.py in a raw triple-single-
-quoted string. A handful of regex literals inside that generated module also
-used triple-single quotes, prematurely terminating the outer literal. This
-runner rewrites only that bounded regex-helper section to triple-double quoted
-regex literals, compiles the repaired patcher, then executes it.
+quoted string. Five regex literals inside that generated module also used
+triple-single quotes, prematurely terminating the outer literal. This runner
+rewrites only that bounded regex-helper section to triple-double quoted regex
+literals, compiles the repaired patcher, then executes it.
 
 Release/validation workflows call this runner so the transformation is
 reproducible from the committed v6 branch.
@@ -18,10 +18,12 @@ start = source.index('def _extract_file_tokens(text: str)')
 end = source.index('def _extension(path: Any)', start)
 segment = source[start:end]
 count_open = segment.count("r'''")
-count_close = segment.count("'''")
-if count_open != 5 or count_close != 5:
+# Each raw opening r''' also contains the substring ''', so five complete raw
+# literals contain five opening substrings plus five closing substrings.
+count_triple = segment.count("'''")
+if count_open != 5 or count_triple != 10:
     raise SystemExit(
-        f'Unexpected embedded regex delimiter count: raw-open={count_open}, close={count_close}'
+        f'Unexpected embedded regex delimiter count: raw-open={count_open}, triple={count_triple}'
     )
 segment = segment.replace("r'''", 'r"""').replace("'''", '"""')
 repaired = source[:start] + segment + source[end:]
