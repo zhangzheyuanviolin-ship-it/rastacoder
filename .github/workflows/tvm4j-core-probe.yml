@@ -1,0 +1,92 @@
+name: Probe TVM4J Core Binding
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-cn-ui-live-tools-google
+    paths:
+      - 'TVM4J_PROBE_TRIGGER.md'
+      - '.github/workflows/tvm4j-core-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TVM_REPO: https://github.com/mlc-ai/relax.git
+      TVM_COMMIT: 837cb9de1127b48ce48e4cefe09e83215b9d4ba7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: iteration/qwen3-cn-ui-live-tools-google
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Fetch pinned TVM Java core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout "$TVM_REPO" tvm-src
+          git -C tvm-src fetch --depth=1 origin "$TVM_COMMIT"
+          git -C tvm-src checkout --detach FETCH_HEAD
+          test "$(git -C tvm-src rev-parse HEAD)" = "$TVM_COMMIT"
+
+      - name: Build deterministic TVM4J core jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tvm4j-classes android/mlc4j/output
+          mapfile -t SOURCES < <(find tvm-src/jvm/core/src/main/java/org/apache/tvm -maxdepth 1 -name '*.java' -type f | sort)
+          test "${#SOURCES[@]}" -gt 10
+          javac -encoding UTF-8 -source 8 -target 8 -d tvm4j-classes "${SOURCES[@]}"
+          jar --create --file android/mlc4j/output/tvm4j_core.jar -C tvm4j-classes .
+          jar tf android/mlc4j/output/tvm4j_core.jar | sort | tee tvm4j-classes.txt
+          for cls in Device Function Module TVMValue; do
+            grep -qx "org/apache/tvm/${cls}.class" tvm4j-classes.txt
+          done
+          sha256sum android/mlc4j/output/tvm4j_core.jar | tee tvm4j-core.sha256
+
+      - name: Compile current JSONFFIEngine against generated jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          ANDROID_JAR="$(find "$SDK_ROOT/platforms" -name android.jar -type f | sort -V | tail -n 1)"
+          test -f "$ANDROID_JAR"
+          mkdir -p probe-classes
+          javac -encoding UTF-8 -source 8 -target 8 \
+            -cp "android/mlc4j/output/tvm4j_core.jar:$ANDROID_JAR" \
+            -d probe-classes \
+            android/mlc4j/src/main/java/ai/mlc/mlcllm/JSONFFIEngine.java \
+            android/mlc4j/src/main/java/ai/mlc/mlcllm/KotlinFunction.java 2>/dev/null || \
+          javac -encoding UTF-8 -source 8 -target 8 \
+            -cp "android/mlc4j/output/tvm4j_core.jar:$ANDROID_JAR" \
+            -d probe-classes \
+            android/mlc4j/src/main/java/ai/mlc/mlcllm/JSONFFIEngine.java
+
+      - name: Record probe result
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR_SHA="$(sha256sum android/mlc4j/output/tvm4j_core.jar | awk '{print $1}')"
+          cat > TVM4J_PROBE_RESULT.json <<EOF
+          {
+            "status": "success",
+            "tvm_commit": "$TVM_COMMIT",
+            "jar_sha256": "$JAR_SHA",
+            "jsonffi_blob": "ad95dd2a02f44922dc2280bdb7596ce1f4946ed0"
+          }
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add TVM4J_PROBE_RESULT.json
+          git commit -m 'ci: record TVM4J core probe [skip ci]' || exit 0
+          git pull --rebase origin iteration/qwen3-cn-ui-live-tools-google
+          git push origin HEAD:iteration/qwen3-cn-ui-live-tools-google
