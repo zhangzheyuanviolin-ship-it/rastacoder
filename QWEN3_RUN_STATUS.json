@@ -1,13 +1,13 @@
 {
   "workflow": "Produce Qwen3 Known-Good Baseline APK",
-  "run_id": 32807342799,
-  "run_number": 4,
+  "run_id": 32807543007,
+  "run_number": 5,
   "run_attempt": 1,
   "status": "completed",
   "conclusion": "failure",
-  "html_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32807342799",
-  "head_sha": "b2a495dce84c4f6183461ed74216197e7979bc07",
+  "html_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32807543007",
+  "head_sha": "8b59d280bcac176735c6ba6d236bf2a2ea7a839b",
   "event": "push",
-  "created_at": "2026-08-25T04:01:09Z",
-  "updated_at": "2026-08-25T04:01:51Z"
+  "created_at": "2026-08-25T04:04:17Z",
+  "updated_at": "2026-08-25T04:04:57Z"
 }
