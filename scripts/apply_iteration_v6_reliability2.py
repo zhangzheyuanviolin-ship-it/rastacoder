@@ -19,32 +19,35 @@ def _creation_content_from_freeform(text: str, files: List[str]) -> str:
     if not value:
         return ""
     patterns = (
-        r'''(?:content|text|body)\s*[:=]\s*["']?([\s\S]+?)["']?$''',
-        r'''(?:saying|containing|with\s+content)\s+["']?([\s\S]+?)["']?$''',
-        r'''\bwrite\s+["']?([\s\S]+?)["']?\s+(?:to|into)\s+["']?[^"']+\.[A-Za-z0-9]{1,6}["']?\s*$''',
-        r'''(?:内容为|内容是|写入内容|正文为|正文是)\s*[：:]?\s*[“”"']?([\s\S]+?)[“”"']?\s*$''',
+        r"""(?:content|text|body)\s*[:=]\s*[\"']?([\s\S]+?)[\"']?$""",
+        r"""(?:saying|containing|with\s+content)\s+[\"']?([\s\S]+?)[\"']?$""",
+        r"""\bwrite\s+[\"']?([\s\S]+?)[\"']?\s+(?:to|into)\s+[\"']?[^\"']+\.[A-Za-z0-9]{1,6}[\"']?\s*$""",
+        r"""(?:内容为|内容是|写入内容|正文为|正文是)\s*[：:]?\s*[“”\"']?([\s\S]+?)[“”\"']?\s*$""",
     )
     for pattern in patterns:
         m = re.search(pattern, value, flags=re.IGNORECASE)
         if m and m.group(1).strip():
-            return m.group(1).strip().strip('"\'“”')
+            return m.group(1).strip().strip("\"'“”")
 
     # Conservative fallback: remove an obvious leading creation verb and an
     # obvious trailing destination filename. This is used only for creation
     # tools, so it cannot overwrite/read an input file.
     cleaned = re.sub(
-        r'''^(?:please\s+)?(?:write|create|save|make)\s+(?:a\s+)?(?:txt|text|word|docx|pdf)?\s*(?:file|document)?\s*[:：-]?\s*''',
+        r"""^(?:please\s+)?(?:write|create|save|make)\s+(?:a\s+)?(?:txt|text|word|docx|pdf)?\s*(?:file|document)?\s*[:：-]?\s*""",
         '', value, flags=re.IGNORECASE,
     ).strip()
     cleaned = re.sub(
-        r'''\s+(?:to|into|as)\s+["']?[^"']+\.[A-Za-z0-9]{1,6}["']?\s*$''',
+        r"""\s+(?:to|into|as)\s+[\"']?[^\"']+\.[A-Za-z0-9]{1,6}[\"']?\s*$""",
         '', cleaned, flags=re.IGNORECASE,
     ).strip()
-    cleaned = re.sub(r'''^(?:写入|创建|新建|保存)(?:一个|一份)?(?:TXT|txt|文本|Word|word|DOCX|docx|PDF|pdf)?(?:文件|文档)?\s*[：:]?\s*''', '', cleaned).strip()
+    cleaned = re.sub(
+        r"""^(?:写入|创建|新建|保存)(?:一个|一份)?(?:TXT|txt|文本|Word|word|DOCX|docx|PDF|pdf)?(?:文件|文档)?\s*[：:]?\s*""",
+        '', cleaned,
+    ).strip()
     for file_name in files:
         if cleaned == file_name:
             return ""
-    return cleaned.strip('"\'“”')
+    return cleaned.strip("\"'“”")
 
 '''
 if helper.strip() not in text:
