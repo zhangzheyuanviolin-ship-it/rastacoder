@@ -1,3 +1,3 @@
 Monitor the latest RastaCoder Chinese Live Tools v2 build and persist its final GitHub Actions status.
 
-Trigger after signing regex fix: c1b91caa6ea7170afa866b404eed4cf56d56f9a8
+Trigger after matching TVM4J Java binding restoration: 31218eea7937b9d9a062c8a4493312cfde47b2bb
