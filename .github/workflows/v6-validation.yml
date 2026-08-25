@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/v6-validation.yml'
       - 'scripts/apply_iteration_v6.py'
+      - 'scripts/run_iteration_v6.py'
       - 'scripts/apply_iteration_v6_ui.py'
       - 'scripts/validate_iteration_v6.py'
       - 'docs/HANDOFF_QWEN3_TOOL_RELIABILITY_V6.md'
@@ -85,7 +86,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/apply_iteration_v6.py
+          python3 -m py_compile scripts/run_iteration_v6.py scripts/apply_iteration_v6_ui.py scripts/validate_iteration_v6.py
+          python3 scripts/run_iteration_v6.py
           python3 scripts/apply_iteration_v6_ui.py
 
       - name: Run full 21-Skill 23-tool regression matrix
