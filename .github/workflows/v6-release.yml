@@ -2,6 +2,11 @@ name: Release RastaCoder Tool Reliability History v6
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - iteration/qwen3-tool-reliability-v6
+    paths:
+      - 'docs/RELEASE_V6_TRIGGER.md'
 
 permissions:
   contents: write
@@ -62,27 +67,38 @@ jobs:
           python3 -m py_compile \
             scripts/run_iteration_v6.py \
             scripts/apply_iteration_v6_reliability2.py \
+            scripts/apply_iteration_v6_reliability3.py \
             scripts/apply_iteration_v6_ui.py \
+            scripts/apply_iteration_v6_observability2.py \
             scripts/apply_iteration_v6_history.py \
             scripts/apply_iteration_v6_history2.py \
+            scripts/apply_iteration_v6_history3.py \
             scripts/apply_iteration_v6_native.py \
             scripts/validate_iteration_v6.py \
-            scripts/validate_iteration_v6_extended.py
+            scripts/validate_iteration_v6_extended.py \
+            scripts/validate_iteration_v6_deep.py
           python3 scripts/run_iteration_v6.py
           python3 scripts/apply_iteration_v6_reliability2.py
+          python3 scripts/apply_iteration_v6_reliability3.py
           python3 scripts/apply_iteration_v6_ui.py
+          python3 scripts/apply_iteration_v6_observability2.py
           python3 scripts/apply_iteration_v6_history.py
           python3 scripts/apply_iteration_v6_history2.py
+          python3 scripts/apply_iteration_v6_history3.py
           python3 scripts/apply_iteration_v6_native.py
 
-      - name: Run systemic v6 pre-build gates
+      - name: Run complete systemic v6 pre-build gates
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/validate_iteration_v6.py
           python3 scripts/validate_iteration_v6_extended.py
+          python3 scripts/validate_iteration_v6_deep.py
           grep -F 'didUpdateWidget(covariant ChatScreen oldWidget)' lib/features/chat/presentation/chat_screen.dart
           grep -F 'oldWidget.initializing && !widget.initializing && !_conversationLoaded' lib/features/chat/presentation/chat_screen.dart
+          grep -F 'persistAttachedFilesForConversation(originalAttachments)' lib/features/chat/presentation/chat_screen.dart
+          grep -F '本轮已向 Qwen3 发送 /think' lib/features/chat/presentation/widgets/message_bubble.dart
+          grep -F '本轮已向 Qwen3 发送 /no_think' lib/features/chat/presentation/widgets/message_bubble.dart
           python3 -m py_compile \
             python/navixmind/agent.py \
             python/navixmind/session.py \
@@ -223,7 +239,11 @@ jobs:
 
           python3 scripts/validate_iteration_v6.py
           python3 scripts/validate_iteration_v6_extended.py
+          python3 scripts/validate_iteration_v6_deep.py
           grep -F 'oldWidget.initializing && !widget.initializing && !_conversationLoaded' lib/features/chat/presentation/chat_screen.dart
+          grep -F 'persistAttachedFilesForConversation(originalAttachments)' lib/features/chat/presentation/chat_screen.dart
+          grep -F '本轮已向 Qwen3 发送 /think' lib/features/chat/presentation/widgets/message_bubble.dart
+          grep -F '本轮已向 Qwen3 发送 /no_think' lib/features/chat/presentation/widgets/message_bubble.dart
 
           OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
           OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
@@ -241,7 +261,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib python/navixmind android/app/build.gradle android/app/src/main/kotlin/ai/navixmind/services/MLCInferenceChannel.kt
           if ! git diff --cached --quiet; then
-            git commit -m 'feat: persist tool reliability history v6 source [skip ci]'
+            git commit -m 'feat: persist complete tool reliability history v6 source [skip ci]'
             git push origin HEAD:iteration/qwen3-tool-reliability-v6
           fi
 
@@ -267,20 +287,22 @@ jobs:
 
           v6 reliability work:
           - Keeps all 21 manually managed Skills and all 23 canonical tools with zero capability loss.
-          - UI Skill IDs are no longer exposed as callable names to the 4B model; the model receives only enabled canonical function names and exact signatures.
-          - Adds systemic alias/argument/path/output repair for small-model calls, including generic-param recovery for TXT/DOCX/PDF creation.
-          - Directly regression-tests the reported TXT write, content-only DOCX creation and audio MP3-to-WAV failures.
+          - Each single-Skill prompt exposes only enabled canonical function names/signatures; UI Skill IDs are never callable names shown to the local model.
+          - Restores exact required parameter contracts and adds systemic alias/free-form/path/output repair for small-model calls.
+          - Directly regression-tests TXT write, content-only DOCX/PDF creation, ZIP output separation, document conversion and MP3-to-WAV failures.
           - Routes audio output conversion through the reliable native extract_audio path with explicit target format.
-          - Prevents recognizable malformed tool-call wrappers from leaking into final prose and performs bounded correction retries.
+          - Prevents recognizable malformed or unterminated tool-call wrappers from leaking into final prose and performs bounded correction retries.
+          - Preserves the model's true raw tool name/arguments/source separately from parser and compatibility repairs in redacted copy/share diagnostics.
           - Fixes MLC structured tool-call stream accumulation by call index and merges argument fragments.
-          - Adds redacted per-query tool diagnostics with copy/share controls.
-          - Preserves local Qwen reasoning separately and exposes an accessible collapsed Thinking panel plus explicit manual Thinking-mode state.
-          - Wires the existing Isar Conversation/Message data layer into the chat UI: persistent history, new conversation, switch, rename, delete, auto-title, cold-start restoration, and Python SessionState resync.
+          - Preserves local Qwen reasoning separately and exposes an accessible collapsed Thinking panel; the UI explicitly reports whether /think, /no_think, or model-default was sent and whether displayable reasoning returned.
+          - Wires the existing Isar Conversation/Message data layer into the chat UI: persistent history, new conversation, switch, rename, delete, auto-title, cold-start restoration, durable attachment/output paths, and Python SessionState resync.
           - Retains v5 model parameters and benchmark pages.
 
           Release gates:
-          - both v6 21-Skill/23-tool systemic validators passed before build and again against the release source;
+          - three v6 systemic/deep validators passed before build and again against release source;
+          - all 21 Skills and all 23 canonical tool contracts are covered;
           - every canonical tool has a representative normalized call satisfying its actual required top-level schema;
+          - single-Skill prompt isolation and parser no-leak behavior are tested;
           - Python compile and Flutter Analyze passed;
           - Android/Kotlin/Java/Chaquopy/MLC build passed;
           - APK package/version/signature/ABI/runtime were verified from the final APK.
