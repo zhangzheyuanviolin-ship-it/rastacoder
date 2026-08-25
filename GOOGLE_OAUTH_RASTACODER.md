@@ -32,3 +32,7 @@ The v2 source removes the original developer's hard-coded Web OAuth client ID. T
 - Calendar: list events and create events.
 
 The access token obtained by Flutter is injected into the Python agent context for every query, so once Google Sign-In succeeds these tools can be called by the local agent without an additional login layer.
+
+## Android release-build compatibility
+
+The pinned Flutter 3.22 / `flutter_inappwebview_android` 1.0.13 combination has a known release-only R8 failure involving `android.window.BackEvent`. RastaCoder v2 disables minification only for that WebView library module while retaining the normal release build for the application. This workaround does not modify the MLC runtime, Qwen3 model registration, or agent/tool execution path.
