@@ -52,11 +52,10 @@ jobs:
           git diff --check
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-          cache: maven
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -213,8 +212,6 @@ jobs:
           print('Exact known-good MLC runtime and Qwen3 registration preserved')
           PY
 
-          # Flutter AOT text is binary, so source assertions above are the
-          # deterministic verification for Chinese copy/reasoning behavior.
           OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
           OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
           echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
