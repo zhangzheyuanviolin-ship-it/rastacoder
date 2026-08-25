@@ -10,6 +10,7 @@ import 'core/database/database.dart';
 import 'core/services/analytics_service.dart';
 import 'core/services/crash_detector.dart';
 import 'core/services/connectivity_service.dart';
+import 'core/services/conversation_manager.dart';
 import 'core/services/cost_manager.dart';
 import 'core/services/native_tool_executor.dart';
 import 'core/services/auth_service.dart';
@@ -87,6 +88,9 @@ void main() async {
 
   // Initialize cost manager for API usage tracking
   CostManager.instance.initialize(isar);
+
+  // Wire the existing Isar Conversation/Message store into the chat UI.
+  ConversationManager.instance.initialize(isar);
 
   // Initialize native tool executor (FFmpeg, OCR, etc.)
   NativeToolExecutor.instance.initialize();

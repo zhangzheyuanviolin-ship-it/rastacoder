@@ -73,7 +73,15 @@ class MessageBubble extends StatelessWidget {
     final visibleContent = message.role == MessageRole.assistant
         ? _splitThinking(message.content)[1]
         : message.content;
-    return '$roleLabel：$visibleContent';
+    final hasThinking = (message.thinking?.trim().isNotEmpty ?? false) ||
+        (message.role == MessageRole.assistant && _splitThinking(message.content)[0].isNotEmpty);
+    final hasDiagnostics = message.diagnostics?.trim().isNotEmpty ?? false;
+    final extras = <String>[
+      if (hasThinking) '包含可展开的思考过程',
+      if (message.thinkingMode != null && !hasThinking) '包含思考模式状态',
+      if (hasDiagnostics) '包含可展开并复制或分享的工具调用诊断',
+    ];
+    return '$roleLabel：$visibleContent${extras.isEmpty ? '' : '。${extras.join('；')}'}';
   }
 
   MainAxisAlignment get _alignment {
@@ -113,25 +121,31 @@ class MessageBubble extends StatelessWidget {
     }
 
     if (message.role == MessageRole.error) {
-      return Row(
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            NavixTheme.iconWarning,
-            style: TextStyle(
-              fontSize: 16,
-              color: NavixTheme.error,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SelectableText(
-              message.content,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: NavixTheme.error,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                NavixTheme.iconWarning,
+                style: TextStyle(fontSize: 16, color: NavixTheme.error),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SelectableText(
+                  message.content,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: NavixTheme.error,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (message.diagnostics?.trim().isNotEmpty ?? false) ...[
+            const SizedBox(height: 8),
+            _buildDiagnosticsPanel(context, message.diagnostics!.trim()),
+          ],
         ],
       );
     }
@@ -226,7 +240,8 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildAssistantContent(BuildContext context) {
     final parts = _splitThinking(message.content);
-    final thinking = parts[0];
+    final explicitThinking = message.thinking?.trim() ?? '';
+    final thinking = explicitThinking.isNotEmpty ? explicitThinking : parts[0];
     final answer = parts[1];
     final widgets = <Widget>[];
 
@@ -239,11 +254,15 @@ class MessageBubble extends StatelessWidget {
             childrenPadding: const EdgeInsets.only(bottom: 10),
             initiallyExpanded: false,
             maintainState: true,
-            title: Text(
-              '思考过程（点击展开）',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: NavixTheme.textSecondary,
-                  ),
+            title: Semantics(
+              button: true,
+              label: '思考过程，当前已折叠，双击展开',
+              child: Text(
+                '思考过程（点击展开）',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: NavixTheme.textSecondary,
+                    ),
+              ),
             ),
             children: [
               Align(
@@ -256,6 +275,39 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      );
+    }
+
+    if (message.thinkingMode != null) {
+      final modeLabel = switch (message.thinkingMode) {
+        'enabled' => '手动开启',
+        'disabled' => '手动关闭',
+        _ => '模型默认',
+      };
+      final detail = switch (message.thinkingMode) {
+        'enabled' => thinking.isNotEmpty
+            ? '本轮已向 Qwen3 发送 /think，并收到可展开的思考内容。'
+            : '本轮已向 Qwen3 发送 /think，但模型没有返回可显示的 <think> 内容。',
+        'disabled' => thinking.isNotEmpty
+            ? '本轮已向 Qwen3 发送 /no_think，但模型仍返回了可显示的思考内容。'
+            : '本轮已向 Qwen3 发送 /no_think，且没有返回可显示的思考内容。',
+        _ => thinking.isNotEmpty
+            ? '本轮未强制附加 /think 或 /no_think，模型返回了可展开的思考内容。'
+            : '本轮未强制附加 /think 或 /no_think，模型没有返回可显示的思考内容。',
+      };
+      widgets.add(
+        Semantics(
+          label: '思考模式：$modeLabel。$detail',
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '思考模式：$modeLabel；$detail',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: NavixTheme.textTertiary,
+                  ),
+            ),
           ),
         ),
       );
@@ -298,9 +350,75 @@ class MessageBubble extends StatelessWidget {
       ));
     }
 
+    if (message.diagnostics?.trim().isNotEmpty ?? false) {
+      widgets.add(const SizedBox(height: 8));
+      widgets.add(_buildDiagnosticsPanel(context, message.diagnostics!.trim()));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: widgets,
+    );
+  }
+
+  Widget _buildDiagnosticsPanel(BuildContext context, String diagnostics) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        initiallyExpanded: false,
+        maintainState: true,
+        title: Semantics(
+          button: true,
+          label: '工具调用诊断，当前已折叠，双击展开',
+          child: Text(
+            '工具调用诊断（点击展开）',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: NavixTheme.textSecondary,
+                ),
+          ),
+        ),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              diagnostics,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: NavixTheme.textTertiary,
+                    fontFamily: 'monospace',
+                  ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: diagnostics));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('工具调用诊断已复制到剪贴板')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text('复制诊断日志'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => Share.share(
+                  diagnostics,
+                  subject: 'RastaCoder 工具调用诊断',
+                ),
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('分享诊断日志'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -495,15 +613,37 @@ class MessageBubble extends StatelessWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.copy),
-              title: const Text('复制'),
+              title: const Text('复制回复'),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: message.content));
                 Navigator.pop(modalContext);
                 scaffoldMessenger.showSnackBar(
-                  const SnackBar(content: Text('已复制到剪贴板')),
+                  const SnackBar(content: Text('回复已复制到剪贴板')),
                 );
               },
             ),
+            if (message.diagnostics?.trim().isNotEmpty ?? false)
+              ListTile(
+                leading: const Icon(Icons.bug_report),
+                title: const Text('复制工具调用诊断'),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: message.diagnostics!.trim()));
+                  Navigator.pop(modalContext);
+                  scaffoldMessenger.showSnackBar(
+                    const SnackBar(content: Text('工具调用诊断已复制到剪贴板')),
+                  );
+                },
+              ),
+            if (message.diagnostics?.trim().isNotEmpty ?? false)
+              ListTile(
+                leading: const Icon(Icons.share),
+                title: const Text('分享工具调用诊断'),
+                onTap: () {
+                  final diagnostics = message.diagnostics!.trim();
+                  Navigator.pop(modalContext);
+                  Share.share(diagnostics, subject: 'RastaCoder 工具调用诊断');
+                },
+              ),
           ],
         ),
       ),

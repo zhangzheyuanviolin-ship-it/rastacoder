@@ -31,6 +31,96 @@ class ConversationManager {
     _isar = isar;
   }
 
+  /// Return active conversations newest-first for the history UI.
+  Future<List<Map<String, dynamic>>> listConversationSummaries() async {
+    if (_isar == null) return const [];
+    final rows = await _isar!.conversations
+        .filter()
+        .isArchivedEqualTo(false)
+        .sortByUpdatedAtDesc()
+        .findAll();
+    return rows
+        .map((c) => <String, dynamic>{
+              'id': c.id,
+              'title': c.title,
+              'createdAt': c.createdAt,
+              'updatedAt': c.updatedAt,
+            })
+        .toList(growable: false);
+  }
+
+  /// Return persisted visible messages without exposing DB model types to UI.
+  Future<List<Map<String, dynamic>>> getVisibleMessages(int conversationId) async {
+    if (_isar == null) return const [];
+    final rows = await _isar!.messages
+        .filter()
+        .conversationIdEqualTo(conversationId)
+        .sortByCreatedAt()
+        .findAll();
+    return rows
+        .map((m) => <String, dynamic>{
+              'role': m.role.name,
+              'content': m.content,
+              'createdAt': m.createdAt,
+              'attachments': m.attachments.map((a) => a.localPath).where((p) => p.isNotEmpty).toList(),
+            })
+        .toList(growable: false);
+  }
+
+  /// Persist a message which has already been processed by Python. This avoids
+  /// double-inserting the same user/assistant message into Python SessionState.
+  Future<void> storeVisibleMessage({
+    required int conversationId,
+    required String role,
+    required String content,
+    List<String>? attachmentPaths,
+  }) async {
+    if (_isar == null) return;
+    final attachments = attachmentPaths
+        ?.map((path) => <String, dynamic>{
+              'local_path': path,
+              'original_name': p.basename(path),
+            })
+        .toList();
+    final message = Message()
+      ..conversationId = conversationId
+      ..role = _parseRole(role)
+      ..content = content
+      ..createdAt = DateTime.now()
+      ..tokenCount = _estimateTokens(content)
+      ..attachments = _buildAttachments(attachments);
+
+    await _isar!.writeTxn(() async {
+      await _isar!.messages.put(message);
+      final conversation = await _isar!.conversations.get(conversationId);
+      if (conversation != null) {
+        conversation.updatedAt = DateTime.now();
+        await _isar!.conversations.put(conversation);
+      }
+    });
+  }
+
+  Future<void> renameConversation(int conversationId, String title) async {
+    if (_isar == null) return;
+    final cleaned = title.trim();
+    if (cleaned.isEmpty) return;
+    await _isar!.writeTxn(() async {
+      final conversation = await _isar!.conversations.get(conversationId);
+      if (conversation == null) return;
+      conversation.title = cleaned.length > 80 ? cleaned.substring(0, 80) : cleaned;
+      conversation.updatedAt = DateTime.now();
+      await _isar!.conversations.put(conversation);
+    });
+  }
+
+  Future<void> deleteConversation(int conversationId) async {
+    if (_isar == null) return;
+    await _isar!.writeTxn(() async {
+      await _isar!.messages.filter().conversationIdEqualTo(conversationId).deleteAll();
+      await _isar!.conversations.delete(conversationId);
+    });
+  }
+
   /// Check if a conversation needs summarization and trigger if so.
   ///
   /// Should be called after adding a new message to a conversation.
@@ -142,7 +232,7 @@ class ConversationManager {
     }
 
     for (final msg in messages) {
-      final role = msg.role == 'user' ? 'User' : 'Assistant';
+      final role = msg.role == MessageRole.user ? 'User' : 'Assistant';
       // Truncate very long messages
       var content = msg.content;
       if (content.length > 500) {
@@ -187,13 +277,17 @@ Please summarize the conversation above, preserving important context for future
           .findAll();
     }
 
-    // Send full sync to Python
-    await _bridge.applyDelta({
-      'action': 'sync_full',
-      'conversation_id': conversationId,
-      'messages': messages.map((m) => m.toSyncJson()).toList(),
-      'summary': conversation.summary,
-    });
+    // Send full sync when Python is ready. ChatScreen retries this on the
+    // Python ready event after cold start/restart, so DB access never depends
+    // on runtime initialization timing.
+    if (_bridge.status == PythonStatus.ready) {
+      await _bridge.applyDelta({
+        'action': 'sync_full',
+        'conversation_id': conversationId,
+        'messages': messages.map((m) => m.toSyncJson()).toList(),
+        'summary': conversation.summary,
+      });
+    }
   }
 
   /// Start a new conversation and sync to Python.
@@ -211,11 +305,14 @@ Please summarize the conversation above, preserving important context for future
       await _isar!.conversations.put(conversation);
     });
 
-    // Notify Python of new conversation
-    await _bridge.applyDelta({
-      'action': 'new_conversation',
-      'conversation_id': conversation.id,
-    });
+    // Notify Python when ready. ChatScreen also re-syncs the selected
+    // conversation on Python ready after cold start/restart.
+    if (_bridge.status == PythonStatus.ready) {
+      await _bridge.applyDelta({
+        'action': 'new_conversation',
+        'conversation_id': conversation.id,
+      });
+    }
 
     return conversation;
   }

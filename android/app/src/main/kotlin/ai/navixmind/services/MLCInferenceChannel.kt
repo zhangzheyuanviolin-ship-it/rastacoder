@@ -280,14 +280,19 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                                     emitEvent(mapOf("phase" to "tool_call_started"))
                                 }
                             }
-                            choice.delta.tool_calls?.forEachIndexed { _, tc ->
-                                val acc = toolCallAccumulators.getOrPut(toolCallAccumulators.size) {
+                            choice.delta.tool_calls?.forEachIndexed { index, tc ->
+                                // A single structured tool call may arrive over several
+                                // chunks. Reuse the same accumulator by call index instead
+                                // of allocating a new entry for each streamed fragment.
+                                val acc = toolCallAccumulators.getOrPut(index) {
                                     ToolCallAccumulator()
                                 }
                                 if (tc.id.isNotEmpty()) acc.id = tc.id
                                 if (tc.function.name.isNotEmpty()) acc.name = tc.function.name
                                 tc.function.arguments?.let { args ->
-                                    acc.arguments = args
+                                    val merged = (acc.arguments ?: emptyMap<String, String>()).toMutableMap()
+                                    merged.putAll(args)
+                                    acc.arguments = merged
                                 }
                             }
 

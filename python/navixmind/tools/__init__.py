@@ -663,34 +663,60 @@ OFFLINE_TOOLS_SCHEMA.extend(
 )
 
 
-# RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
-# 21 manually controlled skills cover every tool in OFFLINE_TOOLS_SCHEMA.
-# A low-level function may intentionally appear in more than one skill.
+# RASTACODER_V6_TOOL_RELIABILITY
+# Skill IDs are UI-only. They are deliberately never shown to the model.
+# The model sees canonical callable function names only.
 LOCAL_SKILLS = {
-    "text_files": {"tools": ("read_file", "write_file", "file_info"), "prompt": "TEXT FILES: read_file, write_file, file_info. Use file basenames; created files need an output filename."},
-    "zip_archive": {"tools": ("create_zip", "file_info"), "prompt": "ZIP: create_zip(output_path, file_paths, compression?)."},
-    "pdf_read": {"tools": ("read_pdf", "file_info"), "prompt": "PDF READ: read_pdf(pdf_path, pages?) extracts text; file_info inspects metadata."},
-    "pdf_create": {"tools": ("create_pdf",), "prompt": "PDF CREATE: create_pdf(output_path, content?, title?, image_paths?)."},
-    "document_convert": {"tools": ("convert_document",), "prompt": "DOCUMENT CONVERT: convert_document(input_path, output_format, output_path?) where output_format is pdf/html/txt/docx."},
-    "word": {"tools": ("create_docx", "read_docx", "modify_docx"), "prompt": "WORD: create_docx creates DOCX; read_docx reads it; modify_docx edits existing DOCX."},
-    "powerpoint": {"tools": ("read_pptx", "modify_pptx"), "prompt": "POWERPOINT: read_pptx reads slides/notes; modify_pptx edits existing PPTX."},
-    "excel": {"tools": ("read_xlsx", "modify_xlsx"), "prompt": "EXCEL: read_xlsx reads workbook data; modify_xlsx edits cells/formulas/rows/sheets."},
-    "ocr": {"tools": ("ocr_image",), "prompt": "OCR: ocr_image(image_path) extracts text from an image."},
-    "image_processing": {"tools": ("smart_crop",), "prompt": "IMAGE PROCESSING: smart_crop(input_path, output_path, aspect_ratio?) performs face-aware crop."},
-    "video_processing": {"tools": ("ffmpeg_process",), "prompt": "VIDEO: ffmpeg_process supports trim/crop/resize/filter/extract_audio/extract_frame/convert. Keep A/V filters synchronized; never use percent-pattern output filenames."},
-    "audio_processing": {"tools": ("ffmpeg_process",), "prompt": "AUDIO: ffmpeg_process supports trim/filter/convert and extract_audio. Audio filters use params.af; common outputs include mp3/wav/m4a/aac/flac/ogg."},
-    "media_download": {"tools": ("download_media",), "prompt": "MEDIA DOWNLOAD: download_media(url, format?) returns downloadable video/audio for supported non-YouTube platforms; network required."},
-    "web_fetch": {"tools": ("web_fetch",), "prompt": "WEB: web_fetch(url, extract_mode?) reads normal web pages; network required."},
-    "dynamic_web": {"tools": ("headless_browser",), "prompt": "DYNAMIC WEB: headless_browser(url, wait_seconds?, extract_selector?) renders JavaScript-heavy pages; network required."},
-    "basic_calculation": {"tools": ("python_execute",), "prompt": "BASIC CALCULATION: python_execute for math/statistics/text/JSON/CSV logic. Use print(); os/sys/subprocess are forbidden."},
-    "scientific_calculation": {"tools": ("python_execute",), "prompt": "SCIENTIFIC CALCULATION: python_execute with numpy/math/statistics. Use print(); no network or subprocess."},
-    "data_analysis": {"tools": ("python_execute",), "prompt": "DATA ANALYSIS: python_execute with pandas/numpy for tabular analysis. Use print(); file access is limited to file_paths."},
-    "charts": {"tools": ("python_execute",), "prompt": "CHARTS: python_execute with matplotlib; generated figures are saved as PNG. Use print() for textual results."},
-    "gmail": {"tools": ("gmail",), "prompt": "GMAIL: gmail(action, query?, message_id?) supports list/read only and requires Google connection."},
-    "google_calendar": {"tools": ("google_calendar",), "prompt": "GOOGLE CALENDAR: google_calendar(action, date_range?, event?, event_id?) supports list/create/delete and requires Google connection."},
+    "text_files": {"tools": ("read_file", "write_file", "file_info")},
+    "zip_archive": {"tools": ("create_zip", "file_info")},
+    "pdf_read": {"tools": ("read_pdf", "file_info")},
+    "pdf_create": {"tools": ("create_pdf",)},
+    "document_convert": {"tools": ("convert_document",)},
+    "word": {"tools": ("create_docx", "read_docx", "modify_docx")},
+    "powerpoint": {"tools": ("read_pptx", "modify_pptx")},
+    "excel": {"tools": ("read_xlsx", "modify_xlsx")},
+    "ocr": {"tools": ("ocr_image",)},
+    "image_processing": {"tools": ("smart_crop",)},
+    "video_processing": {"tools": ("ffmpeg_process",)},
+    "audio_processing": {"tools": ("ffmpeg_process",)},
+    "media_download": {"tools": ("download_media",)},
+    "web_fetch": {"tools": ("web_fetch",)},
+    "dynamic_web": {"tools": ("headless_browser",)},
+    "basic_calculation": {"tools": ("python_execute",)},
+    "scientific_calculation": {"tools": ("python_execute",)},
+    "data_analysis": {"tools": ("python_execute",)},
+    "charts": {"tools": ("python_execute",)},
+    "gmail": {"tools": ("gmail",)},
+    "google_calendar": {"tools": ("google_calendar",)},
 }
 
 ALL_LOCAL_SKILL_IDS = tuple(LOCAL_SKILLS.keys())
+
+LOCAL_TOOL_PROMPT_HINTS = {
+    "read_file": "read_file(file_path)",
+    "write_file": "write_file(output_path, content)",
+    "file_info": "file_info(file_path)",
+    "create_zip": "create_zip(output_path, file_paths, compression?)",
+    "read_pdf": "read_pdf(pdf_path, pages?)",
+    "create_pdf": "create_pdf(output_path, content?, title?, image_paths?)",
+    "convert_document": "convert_document(input_path, output_format, output_path?) ; output_format=pdf|html|txt|docx",
+    "create_docx": "create_docx(output_path, content, title?)",
+    "read_docx": "read_docx(docx_path, extract?)",
+    "modify_docx": "modify_docx(input_path, output_path, operations)",
+    "read_pptx": "read_pptx(pptx_path, extract?)",
+    "modify_pptx": "modify_pptx(input_path, output_path, operations)",
+    "read_xlsx": "read_xlsx(xlsx_path, sheet?, range?, extract?)",
+    "modify_xlsx": "modify_xlsx(input_path, output_path, operations)",
+    "ocr_image": "ocr_image(image_path)",
+    "smart_crop": "smart_crop(input_path, output_path, aspect_ratio?)",
+    "ffmpeg_process": "ffmpeg_process(input_path, output_path, operation, params?) ; operations=trim|crop|resize|filter|extract_audio|extract_frame|convert ; for MP3/WAV/M4A/AAC/FLAC/OGG audio output use operation=extract_audio and params.format",
+    "download_media": "download_media(url, format?)",
+    "web_fetch": "web_fetch(url, extract_mode?)",
+    "headless_browser": "headless_browser(url, wait_seconds?, extract_selector?)",
+    "python_execute": "python_execute(code, file_paths?)",
+    "gmail": "gmail(action, query?, message_id?) ; action=list|read",
+    "google_calendar": "google_calendar(action, date_range?, event?, event_id?) ; action=list|create|delete",
+}
 
 
 def _offline_tool_names():
@@ -717,27 +743,33 @@ def build_offline_skill_prompt(skill_ids=None):
     ids = ALL_LOCAL_SKILL_IDS if skill_ids is None else tuple(str(x) for x in skill_ids)
     selected = [skill_id for skill_id in ids if skill_id in LOCAL_SKILLS]
     base = (
-        "You are RastaCoder, an AI assistant on Android. "
-        "Tool availability is manually selected by the user. "
+        "You are RastaCoder, an AI assistant on Android. Tool availability is manually selected by the user. "
+        "UI Skill/category labels are not callable functions and are intentionally omitted from this prompt."
     )
     if not selected:
-        return base + "No tools are enabled for this conversation. Answer directly and do not emit tool calls."
+        return base + " No tools are enabled. Answer directly and never emit a tool call."
+
+    enabled_tools = get_enabled_tool_names(selected)
+    ordered_tools = [t["name"] for t in OFFLINE_TOOLS_SCHEMA if t["name"] in enabled_tools]
     lines = [
         base,
-        "To use an enabled tool, respond ONLY with:",
+        "When a tool is needed, output ONLY this XML wrapper with valid JSON inside:",
         "<tool_call>",
-        '{"name":"tool_name","arguments":{"param":"value"}}',
+        '{"name":"CANONICAL_FUNCTION_NAME","arguments":{"exact_parameter_name":"value"}}',
         "</tool_call>",
-        "ENABLED SKILLS:",
+        "CALLABLE FUNCTIONS (these exact names only):",
     ]
-    for skill_id in selected:
-        lines.append(f"- {skill_id}: {LOCAL_SKILLS[skill_id]['prompt']}")
+    for tool_name in ordered_tools:
+        lines.append(f"- {LOCAL_TOOL_PROMPT_HINTS[tool_name]}")
     lines.extend([
-        "RULES:",
-        "- Use only tools belonging to the enabled skills above.",
-        "- Use attached file basenames; paths are resolved automatically.",
-        "- Include created output file paths in the final response.",
-        "- If an enabled tool fails, try another enabled approach when appropriate.",
+        "STRICT TOOL-CALL RULES:",
+        "- The name field MUST be one canonical function name listed above. Never call a Skill/category label.",
+        "- arguments MUST use the exact parameter names shown in that function signature.",
+        "- Never invent generic argument keys such as param, request, instruction, or command.",
+        "- Use attached file basenames exactly as shown in the user message; the app resolves them to real paths.",
+        "- Choose a sensible output filename yourself. Do not ask the user for an output path when a filename can be chosen safely.",
+        "- Do not place prose before or after a tool call. After the tool result, give the concise final answer.",
+        "- Use only the callable functions listed above.",
     ])
     return "\n".join(lines)
 
@@ -751,6 +783,37 @@ if _skill_covered_tools != _offline_tools:
     missing = sorted(_offline_tools - _skill_covered_tools)
     extra = sorted(_skill_covered_tools - _offline_tools)
     raise RuntimeError(f"Local skill coverage mismatch; missing={missing}, extra={extra}")
+
+
+
+def _safe_diag_value(value: Any) -> Any:
+    """Redact secrets and bound large diagnostic payloads."""
+    secret_words = {"api_key", "access_token", "google_access_token", "authorization", "token", "password"}
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            key_s = str(key)
+            if key_s.lower() in secret_words or key_s == "_context":
+                out[key_s] = "[REDACTED]"
+            else:
+                out[key_s] = _safe_diag_value(item)
+        return out
+    if isinstance(value, list):
+        return [_safe_diag_value(v) for v in value[:50]]
+    if isinstance(value, str) and len(value) > 2000:
+        return value[:2000] + "...[truncated]"
+    return value
+
+
+def _record_tool_diag(context: Dict[str, Any], stage: str, **fields: Any) -> None:
+    if not isinstance(context, dict):
+        return
+    events = context.setdefault('_diagnostics', [])
+    if not isinstance(events, list):
+        return
+    event = {"stage": stage}
+    event.update({k: _safe_diag_value(v) for k, v in fields.items()})
+    events.append(event)
 
 
 def execute_tool(
@@ -773,7 +836,7 @@ def execute_tool(
         ToolError: If tool execution fails
     """
     original_tool_name = tool_name
-    tool_name, args, compatibility_notes = normalize_tool_call(tool_name, args)
+    tool_name, args, compatibility_notes = normalize_tool_call(tool_name, args, context=context)
     bridge = get_bridge()
     if compatibility_notes:
         bridge.log(
@@ -813,35 +876,44 @@ def execute_tool(
             f"Normalized name: '{tool_name}'."
         )
 
-    # Validate required parameters and top-level enum values using the canonical
-    # schema before calling implementation code.
+    # Manual Skill boundary comes before schema validation. A hallucinated
+    # disabled tool must never be repaired into an executable call.
+    allowed_tools = context.get('_allowed_tools')
+    if allowed_tools is not None and tool_name not in set(allowed_tools):
+        _record_tool_diag(context, "disabled", tool=tool_name, original_tool=original_tool_name)
+        raise ToolError(
+            f"[MODEL_TOOL_DISABLED] Tool '{tool_name}' is not enabled for this conversation."
+        )
+
+    _record_tool_diag(
+        context, "normalized", tool=tool_name, original_tool=original_tool_name,
+        args=_safe_diag_value(args), repairs=compatibility_notes,
+    )
+
+    # Validate required parameters and top-level enum values only after the
+    # compatibility layer has synthesized deterministic safe defaults.
     schema_entry = next((t for t in TOOLS_SCHEMA if t.get("name") == tool_name), None)
     if schema_entry:
         input_schema = schema_entry.get("input_schema", {})
         missing = [
             key for key in input_schema.get("required", [])
-            if key not in args or args.get(key) is None
+            if key not in args or args.get(key) is None or args.get(key) == ""
         ]
         if missing:
+            _record_tool_diag(context, "schema_error", tool=tool_name, missing=missing, args=_safe_diag_value(args))
             raise ToolError(
                 f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name} missing required "
-                f"parameter(s): {', '.join(missing)}. Received: {sorted(args.keys())}"
+                f"parameter(s): {', '.join(missing)}. Received: {sorted(args.keys())}. "
+                "Retry the same enabled tool with corrected arguments; choose a sensible output filename yourself when only output_path is missing."
             )
         for key, spec in input_schema.get("properties", {}).items():
             if key in args and isinstance(spec, dict) and spec.get("enum"):
                 if args[key] not in spec["enum"]:
+                    _record_tool_diag(context, "enum_error", tool=tool_name, key=key, value=args[key])
                     raise ToolError(
                         f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name}.{key} received "
-                        f"{args[key]!r}; allowed values: {spec['enum']}"
+                        f"{args[key]!r}; allowed values: {spec['enum']}. Retry with one allowed value."
                     )
-
-    # Manual skill boundary: a hallucinated disabled tool is rejected even
-    # if the small model remembers its name from earlier conversation.
-    allowed_tools = context.get('_allowed_tools')
-    if allowed_tools is not None and tool_name not in set(allowed_tools):
-        raise ToolError(
-            f"[MODEL_TOOL_DISABLED] Tool '{tool_name}' is not enabled for this conversation."
-        )
 
     tool_func = tool_map[tool_name]
 
@@ -855,6 +927,8 @@ def execute_tool(
     output_dir = context.get('output_dir')
     if output_dir:
         _resolve_output_paths(args, output_dir)
+
+    _record_tool_diag(context, "paths_resolved", tool=tool_name, args=_safe_diag_value(args))
 
     # Add context to args for tools that need it
     if tool_name in ["google_calendar", "gmail"]:

@@ -240,3 +240,17 @@ Do not publish v6 until all are green:
 10. New conversation + history list + switch + rename + delete + restart persistence are wired to Isar and Python session resync.
 11. APK package/version/signature/ARM64/runtime checks pass.
 12. This handoff is updated with final source commit, validation/build run, release tag, APK byte size and SHA-256, and known residual risks.
+
+## Final signed v6 release checkpoint
+
+- Release workflow run: https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32907785284
+- Release tag: `qwen3-tool-reliability-history-v6`
+- APK: `RastaCoder-Qwen3-4B-tool-reliability-history-v6-update.apk`
+- APK SHA-256: `9f872f37802f7b362fc9a0f1f15f0d152b2e61c50cbde378e886bae9b2deb001`
+- APK size: `499354824` bytes
+- versionName/versionCode: `0.0.5` / `19`
+- package/applicationId: `ai.navixmind`
+- stable signing certificate SHA-256: `87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8`
+- ABI: `arm64-v8a` only
+- MLC runtime SHA-256: `5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48`
+- Three systemic v6 validators passed before native build, after native build, and immediately before release.

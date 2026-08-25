@@ -346,7 +346,10 @@ def _coerce_tool_args(value: Any) -> dict:
         return dict(value)
     if isinstance(value, str):
         parsed = _parse_mapping(value)
-        return parsed if isinstance(parsed, dict) else {}
+        if isinstance(parsed, dict):
+            return parsed
+        value = value.strip()
+        return {"param": value} if value else {}
     return {}
 
 
@@ -394,17 +397,22 @@ def _extract_json_objects(text: str) -> List[str]:
 
 
 def _build_tool_use(name: Any, arguments: Any, source: str, index: int) -> Optional[dict]:
-    canonical = normalize_tool_name(name)
+    # Normalize with arguments BEFORE checking the canonical-name set. Preserve
+    # both sides of that repair for the copyable diagnostic log.
+    raw_args = _coerce_tool_args(arguments)
+    canonical, args, parser_repairs = normalize_tool_call(name, raw_args)
     known = {t['name'] for t in TOOLS_SCHEMA}
     if canonical not in known:
         return None
-    args = _coerce_tool_args(arguments)
-    canonical, args, _ = normalize_tool_call(canonical, args)
     return {
         "type": "tool_use",
         "id": f"call_{abs(hash(source)) % 10**8:08d}_{index}",
         "name": canonical,
         "input": args,
+        "_raw_name": str(name or ""),
+        "_raw_input": raw_args,
+        "_raw_source": str(source)[:1500],
+        "_parser_repairs": list(parser_repairs),
     }
 
 
@@ -451,9 +459,7 @@ def _try_parse_function_syntax(text: str, index: int) -> Optional[dict]:
             continue
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.args:
             continue
-        name = normalize_tool_name(node.func.id)
-        if name not in known:
-            continue
+        raw_name = node.func.id
         args = {}
         valid = True
         for kw in node.keywords:
@@ -466,8 +472,45 @@ def _try_parse_function_syntax(text: str, index: int) -> Optional[dict]:
                 valid = False
                 break
         if valid:
-            return _build_tool_use(name, args, raw, index)
+            return _build_tool_use(raw_name, args, raw, index)
     return None
+
+
+def _extract_reasoning_blocks(content_blocks: List[Dict[str, Any]]) -> str:
+    import re
+    parts = []
+    for block in content_blocks or []:
+        if not isinstance(block, dict) or block.get('type') != 'text':
+            continue
+        text = str(block.get('text', ''))
+        for match in re.finditer(r'<think>([\s\S]*?)</think>', text, flags=re.IGNORECASE):
+            value = match.group(1).strip()
+            if value:
+                parts.append(value)
+        # Defensive open-tag recovery when generation ends before </think>.
+        open_match = re.search(r'<think>([\s\S]*)$', text, flags=re.IGNORECASE)
+        if open_match:
+            value = open_match.group(1).strip()
+            if value:
+                parts.append(value)
+    return '\n\n'.join(parts)
+
+
+def _strip_reasoning_from_blocks(content_blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    import re
+    cleaned = []
+    for block in content_blocks or []:
+        if not isinstance(block, dict) or block.get('type') != 'text':
+            cleaned.append(block)
+            continue
+        text = str(block.get('text', ''))
+        text = re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'<think>[\s\S]*$', '', text, flags=re.IGNORECASE)
+        if text.strip():
+            copy = dict(block)
+            copy['text'] = text.strip()
+            cleaned.append(copy)
+    return cleaned
 
 
 class LocalLLMClient:
@@ -555,15 +598,24 @@ class LocalLLMClient:
                 "usage": {"input_tokens": 0, "output_tokens": 0}
             }
 
+        # Preserve local reasoning separately before tool-call normalization. It
+        # is kept out of model history but returned to Flutter for the user's
+        # expandable Thinking panel.
+        response['_reasoning'] = _extract_reasoning_blocks(response.get('content', []))
+
         # Validate tool calls — small models may produce invalid JSON for tool inputs
         content = response.get('content', [])
         sanitized_content = []
         for block in content:
             if block.get('type') == 'tool_use':
-                name, tool_input, _ = normalize_tool_call(
-                    block.get('name'), _coerce_tool_args(block.get('input', {}))
-                )
+                raw_name = block.get('name')
+                raw_input = _coerce_tool_args(block.get('input', {}))
+                name, tool_input, parser_repairs = normalize_tool_call(raw_name, raw_input)
                 block = dict(block)
+                block['_raw_name'] = str(raw_name or '')
+                block['_raw_input'] = raw_input
+                block['_raw_source'] = json.dumps({'name': raw_name, 'arguments': raw_input}, ensure_ascii=False)[:1500]
+                block['_parser_repairs'] = list(parser_repairs)
                 block['name'] = name
                 block['input'] = tool_input
             sanitized_content.append(block)
@@ -586,10 +638,15 @@ class LocalLLMClient:
             normalized = []
             for block in response.get('content', []):
                 if block.get('type') == 'tool_use':
-                    name, args, _ = normalize_tool_call(
-                        block.get('name'), _coerce_tool_args(block.get('input', {}))
-                    )
+                    raw_name = block.get('_raw_name', block.get('name'))
+                    raw_input = block.get('_raw_input', _coerce_tool_args(block.get('input', {})))
+                    name, args, parser_repairs = normalize_tool_call(block.get('name'), block.get('input', {}))
                     block = dict(block)
+                    block.setdefault('_raw_name', str(raw_name or ''))
+                    block.setdefault('_raw_input', raw_input)
+                    block.setdefault('_raw_source', json.dumps({'name': raw_name, 'arguments': raw_input}, ensure_ascii=False)[:1500])
+                    existing_repairs = block.get('_parser_repairs') if isinstance(block.get('_parser_repairs'), list) else []
+                    block['_parser_repairs'] = list(existing_repairs) + [r for r in parser_repairs if r not in existing_repairs]
                     block['name'] = name
                     block['input'] = args
                 normalized.append(block)
@@ -651,15 +708,31 @@ class LocalLLMClient:
 
             if tool_blocks:
                 found = True
+                remaining = re.sub(
+                    r'</?(?:tool_call|function_call|function)\b[^>]*>',
+                    '', remaining, flags=re.IGNORECASE,
+                ).strip()
                 if remaining:
                     new_content.append({"type": "text", "text": remaining})
                 new_content.extend(tool_blocks)
+            elif tag_matches or re.search(r'<(?:tool_call|function_call|function)\b', text, flags=re.IGNORECASE):
+                # Recognizable tool-call wrapper, invalid payload/name. Never
+                # leak it into final prose; let the ReAct loop request a retry.
+                response['_tool_parse_error'] = tagged[:1500] if tag_matches else original[:1500]
+                remaining = re.sub(
+                    r'</?(?:tool_call|function_call|function)\b[^>]*>',
+                    '', remaining, flags=re.IGNORECASE,
+                ).strip()
+                new_content.append({"type": "text", "text": remaining}) if remaining else None
             else:
                 new_content.append(block)
 
         if found:
             response['content'] = new_content
             response['stop_reason'] = 'tool_use'
+        elif response.get('_tool_parse_error'):
+            response['content'] = new_content
+            response['stop_reason'] = 'tool_parse_error'
         return response
 
     def _convert_messages(self, messages: List[Dict[str, Any]], system: str) -> List[Dict[str, Any]]:
@@ -853,6 +926,30 @@ def handle_request(request_json: str) -> str:
         })
 
 
+
+def _diag_safe(value: Any) -> Any:
+    secret_words = {'api_key', 'access_token', 'google_access_token', 'authorization', 'token', 'password'}
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            key_s = str(key)
+            result[key_s] = '[REDACTED]' if key_s.lower() in secret_words or key_s == '_context' else _diag_safe(item)
+        return result
+    if isinstance(value, list):
+        return [_diag_safe(v) for v in value[:50]]
+    if isinstance(value, str) and len(value) > 2000:
+        return value[:2000] + '...[truncated]'
+    return value
+
+
+def _format_diagnostics(context: Dict[str, Any]) -> str:
+    events = context.get('_diagnostics', []) if isinstance(context, dict) else []
+    safe = _diag_safe(events)
+    try:
+        return json.dumps(safe, ensure_ascii=False, indent=2)
+    except Exception:
+        return str(safe)
+
 def process_query(
     user_query: str,
     files: List[str] = None,
@@ -877,6 +974,10 @@ def process_query(
     bridge = get_bridge()
     session = get_session()
     context = context or {}
+    context['_diagnostics'] = []
+    context['_current_files'] = list(files or [])
+    reasoning_parts: List[str] = []
+    parse_retry_count = 0
 
     # Get API key (from global storage or environment)
     api_key = get_api_key()
@@ -929,6 +1030,15 @@ def process_query(
             f"Using on-device inference; skills={len(enabled_skills)}/21, tools={len(enabled_tools)}/23",
             level="info"
         )
+        context['_diagnostics'].append({
+            'stage': 'query_config',
+            'enabled_skills': list(enabled_skills),
+            'allowed_tools': sorted(enabled_tools),
+            'thinking_mode': local_thinking_mode,
+            'temperature': local_temperature,
+            'top_p': local_top_p,
+            'current_files': [os.path.basename(p) for p in (files or [])],
+        })
     else:
         if system_prompt != SYSTEM_PROMPT:
             bridge.log("Using custom system prompt", level="info")
@@ -1004,20 +1114,40 @@ def process_query(
             bridge.log(f"API error: {e}", level="error")
             error_msg = _get_user_friendly_error(e)
             session.add_message("assistant", error_msg)
-            return {"content": error_msg, "error": True}
+            result = {"content": error_msg, "error": True}
+            if is_offline:
+                context['_diagnostics'].append({'stage': 'model_error', 'error': str(e)[:2000]})
+                result['thinking'] = "\n\n".join(reasoning_parts)
+                result['thinking_mode'] = local_thinking_mode
+                result['diagnostics'] = _format_diagnostics(context)
+            return result
         except Exception as e:
             CrashLogger.log_error("process_query", e)
             bridge.log(f"Exception: {str(e)}", level="error")
             error_msg = f"An unexpected error occurred: {e}"
             session.add_message("assistant", error_msg)
-            return {
-                "content": error_msg,
-                "error": True
-            }
+            result = {"content": error_msg, "error": True}
+            if is_offline:
+                context['_diagnostics'].append({'stage': 'unexpected_error', 'error': str(e)[:2000]})
+                result['thinking'] = "\n\n".join(reasoning_parts)
+                result['thinking_mode'] = local_thinking_mode
+                result['diagnostics'] = _format_diagnostics(context)
+            return result
 
         # Get stop reason and content
         stop_reason = response.get('stop_reason')
         content_blocks = response.get('content', [])
+        if is_offline:
+            reasoning = str(response.get('_reasoning') or '').strip()
+            if reasoning:
+                reasoning_parts.append(reasoning)
+            context['_diagnostics'].append({
+                'stage': 'model_response',
+                'stop_reason': stop_reason,
+                'reasoning_chars': len(reasoning),
+                'content_types': [b.get('type') for b in content_blocks if isinstance(b, dict)],
+                'tool_parse_error': bool(response.get('_tool_parse_error')),
+            })
 
         # Log stop reason for visibility
         bridge.log(f"Stop reason: {stop_reason}", level="info")
@@ -1042,9 +1172,38 @@ def process_query(
             preview = thinking_text[:100] + "..." if len(thinking_text) > 100 else thinking_text
             bridge.log(f"Thinking: {preview}", level="info")
 
+        # Local small-model recovery: a literal <tool_call> wrapper was
+        # detected but its payload could not be parsed. Ask the same model to
+        # repair the call instead of leaking XML into the final answer.
+        if is_offline and stop_reason == 'tool_parse_error':
+            parse_retry_count += 1
+            raw_bad = str(response.get('_tool_parse_error') or '')[:1000]
+            context['_diagnostics'].append({
+                'stage': 'tool_parse_retry', 'attempt': parse_retry_count,
+                'raw_preview': raw_bad,
+            })
+            if parse_retry_count <= 2:
+                messages.append({
+                    'role': 'user',
+                    'content': (
+                        '[Tool call format error] The previous tool call was not executable. '
+                        'Retry now using ONLY one enabled canonical function name and the exact argument keys '
+                        'shown in the system prompt. Do not use Skill/category names or generic keys such as param. '
+                        'Do not answer with prose.'
+                    )
+                })
+                continue
+            final_response = '工具调用格式连续无法解析。请复制本轮“工具调用诊断”供排查。'
+            result = {'content': final_response, 'error': True}
+            result['thinking'] = '\n\n'.join(reasoning_parts)
+            result['thinking_mode'] = local_thinking_mode
+            result['diagnostics'] = _format_diagnostics(context)
+            return result
+
         # Case 1: Agent finished (end_turn)
         if stop_reason == 'end_turn':
-            final_response = _extract_text_content(content_blocks)
+            visible_blocks = _strip_reasoning_from_blocks(content_blocks) if is_offline else content_blocks
+            final_response = _extract_text_content(visible_blocks)
             bridge.log("Preparing response...", progress=0.95)
             # Store response in session. File paths are tracked in session._file_map
             # so follow-up queries can reference them. Do NOT append file list to the
@@ -1054,6 +1213,10 @@ def process_query(
             result = {"content": final_response}
             if created_files:
                 result["created_files"] = created_files
+            if is_offline:
+                result["thinking"] = "\n\n".join(reasoning_parts)
+                result["thinking_mode"] = local_thinking_mode
+                result["diagnostics"] = _format_diagnostics(context)
             return result
 
         # Case 2: Agent wants to use tools
@@ -1070,7 +1233,22 @@ def process_query(
                     tool_name = block.get('name')
                     tool_input = block.get('input', {})
                     tool_id = block.get('id')
-                    tool_name, tool_input, compat_notes = normalize_tool_call(tool_name, tool_input)
+                    raw_tool_name = block.get('_raw_name', tool_name)
+                    raw_tool_input = block.get('_raw_input', tool_input)
+                    parser_repairs = block.get('_parser_repairs') if isinstance(block.get('_parser_repairs'), list) else []
+                    raw_source = block.get('_raw_source')
+                    tool_name, tool_input, compat_notes = normalize_tool_call(tool_name, tool_input, context=context)
+                    if is_offline:
+                        repairs = list(parser_repairs) + [r for r in compat_notes if r not in parser_repairs]
+                        context['_diagnostics'].append({
+                            'stage': 'tool_call',
+                            'raw_name': str(raw_tool_name),
+                            'raw_args': _diag_safe(raw_tool_input),
+                            'raw_source': _diag_safe(raw_source),
+                            'canonical_name': tool_name,
+                            'canonical_args': _diag_safe(tool_input),
+                            'repairs': repairs,
+                        })
                     if compat_notes:
                         bridge.log(
                             "Tool compatibility: " + "; ".join(compat_notes),
@@ -1130,11 +1308,21 @@ def process_query(
                         })
                     except ToolError as e:
                         bridge.log(f"Tool error: {e}", level="warn")
+                        if is_offline:
+                            context['_diagnostics'].append({
+                                'stage': 'tool_error', 'tool': tool_name, 'error': str(e)[:2000]
+                            })
+                        error_content = str(e)
+                        if is_offline and ('[MODEL_TOOL_ARGUMENT_ERROR]' in error_content or '[MODEL_TOOL_NAME_ERROR]' in error_content):
+                            error_content += (
+                                '\n[RECOVERABLE] Retry the same task immediately with one enabled canonical tool and corrected exact arguments. '
+                                'Choose a safe output filename yourself when possible; only ask the user if a required INPUT file or genuinely ambiguous destructive choice is missing.'
+                            )
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_id,
                             "is_error": True,
-                            "content": str(e)
+                            "content": error_content
                         })
                     except Exception as e:
                         CrashLogger.log_error(f"tool_{tool_name}", e)
@@ -1166,14 +1354,25 @@ def process_query(
         partial = _extract_text_content(content_blocks)
         if partial:
             session.add_message("assistant", partial)
-            return {"content": partial}
+            result = {"content": partial}
+            if is_offline:
+                result['thinking'] = "\n\n".join(reasoning_parts)
+                result['thinking_mode'] = local_thinking_mode
+                result['diagnostics'] = _format_diagnostics(context)
+            return result
         break
 
     # Reached max iterations
     summary = _summarize_progress(messages, tool_call_count)
     max_iter_msg = f"I've reached my step limit after {iteration} iterations and {tool_call_count} tool calls. {summary}"
     session.add_message("assistant", max_iter_msg)
-    return {"content": max_iter_msg}
+    result = {"content": max_iter_msg}
+    if is_offline:
+        context['_diagnostics'].append({'stage': 'max_iterations', 'iterations': iteration, 'tool_calls': tool_call_count})
+        result['thinking'] = "\n\n".join(reasoning_parts)
+        result['thinking_mode'] = local_thinking_mode
+        result['diagnostics'] = _format_diagnostics(context)
+    return result
 
 
 def _extract_text_content(content_blocks: List[dict]) -> str:

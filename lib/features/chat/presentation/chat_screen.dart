@@ -8,6 +8,7 @@ import '../../../core/constants/defaults.dart';
 import '../../../core/services/analytics_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/conversation_manager.dart';
 import '../../../core/models/model_registry.dart';
 import '../../../core/models/tool_skill.dart';
 import '../../../core/services/local_llm_service.dart';
@@ -19,6 +20,7 @@ import 'widgets/message_list.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/status_banner.dart';
 import 'widgets/context_bar.dart';
+import 'conversation_history_screen.dart';
 import '../../settings/tool_skills_screen.dart';
 
 /// Main chat screen - the "Living Log" interface
@@ -55,6 +57,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   StreamSubscription<Map<String, dynamic>>? _mlcEventSubscription;
   Set<String> _enabledSkills = Set<String>.from(LocalToolSkillCatalog.allIds);
   final Set<String> _announcedNativeToolIds = <String>{};
+  int? _conversationId;
+  String _conversationTitle = '新对话';
+  bool _conversationLoaded = false;
 
   @override
   void initState() {
@@ -70,6 +75,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _listenToConnectivity();
     _listenToAuth();
     _listenToSharedFiles();
+    if (!widget.initializing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _initializeConversationHistory());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initializing && !widget.initializing && !_conversationLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _initializeConversationHistory();
+      });
+    }
   }
 
   @override
@@ -140,6 +158,136 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }, onError: (Object error) {
       debugPrint('[MLC telemetry] $error');
     });
+  }
+
+  Future<void> _initializeConversationHistory() async {
+    if (_conversationLoaded || widget.initializing) return;
+    final summaries = await ConversationManager.instance.listConversationSummaries();
+    if (!mounted) return;
+    if (summaries.isEmpty) {
+      await _startNewConversation();
+      return;
+    }
+    final newest = summaries.first;
+    await _loadConversation(newest['id'] as int, newest['title']?.toString() ?? '未命名对话');
+  }
+
+  Future<int> _ensureConversation() async {
+    if (_conversationId != null) return _conversationId!;
+    final conversation = await ConversationManager.instance.createConversation(title: '新对话');
+    if (mounted) {
+      setState(() {
+        _conversationId = conversation.id;
+        _conversationTitle = conversation.title;
+        _conversationLoaded = true;
+      });
+    }
+    return conversation.id;
+  }
+
+  Future<void> _loadConversation(int id, String title) async {
+    final rows = await ConversationManager.instance.getVisibleMessages(id);
+    if (!mounted) return;
+    final restored = rows.map((row) {
+      final role = switch (row['role']?.toString()) {
+        'user' => MessageRole.user,
+        'assistant' => MessageRole.assistant,
+        'toolResult' => MessageRole.system,
+        _ => MessageRole.system,
+      };
+      final attachments = (row['attachments'] as List?)?.map((e) => e.toString()).toList();
+      return ChatMessage(
+        role: role,
+        content: row['content']?.toString() ?? '',
+        timestamp: row['createdAt'] is DateTime ? row['createdAt'] as DateTime : DateTime.now(),
+        attachments: attachments?.isNotEmpty == true ? attachments : null,
+      );
+    }).toList();
+    setState(() {
+      _conversationId = id;
+      _conversationTitle = title;
+      _conversationLoaded = true;
+      _messages
+        ..clear()
+        ..addAll(restored);
+      _attachedFiles = [];
+      _externalFiles = [];
+    });
+    if (PythonBridge.instance.status == PythonStatus.ready) {
+      await ConversationManager.instance.loadConversation(id);
+    }
+    _scrollToBottom();
+  }
+
+  Future<void> _startNewConversation() async {
+    if (_isProcessing) return;
+    final conversation = await ConversationManager.instance.createConversation(title: '新对话');
+    if (!mounted) return;
+    setState(() {
+      _conversationId = conversation.id;
+      _conversationTitle = conversation.title;
+      _conversationLoaded = true;
+      _messages.clear();
+      _attachedFiles = [];
+      _externalFiles = [];
+      _activeMode = null;
+      _statusMessage = null;
+    });
+  }
+
+  Future<void> _openConversationHistory() async {
+    if (_isProcessing) return;
+    final selected = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConversationHistoryScreen(currentConversationId: _conversationId),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    if (selected == -1) {
+      await _startNewConversation();
+      return;
+    }
+    final summaries = await ConversationManager.instance.listConversationSummaries();
+    final match = summaries.where((row) => row['id'] == selected).toList();
+    if (match.isEmpty) {
+      await _startNewConversation();
+      return;
+    }
+    await _loadConversation(selected, match.first['title']?.toString() ?? '未命名对话');
+  }
+
+  Future<void> _persistVisibleMessage(
+    MessageRole role,
+    String content, {
+    List<String>? attachments,
+  }) async {
+    final id = await _ensureConversation();
+    final dbRole = switch (role) {
+      MessageRole.user => 'user',
+      MessageRole.assistant => 'assistant',
+      MessageRole.error => 'system',
+      MessageRole.system => 'system',
+    };
+    await ConversationManager.instance.storeVisibleMessage(
+      conversationId: id,
+      role: dbRole,
+      content: content,
+      attachmentPaths: attachments,
+    );
+  }
+
+  Future<void> _autoTitleConversation(String userText) async {
+    final id = _conversationId;
+    if (id == null || _conversationTitle != '新对话') return;
+    var title = userText.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (title.isEmpty && _attachedFiles.isNotEmpty) {
+      title = _attachedFiles.first.split('/').last;
+    }
+    if (title.isEmpty) return;
+    if (title.length > 28) title = '${title.substring(0, 28)}…';
+    await ConversationManager.instance.renameConversation(id, title);
+    if (mounted) setState(() => _conversationTitle = title);
   }
 
   Future<void> _loadSelfImproveSetting() async {
@@ -340,6 +488,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             break;
           case PythonStatus.ready:
             _statusMessage = null;
+            final id = _conversationId;
+            if (id != null) {
+              Future.microtask(() => ConversationManager.instance.loadConversation(id));
+            }
             break;
           case PythonStatus.error:
             _statusMessage = '连接错误';
@@ -480,16 +632,31 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // Add user message
+    final conversationId = await _ensureConversation();
+    final originalAttachments = _attachedFiles.isNotEmpty ? List<String>.from(_attachedFiles) : null;
+    final userAttachments = originalAttachments == null
+        ? null
+        : await PythonBridge.instance.persistAttachedFilesForConversation(originalAttachments);
+
+    // Add and persist the user message with durable attachment paths. Persistence
+    // is DB-only here because
+    // process_query itself owns Python SessionState insertion for this turn.
     setState(() {
       _messages.add(ChatMessage(
         role: MessageRole.user,
         content: text,
         timestamp: DateTime.now(),
-        attachments: _attachedFiles.isNotEmpty ? List.from(_attachedFiles) : null,
+        attachments: userAttachments,
       ));
       _inputController.clear();
     });
+    await ConversationManager.instance.storeVisibleMessage(
+      conversationId: conversationId,
+      role: 'user',
+      content: text,
+      attachmentPaths: userAttachments,
+    );
+    await _autoTitleConversation(text);
 
     _scrollToBottom();
 
@@ -536,7 +703,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       debugPrint('Sending query to Python...');
       final response = await PythonBridge.instance.sendQuery(
         query: text,
-        filePaths: _attachedFiles.isNotEmpty ? _attachedFiles : null,
+        filePaths: userAttachments,
         context: {
           'enabled_skills': _enabledSkills.toList(),
         },
@@ -548,11 +715,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final content = response.result!['content'] as String? ?? '';
         final hasError = response.result!['error'] == true;
         final createdFiles = response.result!['created_files'] as List<dynamic>?;
+        final thinking = response.result!['thinking'] as String?;
+        final thinkingMode = response.result!['thinking_mode'] as String?;
+        final diagnostics = response.result!['diagnostics'] as String?;
         setState(() {
           _messages.add(ChatMessage(
             role: hasError ? MessageRole.error : MessageRole.assistant,
             content: content,
             timestamp: DateTime.now(),
+            thinking: thinking,
+            thinkingMode: thinkingMode,
+            diagnostics: diagnostics,
           ));
           // Add tappable file links for every created file
           if (createdFiles != null && !hasError) {
@@ -565,14 +738,37 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             }
           }
         });
+        await ConversationManager.instance.storeVisibleMessage(
+          conversationId: conversationId,
+          role: hasError ? 'system' : 'assistant',
+          content: content,
+          attachmentPaths: !hasError && createdFiles != null
+              ? createdFiles.map((e) => e.toString()).toList()
+              : null,
+        );
+        if (createdFiles != null && !hasError) {
+          for (final filePath in createdFiles) {
+            await ConversationManager.instance.storeVisibleMessage(
+              conversationId: conversationId,
+              role: 'system',
+              content: '\u{1F4CE} File: $filePath',
+            );
+          }
+        }
       } else if (response.isError) {
+        final errorText = response.error?.message ?? '未知错误';
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.error,
-            content: response.error?.message ?? '未知错误',
+            content: errorText,
             timestamp: DateTime.now(),
           ));
         });
+        await ConversationManager.instance.storeVisibleMessage(
+          conversationId: conversationId,
+          role: 'system',
+          content: errorText,
+        );
       } else {
         // Unexpected response format
         debugPrint('Unexpected response: $response');
@@ -800,7 +996,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       backgroundColor: NavixTheme.background,
       appBar: AppBar(
         backgroundColor: NavixTheme.background,
-        title: const Text('NavixMind'),
+        title: Text(_conversationTitle == '新对话' ? 'RastaCoder' : 'RastaCoder · $_conversationTitle'),
         leading: IconButton(
           icon: Text(
             NavixTheme.iconMenu,
@@ -813,6 +1009,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           tooltip: '菜单',
         ),
         actions: [
+          IconButton(
+            onPressed: _isProcessing ? null : _openConversationHistory,
+            icon: const Icon(Icons.history),
+            tooltip: '聊天记录',
+          ),
+          IconButton(
+            onPressed: _isProcessing ? null : _startNewConversation,
+            icon: const Icon(Icons.add_comment_outlined),
+            tooltip: '新建对话',
+          ),
           if (_isProcessing)
             const Padding(
               padding: EdgeInsets.only(right: 16),
@@ -900,12 +1106,21 @@ class ChatMessage {
   final String content;
   final DateTime timestamp;
   final List<String>? attachments;
+  /// Local-model reasoning returned separately from the final answer.
+  final String? thinking;
+  /// model_default / enabled / disabled; null for cloud/system messages.
+  final String? thinkingMode;
+  /// Redacted, copyable per-query tool-call diagnostics.
+  final String? diagnostics;
 
   ChatMessage({
     required this.role,
     required this.content,
     required this.timestamp,
     this.attachments,
+    this.thinking,
+    this.thinkingMode,
+    this.diagnostics,
   });
 }
 

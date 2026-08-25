@@ -451,6 +451,13 @@ class PythonBridge {
     }
   }
 
+  /// Persist attachment paths for conversation history before a query is sent.
+  /// Calling sendQuery with the returned paths is idempotent because the private
+  /// persistence helper detects files which are already in the durable folder.
+  Future<List<String>> persistAttachedFilesForConversation(List<String> paths) {
+    return _persistAttachedFiles(paths);
+  }
+
   /// Copy attached files from cache to persistent internal storage.
   /// Returns the list of persistent paths.
   Future<List<String>> _persistAttachedFiles(List<String> cachePaths) async {
