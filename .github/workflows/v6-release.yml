@@ -64,6 +64,7 @@ jobs:
             scripts/apply_iteration_v6_reliability2.py \
             scripts/apply_iteration_v6_ui.py \
             scripts/apply_iteration_v6_history.py \
+            scripts/apply_iteration_v6_history2.py \
             scripts/apply_iteration_v6_native.py \
             scripts/validate_iteration_v6.py \
             scripts/validate_iteration_v6_extended.py
@@ -71,6 +72,7 @@ jobs:
           python3 scripts/apply_iteration_v6_reliability2.py
           python3 scripts/apply_iteration_v6_ui.py
           python3 scripts/apply_iteration_v6_history.py
+          python3 scripts/apply_iteration_v6_history2.py
           python3 scripts/apply_iteration_v6_native.py
 
       - name: Run systemic v6 pre-build gates
@@ -79,6 +81,8 @@ jobs:
           set -euo pipefail
           python3 scripts/validate_iteration_v6.py
           python3 scripts/validate_iteration_v6_extended.py
+          grep -F 'didUpdateWidget(covariant ChatScreen oldWidget)' lib/features/chat/presentation/chat_screen.dart
+          grep -F 'oldWidget.initializing && !widget.initializing && !_conversationLoaded' lib/features/chat/presentation/chat_screen.dart
           python3 -m py_compile \
             python/navixmind/agent.py \
             python/navixmind/session.py \
@@ -219,6 +223,7 @@ jobs:
 
           python3 scripts/validate_iteration_v6.py
           python3 scripts/validate_iteration_v6_extended.py
+          grep -F 'oldWidget.initializing && !widget.initializing && !_conversationLoaded' lib/features/chat/presentation/chat_screen.dart
 
           OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
           OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
@@ -270,7 +275,7 @@ jobs:
           - Fixes MLC structured tool-call stream accumulation by call index and merges argument fragments.
           - Adds redacted per-query tool diagnostics with copy/share controls.
           - Preserves local Qwen reasoning separately and exposes an accessible collapsed Thinking panel plus explicit manual Thinking-mode state.
-          - Wires the existing Isar Conversation/Message data layer into the chat UI: persistent history, new conversation, switch, rename, delete, auto-title, and Python SessionState resync.
+          - Wires the existing Isar Conversation/Message data layer into the chat UI: persistent history, new conversation, switch, rename, delete, auto-title, cold-start restoration, and Python SessionState resync.
           - Retains v5 model parameters and benchmark pages.
 
           Release gates:
