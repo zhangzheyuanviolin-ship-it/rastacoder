@@ -25,6 +25,81 @@ android {
     }
 }
 
+// The checked-in source snapshot intentionally omits generated MLC packaging
+// output.  The known-good v0.5.0 APK supplies the exact native runtime, while
+// TVM4J also requires its small Java binding JAR on the compilation classpath.
+// Recreate that JAR from the exact mlc-ai/relax revision used by the MLC LLM
+// source snapshot from 2026-02-13.  This keeps the Java JNI declarations paired
+// with the already verified libtvm4j_runtime_packed.so instead of mixing in a
+// random current TVM version.
+def tvm4jCoreJar = file("${projectDir}/output/tvm4j_core.jar")
+def tvmRelaxRevision = 'b3d4fe9fa8860804ee166549ad1898276273eb93'
+
+tasks.register('prepareTvm4jCoreJar') {
+    outputs.file(tvm4jCoreJar)
+    doLast {
+        if (tvm4jCoreJar.exists()) {
+            println "Using existing TVM4J binding: ${tvm4jCoreJar}"
+            return
+        }
+
+        def workDir = file("${buildDir}/tvm4j-binding-src")
+        def classesDir = file("${buildDir}/tvm4j-binding-classes")
+        delete workDir
+        delete classesDir
+        workDir.mkdirs()
+        classesDir.mkdirs()
+        tvm4jCoreJar.parentFile.mkdirs()
+
+        exec {
+            workingDir workDir
+            commandLine 'git', 'init', '-q'
+        }
+        exec {
+            workingDir workDir
+            commandLine 'git', 'remote', 'add', 'origin', 'https://github.com/mlc-ai/relax.git'
+        }
+        exec {
+            workingDir workDir
+            commandLine 'git', 'fetch', '-q', '--depth=1', 'origin', tvmRelaxRevision
+        }
+        exec {
+            workingDir workDir
+            commandLine 'git', 'checkout', '-q', '--detach', 'FETCH_HEAD'
+        }
+
+        def javaSourceDir = file("${workDir}/jvm/core/src/main/java")
+        if (!javaSourceDir.exists()) {
+            throw new GradleException("TVM4J Java sources missing at ${javaSourceDir}")
+        }
+
+        ant.javac(
+            srcdir: javaSourceDir,
+            destdir: classesDir,
+            source: '8',
+            target: '8',
+            encoding: 'UTF-8',
+            includeantruntime: 'false',
+            debug: 'on'
+        )
+        ant.jar(destfile: tvm4jCoreJar, basedir: classesDir)
+
+        if (!tvm4jCoreJar.exists() || tvm4jCoreJar.length() < 20000) {
+            throw new GradleException("TVM4J binding JAR was not generated correctly")
+        }
+        println "Generated matching TVM4J binding: ${tvm4jCoreJar} (${tvm4jCoreJar.length()} bytes)"
+    }
+}
+
+tasks.configureEach { task ->
+    if (task.name.startsWith('compile') && task.name.endsWith('JavaWithJavac')) {
+        task.dependsOn tasks.named('prepareTvm4jCoreJar')
+    }
+    if (task.name.startsWith('compile') && task.name.endsWith('Kotlin')) {
+        task.dependsOn tasks.named('prepareTvm4jCoreJar')
+    }
+}
+
 dependencies {
     api fileTree(dir: 'output', include: ['*.jar'])
     implementation 'androidx.core:core-ktx:1.9.0'
