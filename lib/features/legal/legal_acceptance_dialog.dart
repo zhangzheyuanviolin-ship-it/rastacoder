@@ -113,8 +113,8 @@ class _LegalDialogState extends State<_LegalDialog>
             labelColor: NavixTheme.primary,
             unselectedLabelColor: NavixTheme.textSecondary,
             tabs: const [
-              Tab(text: 'Terms of Service'),
-              Tab(text: 'Privacy Policy'),
+              Tab(text: '服务条款'),
+              Tab(text: '隐私政策'),
             ],
           ),
 
@@ -160,7 +160,7 @@ class _LegalDialogState extends State<_LegalDialog>
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Decline'),
+                    child: const Text('拒绝'),
                   ),
                 ),
                 const SizedBox(width: 12),

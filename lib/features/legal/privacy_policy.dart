@@ -58,7 +58,7 @@ Contact: support@navixmind.ai''';
       backgroundColor: NavixTheme.background,
       appBar: AppBar(
         backgroundColor: NavixTheme.background,
-        title: const Text('Privacy Policy'),
+        title: const Text('隐私政策'),
         leading: IconButton(
           icon: Text(
             NavixTheme.iconClose,

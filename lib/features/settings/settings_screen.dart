@@ -366,18 +366,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
-            hintText: 'sk-ant-... (leave empty to remove)',
+            hintText: 'sk-ant-...（留空可删除）',
           ),
           obscureText: true,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Save'),
+            child: const Text('保存'),
           ),
         ],
       ),
@@ -391,7 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('API key removed')),
+            const SnackBar(content: Text('API Key 已删除')),
           );
         }
       } else {
@@ -401,7 +401,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('API key saved')),
+            const SnackBar(content: Text('API Key 已保存')),
           );
         }
       }
@@ -418,18 +418,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(account != null
-                ? 'Google account connected!'
-                : 'Sign-in cancelled'),
+                ? 'Google 账号已连接'
+                : '已取消登录'),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign-in failed: $e')),
+          SnackBar(content: Text('登录失败：$e')),
         );
       }
     }
+  }
+
+  Future<void> _setGoogleOAuthClientId() async {
+    final controller = TextEditingController(
+      text: AuthService.instance.hasCustomOAuthClient
+          ? AuthService.instance.activeOAuthClientId
+          : '',
+    );
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Google OAuth Client ID'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '原作者的 OAuth Client 可能只允许其测试账号登录。这里可以填写您自己的 Google OAuth Web Client ID；留空则恢复上游默认值。',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'OAuth Web Client ID',
+                hintText: 'xxxxxxxx.apps.googleusercontent.com',
+              ),
+              autocorrect: false,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    await AuthService.instance.setOAuthClientId(result);
+    if (!mounted) return;
+    setState(() => _isGoogleConnected = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.isEmpty
+            ? '已恢复上游 OAuth Client；需要重新连接 Google 账号'
+            : '独立 OAuth Client ID 已保存；请重新连接 Google 账号'),
+      ),
+    );
   }
 
   Future<void> _disconnectGoogle() async {
@@ -439,7 +492,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Google account disconnected')),
+        const SnackBar(content: Text('Google 账号已断开')),
       );
     }
   }
@@ -450,7 +503,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: NavixTheme.background,
       appBar: AppBar(
         backgroundColor: NavixTheme.background,
-        title: const Text('Settings'),
+        title: const Text('设置'),
         leading: IconButton(
           icon: Text(
             NavixTheme.iconClose,
@@ -466,12 +519,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // API Key Section
-          _SectionHeader(title: 'API Configuration'),
+          _SectionHeader(title: 'API 与模型'),
           _SettingsTile(
             title: 'Claude API Key',
             subtitle: _isLoading
-                ? 'Loading...'
-                : (_hasApiKey ? 'Configured' : 'Not configured'),
+                ? '正在加载…'
+                : (_hasApiKey ? '已配置' : '未配置'),
             trailing: _isLoading
                 ? const SizedBox(
                     width: 20,
@@ -514,15 +567,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
-                  title: const Text('Delete Model'),
+                  title: const Text('删除模型'),
                   content: Text(
                     'Delete ${ModelRegistry.getById(modelId)?.displayName ?? modelId}? '
-                    'You can re-download it later.',
+                    '之后仍可重新下载。',
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel'),
+                      child: const Text('取消'),
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(context, true),
@@ -547,8 +600,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // System Prompt
           _SettingsTile(
-            title: 'System Prompt',
-            subtitle: _hasCustomPrompt ? 'Custom' : 'Default',
+            title: '系统提示词',
+            subtitle: _hasCustomPrompt ? '自定义' : '默认',
             onTap: () async {
               await Navigator.push<bool>(
                 context,
@@ -564,8 +617,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Self Improve
           _SettingsTile(
-            title: 'Self Improve',
-            subtitle: 'Show button to auto-improve system prompt from conversation',
+            title: '自我优化',
+            subtitle: '显示按钮，可根据当前对话自动优化系统提示词',
             trailing: Switch(
               value: _selfImproveEnabled,
               onChanged: (value) async {
@@ -578,8 +631,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Tool Timeout
           _SettingsTile(
-            title: 'Tool Timeout',
-            subtitle: '${_toolTimeout}s — max wait for native tools (OCR, etc.)',
+            title: '工具超时时间',
+            subtitle: '${_toolTimeout} 秒 — OCR 等本地工具的最长等待时间',
             trailing: DropdownButton<int>(
               value: _toolTimeout,
               underline: const SizedBox(),
@@ -600,8 +653,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Agent Limits
           _SettingsTile(
-            title: 'Max Steps per Query',
-            subtitle: '$_maxIterations — reasoning steps before stopping',
+            title: '每次任务最大步骤数',
+            subtitle: '$_maxIterations — 达到该推理步数后停止',
             trailing: DropdownButton<int>(
               value: _maxIterations,
               underline: const SizedBox(),
@@ -620,8 +673,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           _SettingsTile(
-            title: 'Max Tool Calls per Query',
-            subtitle: '$_maxToolCalls — tool executions before stopping',
+            title: '每次任务最大工具调用次数',
+            subtitle: '$_maxToolCalls — 达到该工具执行次数后停止',
             trailing: DropdownButton<int>(
               value: _maxToolCalls,
               underline: const SizedBox(),
@@ -640,8 +693,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           _SettingsTile(
-            title: 'Max Response Tokens',
-            subtitle: '$_maxTokens — per API call (higher = longer responses)',
+            title: '单次回复最大 Token',
+            subtitle: '$_maxTokens — 数值越高允许回复越长',
             trailing: DropdownButton<int>(
               value: _maxTokens,
               underline: const SizedBox(),
@@ -663,32 +716,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
 
           // Google Account Section
-          _SectionHeader(title: 'Connected Accounts'),
+          _SectionHeader(title: '已连接账号'),
           _SettingsTile(
-            title: 'Google Account',
+            title: 'Google 账号',
             subtitle: _isGoogleConnected
-                ? AuthService.instance.currentUser?.email ?? 'Connected'
-                : 'Not connected',
+                ? AuthService.instance.currentUser?.email ?? '已连接'
+                : '未连接',
             trailing: _isGoogleConnected
                 ? TextButton(
                     onPressed: _disconnectGoogle,
-                    child: const Text('Disconnect'),
+                    child: const Text('断开连接'),
                   )
                 : ElevatedButton(
                     onPressed: _connectGoogle,
-                    child: const Text('Connect'),
+                    child: const Text('连接'),
                   ),
+          ),
+
+          _SettingsTile(
+            title: 'Google OAuth Client ID',
+            subtitle: AuthService.instance.hasCustomOAuthClient
+                ? '已配置独立 OAuth Client'
+                : '当前使用上游 OAuth Client（可能受测试用户限制）',
+            trailing: const Icon(Icons.key, size: 20),
+            onTap: _setGoogleOAuthClientId,
           ),
 
           const SizedBox(height: 24),
 
           // Usage Section
-          _SectionHeader(title: 'Usage & Limits'),
+          _SectionHeader(title: '用量与限制'),
 
           // Token limits toggle
           _SettingsTile(
-            title: 'Enable Token Limits',
-            subtitle: 'Pause agent when limits are reached',
+            title: '启用 Token 限制',
+            subtitle: '达到设定上限时暂停智能体',
             trailing: Switch(
               value: _limitEnabled,
               onChanged: (value) async {
@@ -701,7 +763,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Today's usage with progress bar
           _TokenUsageCard(
-            title: 'Today',
+            title: '今天',
             usedTokens: _todayTokens,
             tokenLimit: _dailyTokenLimit,
             enabled: _limitEnabled,
@@ -710,7 +772,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Month's usage with progress bar
           _TokenUsageCard(
-            title: 'This Month',
+            title: '本月',
             usedTokens: _monthTokens,
             tokenLimit: _monthlyTokenLimit,
             enabled: _limitEnabled,
@@ -721,8 +783,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Export usage button
           _SettingsTile(
-            title: 'Export Usage Data',
-            subtitle: 'Download usage history as CSV',
+            title: '导出用量数据',
+            subtitle: '将历史用量导出为 CSV',
             trailing: const Icon(Icons.download, size: 20),
             onTap: _exportUsageData,
           ),
@@ -730,9 +792,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
 
           // Legal Section
-          _SectionHeader(title: 'Legal'),
+          _SectionHeader(title: '法律与隐私'),
           _SettingsTile(
-            title: 'Terms of Service',
+            title: '服务条款',
             onTap: () {
               Navigator.push(
                 context,
@@ -743,7 +805,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           _SettingsTile(
-            title: 'Privacy Policy',
+            title: '隐私政策',
             onTap: () {
               Navigator.push(
                 context,
@@ -757,13 +819,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 24),
 
           // About Section
-          _SectionHeader(title: 'About'),
+          _SectionHeader(title: '关于'),
           _SettingsTile(
-            title: 'Version',
+            title: '版本',
             subtitle: '1.0.0',
           ),
           _SettingsTile(
-            title: 'Licenses',
+            title: '开源许可证',
             onTap: () {
               _registerExtraLicenses();
               showLicensePage(
@@ -814,10 +876,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               keyboardType: TextInputType.number,
               autofocus: true,
               decoration: InputDecoration(
-                labelText: 'Token limit',
+                labelText: 'Token 上限',
                 hintText: 'e.g. 100000',
-                suffixText: 'tokens',
-                helperText: 'Current: ${_formatTokens(currentValue)}',
+                suffixText: 'Token',
+                helperText: '当前：${_formatTokens(currentValue)}',
               ),
             ),
             const SizedBox(height: 12),
@@ -841,7 +903,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () {
@@ -850,7 +912,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.pop(context, value);
               }
             },
-            child: const Text('Save'),
+            child: const Text('保存'),
           ),
         ],
       ),
@@ -881,7 +943,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Exported to: $filePath'),
+            content: Text('已导出到：$filePath'),
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'OK',
@@ -893,7 +955,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
+          SnackBar(content: Text('导出失败：$e')),
         );
       }
     }
@@ -982,7 +1044,7 @@ class _ModelSelector extends StatelessWidget {
           children: [
             // Cloud Models section
             Text(
-              'Cloud Models (API Key Required)',
+              '云端模型（需要 API Key）',
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: NavixTheme.textSecondary,
                   ),
@@ -999,7 +1061,7 @@ class _ModelSelector extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Offline Models (On-Device)',
+                    '本地模型（设备端运行）',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: NavixTheme.textSecondary,
                         ),
@@ -1135,7 +1197,7 @@ class _ModelSelector extends StatelessWidget {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
-                            'Research only',
+                            '仅供研究',
                             style:
                                 Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: NavixTheme.warning,
@@ -1157,7 +1219,7 @@ class _ModelSelector extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(
-                        'May exceed GPU memory (${estimatedVramMB} MB > ${gpuMemoryMB} MB)',
+                        '可能超过 GPU 内存（${estimatedVramMB} MB > ${gpuMemoryMB} MB）',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: NavixTheme.error,
                               fontSize: 11,
@@ -1190,7 +1252,7 @@ class _ModelSelector extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: () => onDownloadModel(model.id),
             icon: const Icon(Icons.download, size: 16),
-            label: const Text('Download'),
+            label: const Text('下载'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               textStyle: const TextStyle(fontSize: 12),
@@ -1235,7 +1297,7 @@ class _ModelSelector extends StatelessWidget {
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: const Text('Cancel'),
+                    child: const Text('取消'),
                   ),
                 ),
               ],
@@ -1259,7 +1321,7 @@ class _ModelSelector extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                'Loading...',
+                '正在加载…',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: NavixTheme.primary,
                     ),
@@ -1272,7 +1334,7 @@ class _ModelSelector extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Loaded',
+                  '已加载',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: NavixTheme.success,
                         fontSize: 10,
@@ -1292,7 +1354,7 @@ class _ModelSelector extends StatelessWidget {
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text('Unload'),
+                  child: const Text('卸载'),
                 ),
               ),
             ] else ...[
@@ -1322,7 +1384,7 @@ class _ModelSelector extends StatelessWidget {
                     textStyle: const TextStyle(fontSize: 12),
                     foregroundColor: NavixTheme.error,
                   ),
-                  child: const Text('Delete'),
+                  child: const Text('删除'),
                 ),
               ),
           ],
@@ -1341,7 +1403,7 @@ class _ModelSelector extends StatelessWidget {
             const SizedBox(width: 4),
             Flexible(
               child: Text(
-                state?.errorMessage ?? 'Download failed',
+                state?.errorMessage ?? '下载失败',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: NavixTheme.error,
                     ),
@@ -1358,7 +1420,7 @@ class _ModelSelector extends StatelessWidget {
                   textStyle: const TextStyle(fontSize: 12),
                   side: BorderSide(color: NavixTheme.primary),
                 ),
-                child: const Text('Retry'),
+                child: const Text('重试'),
               ),
             ),
           ],
@@ -1370,22 +1432,22 @@ class _ModelSelector extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Download Required'),
+        title: const Text('需要下载模型'),
         content: Text(
           'Download ${model.displayName} (~${model.estimatedSizeFormatted}) '
-          'to use it offline?',
+          '后即可离线使用，是否下载？',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               onDownloadModel(model.id);
             },
-            child: const Text('Download'),
+            child: const Text('下载'),
           ),
         ],
       ),
@@ -1499,8 +1561,8 @@ class _TokenUsageCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     isOver
-                        ? 'Limit reached. Agent paused.'
-                        : 'Approaching limit (${(progress * 100).toInt()}%)',
+                        ? '已达到限制，智能体已暂停。'
+                        : '即将达到限制（${(progress * 100).toInt()}%）',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: progressColor,
                         ),
@@ -1555,7 +1617,7 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('System prompt saved')),
+        const SnackBar(content: Text('系统提示词已保存')),
       );
       Navigator.pop(context, true);
     }
@@ -1581,15 +1643,15 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
       backgroundColor: NavixTheme.background,
       appBar: AppBar(
         backgroundColor: NavixTheme.background,
-        title: const Text('System Prompt'),
+        title: const Text('系统提示词'),
         actions: [
           TextButton(
             onPressed: _resetToDefault,
-            child: const Text('Reset'),
+            child: const Text('恢复默认'),
           ),
           TextButton(
             onPressed: _isDirty ? _save : null,
-            child: const Text('Save'),
+            child: const Text('保存'),
           ),
         ],
       ),
@@ -1601,14 +1663,14 @@ class _SystemPromptEditorState extends State<_SystemPromptEditor> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _isCustom ? 'Custom prompt' : 'Default prompt',
+                    _isCustom ? '自定义提示词' : '默认提示词',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: NavixTheme.textSecondary,
                         ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${_controller.text.length} characters',
+                    '${_controller.text.length} 个字符',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: NavixTheme.textTertiary,
                         ),

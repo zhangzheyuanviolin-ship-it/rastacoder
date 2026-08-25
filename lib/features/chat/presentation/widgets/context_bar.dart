@@ -35,9 +35,9 @@ class SmartContextBar extends StatelessWidget {
     if (isOffline) {
       chips.add(_ContextChip(
         icon: '⚠',
-        label: 'Offline',
+        label: '离线',
         color: NavixTheme.warning,
-        tooltip: 'No internet connection. Messages will be queued.',
+        tooltip: '当前没有网络连接，联网后将继续处理。',
       ));
     }
 
@@ -57,7 +57,7 @@ class SmartContextBar extends StatelessWidget {
         (activeMode == 'Calendar' || activeMode == 'Email')) {
       chips.add(_ContextChip(
         icon: '⊕',
-        label: 'Connect Google',
+        label: '连接 Google',
         color: NavixTheme.accentOrange,
         onTap: onConnectGoogle,
       ));
@@ -67,7 +67,7 @@ class SmartContextBar extends StatelessWidget {
     if (attachedFileCount > 0) {
       chips.add(_ContextChip(
         icon: NavixTheme.iconFile,
-        label: '$attachedFileCount file${attachedFileCount > 1 ? 's' : ''}',
+        label: '$attachedFileCount 个文件',
         color: NavixTheme.accentBlue,
       ));
     }
@@ -167,7 +167,7 @@ class _ContextChip extends StatelessWidget {
 
     final accessibleChip = Semantics(
       label: label,
-      hint: onTap != null ? (showClose ? 'Tap to remove' : 'Tap to activate') : tooltip,
+      hint: onTap != null ? (showClose ? '点击移除' : '点击启用') : tooltip,
       button: onTap != null,
       child: chip,
     );
@@ -213,25 +213,25 @@ class QuickActionPills extends StatelessWidget {
         children: [
           _ActionPill(
             icon: '📋',
-            label: "What's on my calendar?",
+            label: '查看我的日历',
             onTap: () => onAction('/calendar list today'),
           ),
           const SizedBox(width: 8),
           _ActionPill(
             icon: '✉',
-            label: 'Check emails',
+            label: '检查邮件',
             onTap: () => onAction('/email list is:unread'),
           ),
           const SizedBox(width: 8),
           _ActionPill(
             icon: '📝',
-            label: 'Summarize',
+            label: '总结内容',
             onTap: () => onAction('/summarize '),
           ),
           const SizedBox(width: 8),
           _ActionPill(
             icon: '🎬',
-            label: 'Process video',
+            label: '处理视频',
             onTap: () => onAction('/crop '),
           ),
         ],
@@ -255,7 +255,7 @@ class _ActionPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: label,
-      hint: 'Tap to use this quick action',
+      hint: '点击使用此快捷操作',
       button: true,
       child: GestureDetector(
         onTap: onTap,

@@ -62,7 +62,7 @@ class MessageList extends StatelessWidget {
                         ),
                       ),
                       label: Text(
-                        'Self Improve',
+                        '自我优化',
                         style: TextStyle(
                           fontSize: 12,
                           color: NavixTheme.textTertiary,
@@ -110,14 +110,14 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Start a conversation',
+            '开始对话',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               color: NavixTheme.textSecondary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Ask me anything or share a file to get started',
+            '输入问题，或者分享一个文件开始处理',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: NavixTheme.textTertiary,
             ),

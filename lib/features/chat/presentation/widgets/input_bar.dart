@@ -131,7 +131,7 @@ class _InputBarState extends State<InputBar> {
         );
       }
     } catch (e) {
-      _showError('Failed to pick files: $e');
+      _showError('选择文件失败：$e');
     }
   }
 
@@ -149,7 +149,7 @@ class _InputBarState extends State<InputBar> {
     final limitStr = _formatSize(limit);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$name is too large ($sizeStr). Max: $limitStr'),
+        content: Text('$name 文件过大（$sizeStr），最大允许 $limitStr'),
         backgroundColor: NavixTheme.error,
       ),
     );
@@ -226,7 +226,7 @@ class _InputBarState extends State<InputBar> {
               _IconButton(
                 icon: NavixTheme.iconAdd,
                 onPressed: widget.enabled ? _pickFiles : null,
-                tooltip: 'Add file',
+                tooltip: '添加文件',
               ),
 
               const SizedBox(width: 8),
@@ -243,8 +243,8 @@ class _InputBarState extends State<InputBar> {
                   onSubmitted: (_) => _onSubmit(),
                   decoration: InputDecoration(
                     hintText: widget.enabled
-                        ? 'Type a message...'
-                        : 'Connecting...',
+                        ? '输入消息…'
+                        : '正在连接…',
                     filled: true,
                     fillColor: NavixTheme.background,
                     contentPadding: const EdgeInsets.symmetric(
@@ -269,7 +269,7 @@ class _InputBarState extends State<InputBar> {
                   : _IconButton(
                       icon: NavixTheme.iconSend,
                       onPressed: widget.enabled ? _onSubmit : null,
-                      tooltip: 'Send',
+                      tooltip: '发送',
                       primary: true,
                     ),
             ],

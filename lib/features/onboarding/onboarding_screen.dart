@@ -18,7 +18,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pages = [
     const _OnboardingPage(
       icon: '◆',
-      title: 'Welcome to NavixMind',
+      title: '欢迎使用 RastaCoder',
       description:
           'Your AI-powered console agent for Android. Process documents, '
           'manage calendar, and automate tasks with natural language.',
@@ -123,7 +123,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   if (_currentPage > 0)
                     TextButton(
                       onPressed: _previousPage,
-                      child: const Text('Back'),
+                      child: const Text('返回'),
                     )
                   else
                     const SizedBox(width: 80),
@@ -136,7 +136,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   else
                     ElevatedButton(
                       onPressed: _complete,
-                      child: const Text('Get Started'),
+                      child: const Text('开始使用'),
                     ),
                 ],
               ),

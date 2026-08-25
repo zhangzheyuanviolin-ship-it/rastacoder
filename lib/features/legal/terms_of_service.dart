@@ -58,7 +58,7 @@ By using NavixMind, you acknowledge that you have read, understood, and agree to
       backgroundColor: NavixTheme.background,
       appBar: AppBar(
         backgroundColor: NavixTheme.background,
-        title: const Text('Terms of Service'),
+        title: const Text('服务条款'),
         leading: IconButton(
           icon: Text(
             NavixTheme.iconClose,

@@ -49,6 +49,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _pendingMetricsCheck = false;
   List<String> _externalFiles = [];
   StreamSubscription<SharedFilesEvent>? _shareSubscription;
+  StreamSubscription? _nativeToolSubscription;
+  final Set<String> _announcedNativeToolIds = <String>{};
 
   @override
   void initState() {
@@ -58,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _loadSelfImproveSetting();
     _listenToPythonStatus();
     _listenToLogs();
+    _listenToNativeTools();
     _listenToConnectivity();
     _listenToAuth();
     _listenToSharedFiles();
@@ -105,7 +108,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _awaitingApiKey = true;
         _messages.add(ChatMessage(
           role: MessageRole.system,
-          content: 'Welcome to NavixMind! Please enter your Claude API key to get started.\n\nYou can get one at console.anthropic.com\n\nAlternatively, select an offline model in Settings to run fully on-device.',
+          content: '欢迎使用 RastaCoder！您可以在设置中配置 Claude API Key，或者直接选择并下载本地模型，在设备端离线运行。',
           timestamp: DateTime.now(),
         ));
       }
@@ -159,7 +162,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _messages.add(ChatMessage(
           role: MessageRole.system,
-          content: 'That doesn\'t look like a valid Claude API key. It should start with "sk-". Please try again.',
+          content: '这个 Claude API Key 格式看起来不正确，应当以 "sk-" 开头，请重新输入。',
           timestamp: DateTime.now(),
         ));
       });
@@ -175,7 +178,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _hasApiKey = true;
       _messages.add(ChatMessage(
         role: MessageRole.system,
-        content: 'API key saved! You can now start chatting with NavixMind.',
+        content: 'API Key 已保存，现在可以开始对话。',
         timestamp: DateTime.now(),
       ));
     });
@@ -250,7 +253,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
         _messages.add(ChatMessage(
           role: MessageRole.system,
-          content: 'Received ${validFiles.length} file(s) from share. Add a prompt and send.',
+          content: '已接收 ${validFiles.length} 个分享文件，请输入要求后发送。',
           timestamp: DateTime.now(),
         ));
       }
@@ -272,19 +275,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         switch (status) {
           case PythonStatus.initializing:
-            _statusMessage = 'Initializing...';
+            _statusMessage = '正在初始化…';
             break;
           case PythonStatus.importing:
-            _statusMessage = 'Loading modules...';
+            _statusMessage = '正在加载模块…';
             break;
           case PythonStatus.ready:
             _statusMessage = null;
             break;
           case PythonStatus.error:
-            _statusMessage = 'Connection error';
+            _statusMessage = '连接错误';
             break;
           case PythonStatus.restarting:
-            _statusMessage = 'Reconnecting...';
+            _statusMessage = '正在重新连接…';
             break;
           default:
             break;
@@ -338,7 +341,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.system,
-            content: '$icon $msg',
+            content: '$icon ${_localizeAgentLog(msg)}',
             timestamp: DateTime.now(),
           ));
         });
@@ -360,6 +363,46 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       }
     });
+  }
+
+  void _listenToNativeTools() {
+    _nativeToolSubscription = PythonBridge.instance.nativeToolStream.listen((request) {
+      if (!mounted || !_isProcessing) return;
+      if (!_announcedNativeToolIds.add(request.id)) return;
+
+      setState(() {
+        _messages.add(ChatMessage(
+          role: MessageRole.system,
+          content: '⚙️ 正在调用工具：${request.tool}',
+          timestamp: DateTime.now(),
+        ));
+        _statusMessage = '正在调用工具：${request.tool}';
+      });
+      _scrollToBottom();
+    });
+  }
+
+  String _localizeAgentLog(String msg) {
+    if (msg.startsWith('Thinking:')) {
+      return '思考：${msg.substring('Thinking:'.length).trim()}';
+    }
+    if (msg.startsWith('Tool:')) {
+      return '准备调用工具：${msg.substring('Tool:'.length).trim()}';
+    }
+    if (msg.startsWith('Executing')) {
+      return '正在执行${msg.substring('Executing'.length)}';
+    }
+    if (msg.startsWith('Result:')) {
+      return '工具结果：${msg.substring('Result:'.length).trim()}';
+    }
+    if (msg.startsWith('Code:')) {
+      return '执行代码：${msg.substring('Code:'.length).trim()}';
+    }
+    if (msg.startsWith('File:')) {
+      return '文件：${msg.substring('File:'.length).trim()}';
+    }
+    if (msg == 'Preparing response...') return '正在整理最终回复…';
+    return msg;
   }
 
   Future<void> _sendMessage() async {
@@ -402,7 +445,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.system,
-            content: '⏳ Message queued. Will send when online.',
+            content: '⏳ 消息已排队，恢复网络后发送。',
             timestamp: DateTime.now(),
           ));
           _attachedFiles = [];
@@ -420,7 +463,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     setState(() {
       _isProcessing = true;
-      _statusMessage = isUsingOfflineModel ? 'Running on device...' : 'Thinking...';
+      _statusMessage = isUsingOfflineModel ? '正在设备端运行…' : '正在思考…';
     });
 
     final stopwatch = Stopwatch()..start();
@@ -458,7 +501,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.error,
-            content: response.error?.message ?? 'Unknown error',
+            content: response.error?.message ?? '未知错误',
             timestamp: DateTime.now(),
           ));
         });
@@ -468,7 +511,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.error,
-            content: 'Unexpected response from agent',
+            content: '智能体返回了无法识别的响应',
             timestamp: DateTime.now(),
           ));
         });
@@ -493,6 +536,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           _statusMessage = null;
           _attachedFiles = [];
           _externalFiles = [];
+          _announcedNativeToolIds.clear();
         });
         _scrollToBottom();
       }
@@ -504,7 +548,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     setState(() {
       _isProcessing = true;
-      _statusMessage = 'Analyzing conversation...';
+      _statusMessage = '正在分析对话…';
     });
 
     try {
@@ -524,7 +568,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.system,
-            content: 'No conversation to analyze.',
+            content: '没有可分析的对话。',
             timestamp: DateTime.now(),
           ));
         });
@@ -549,7 +593,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           setState(() {
             _messages.add(ChatMessage(
               role: MessageRole.system,
-              content: 'System prompt improved and saved. It will be used for future queries.',
+              content: '系统提示词已优化并保存，后续对话将使用新版本。',
               timestamp: DateTime.now(),
             ));
           });
@@ -557,17 +601,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           setState(() {
             _messages.add(ChatMessage(
               role: MessageRole.system,
-              content: 'Self-improve returned no changes.',
+              content: '自我优化没有产生修改。',
               timestamp: DateTime.now(),
             ));
           });
         }
       } else {
-        final errorMsg = response.error?.message ?? 'Unknown error';
+        final errorMsg = response.error?.message ?? '未知错误';
         setState(() {
           _messages.add(ChatMessage(
             role: MessageRole.error,
-            content: 'Self-improve failed: $errorMsg',
+            content: '自我优化失败：$errorMsg',
             timestamp: DateTime.now(),
           ));
         });
@@ -577,7 +621,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _messages.add(ChatMessage(
           role: MessageRole.error,
-          content: 'Self-improve error: $e',
+          content: '自我优化错误：$e',
           timestamp: DateTime.now(),
         ));
       });
@@ -622,7 +666,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _hasApiKey = true;
             _messages.add(ChatMessage(
               role: MessageRole.system,
-              content: 'API key saved! You can now start chatting with NavixMind.',
+              content: 'API Key 已保存，现在可以开始对话。',
               timestamp: DateTime.now(),
             ));
           });
@@ -644,7 +688,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             _awaitingApiKey = false;
             _messages.add(ChatMessage(
               role: MessageRole.system,
-              content: 'Offline model selected! You can now start chatting with NavixMind.',
+              content: '本地模型已选择，现在可以开始对话。',
               timestamp: DateTime.now(),
             ));
           });
@@ -698,7 +742,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             ),
           ),
           onPressed: _openMenu,
-          tooltip: 'Menu',
+          tooltip: '菜单',
         ),
         actions: [
           if (_isProcessing)
@@ -714,7 +758,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             // Status banner
             if (_statusMessage != null || !isPythonReady)
               StatusBanner(
-                message: _statusMessage ?? 'Connecting...',
+                message: _statusMessage ?? '正在连接…',
                 isError: PythonBridge.instance.status == PythonStatus.error,
               ),
 
@@ -770,6 +814,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _shareSubscription?.cancel();
+    _nativeToolSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _inputController.dispose();
     _scrollController.dispose();

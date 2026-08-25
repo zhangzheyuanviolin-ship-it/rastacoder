@@ -24,7 +24,7 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: _accessibilityLabel,
-      hint: 'Long press to copy',
+      hint: '长按可复制',
       excludeSemantics: true,
       child: GestureDetector(
         onLongPress: () => _showContextMenu(context),
@@ -65,12 +65,15 @@ class MessageBubble extends StatelessWidget {
 
   String get _accessibilityLabel {
     final roleLabel = switch (message.role) {
-      MessageRole.user => 'You said',
-      MessageRole.assistant => 'NavixMind replied',
-      MessageRole.system => 'System message',
-      MessageRole.error => 'Error',
+      MessageRole.user => '您说',
+      MessageRole.assistant => 'RastaCoder 回复',
+      MessageRole.system => '系统消息',
+      MessageRole.error => '错误',
     };
-    return '$roleLabel: ${message.content}';
+    final visibleContent = message.role == MessageRole.assistant
+        ? _splitThinking(message.content)[1]
+        : message.content;
+    return '$roleLabel：$visibleContent';
   }
 
   MainAxisAlignment get _alignment {
@@ -105,6 +108,10 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
+    if (message.role == MessageRole.assistant) {
+      return _buildAssistantContent(context);
+    }
+
     if (message.role == MessageRole.error) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,21 +170,21 @@ class MessageBubble extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(account != null
-                          ? 'Google account connected!'
-                          : 'Sign-in cancelled'),
+                          ? 'Google 账号已连接'
+                          : '已取消登录'),
                     ),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Sign-in failed: $e')),
+                    SnackBar(content: Text('登录失败：$e')),
                   );
                 }
               }
             },
             icon: const Icon(Icons.account_circle, size: 18),
-            label: const Text('Connect Google Account'),
+            label: const Text('连接 Google 账号'),
             style: ElevatedButton.styleFrom(
               backgroundColor: NavixTheme.primary,
               foregroundColor: Colors.white,
@@ -192,6 +199,157 @@ class MessageBubble extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
         color: NavixTheme.textPrimary,
       ),
+    );
+  }
+
+  List<String> _splitThinking(String content) {
+    final thinkRegex = RegExp(r'<think>([\s\S]*?)</think>', caseSensitive: false);
+    final thinkingParts = <String>[];
+    var finalText = content;
+
+    for (final match in thinkRegex.allMatches(content)) {
+      final thinking = match.group(1)?.trim();
+      if (thinking != null && thinking.isNotEmpty) thinkingParts.add(thinking);
+    }
+    finalText = finalText.replaceAll(thinkRegex, '').trim();
+
+    // Defensive handling for a model response which ends while a think tag is open.
+    final openThink = RegExp(r'<think>([\s\S]*)$', caseSensitive: false).firstMatch(finalText);
+    if (openThink != null) {
+      final thinking = openThink.group(1)?.trim();
+      if (thinking != null && thinking.isNotEmpty) thinkingParts.add(thinking);
+      finalText = finalText.substring(0, openThink.start).trim();
+    }
+
+    return [thinkingParts.join('\n\n'), finalText];
+  }
+
+  Widget _buildAssistantContent(BuildContext context) {
+    final parts = _splitThinking(message.content);
+    final thinking = parts[0];
+    final answer = parts[1];
+    final widgets = <Widget>[];
+
+    if (thinking.isNotEmpty) {
+      widgets.add(
+        Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 10),
+            initiallyExpanded: false,
+            maintainState: true,
+            title: Text(
+              '思考过程（点击展开）',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: NavixTheme.textSecondary,
+                  ),
+            ),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SelectableText(
+                  thinking,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: NavixTheme.textTertiary,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (answer.isNotEmpty) {
+      widgets.add(_buildTextContent(context, answer));
+    } else if (thinking.isNotEmpty) {
+      widgets.add(Text(
+        '正在整理最终回复…',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: NavixTheme.textSecondary,
+            ),
+      ));
+    }
+
+    final needsGoogleConnect = !AuthService.instance.isSignedIn &&
+        _mentionsGoogleConnect(answer);
+    if (needsGoogleConnect) {
+      widgets.add(const SizedBox(height: 12));
+      widgets.add(ElevatedButton.icon(
+        onPressed: () async {
+          try {
+            final account = await AuthService.instance.signIn();
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(account != null ? 'Google 账号已连接' : '已取消登录')),
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Google 登录失败：$e')),
+              );
+            }
+          }
+        },
+        icon: const Icon(Icons.account_circle, size: 18),
+        label: const Text('连接 Google 账号'),
+      ));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  Widget _buildTextContent(BuildContext context, String content) {
+    if (!content.contains('```')) {
+      return SelectableText(
+        content,
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: NavixTheme.textPrimary,
+            ),
+      );
+    }
+
+    final parts = <Widget>[];
+    final regex = RegExp(r'```(\w*)\n?([\s\S]*?)```');
+    var lastEnd = 0;
+    for (final match in regex.allMatches(content)) {
+      if (match.start > lastEnd) {
+        final text = content.substring(lastEnd, match.start).trim();
+        if (text.isNotEmpty) {
+          parts.add(SelectableText(text,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: NavixTheme.textPrimary,
+                  )));
+        }
+      }
+      parts.add(_CodeBlock(
+        code: (match.group(2) ?? '').trim(),
+        language: match.group(1) ?? '',
+      ));
+      lastEnd = match.end;
+    }
+    if (lastEnd < content.length) {
+      final text = content.substring(lastEnd).trim();
+      if (text.isNotEmpty) {
+        parts.add(SelectableText(text,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: NavixTheme.textPrimary,
+                )));
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: parts
+          .map((w) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: w,
+              ))
+          .toList(),
     );
   }
 
@@ -233,7 +391,7 @@ class MessageBubble extends StatelessWidget {
               } else {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('File not found: $fileName')),
+                    SnackBar(content: Text('找不到文件：$fileName')),
                   );
                 }
               }
@@ -337,12 +495,12 @@ class MessageBubble extends StatelessWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.copy),
-              title: const Text('Copy'),
+              title: const Text('复制'),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: message.content));
                 Navigator.pop(modalContext);
                 scaffoldMessenger.showSnackBar(
-                  const SnackBar(content: Text('Copied to clipboard')),
+                  const SnackBar(content: Text('已复制到剪贴板')),
                 );
               },
             ),

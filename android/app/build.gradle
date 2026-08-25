@@ -3,8 +3,6 @@ plugins {
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
     id "com.chaquo.python"
-    id "com.google.gms.google-services"
-    id "com.google.firebase.crashlytics"
 }
 
 def localProperties = new Properties()
@@ -113,6 +111,7 @@ android {
     buildTypes {
         debug {
             buildConfigField "boolean", "NAVIXMIND_DEBUG", "true"
+            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug
         }
         release {
             minifyEnabled true
