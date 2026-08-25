@@ -1,0 +1,73 @@
+name: Inspect Known-Good Qwen3 APK Layout
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-known-good-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SOURCE_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download and verify exact official APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o official.apk "$SOURCE_URL"
+          echo "$SOURCE_SHA256  official.apk" | sha256sum -c -
+          test "$(stat -c '%s' official.apk)" -eq 593655513
+
+      - name: Inspect APK native libraries and MLC config paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -Z1 official.apk > apk-entries.txt
+          {
+            echo "Official APK SHA-256: $SOURCE_SHA256"
+            echo "Official APK size: $(stat -c '%s' official.apk)"
+            echo
+            echo "All entries matching tvm/mlc/qwen/config:"
+            grep -Ei 'tvm|mlc|qwen|config' apk-entries.txt || true
+            echo
+            echo "All arm64 shared libraries with size and SHA-256:"
+          } > KNOWN_GOOD_APK_LAYOUT.txt
+
+          while IFS= read -r entry; do
+            [ -n "$entry" ] || continue
+            unzip -p official.apk "$entry" > candidate.so
+            printf '%s\t%s\t%s\n' \
+              "$(stat -c '%s' candidate.so)" \
+              "$(sha256sum candidate.so | awk '{print $1}')" \
+              "$entry" >> KNOWN_GOOD_APK_LAYOUT.txt
+          done < <(awk '/^lib\/arm64-v8a\/.*\.so$/ {print}' apk-entries.txt)
+
+          {
+            echo
+            echo "MLC app config candidates:"
+            awk '/mlc-app-config\.json$/ {print}' apk-entries.txt
+          } >> KNOWN_GOOD_APK_LAYOUT.txt
+
+          cat KNOWN_GOOD_APK_LAYOUT.txt
+
+      - name: Commit inspection report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add KNOWN_GOOD_APK_LAYOUT.txt
+          git commit -m "ci: record exact known-good APK native layout"
+          git pull --rebase origin main
+          git push origin HEAD:main
