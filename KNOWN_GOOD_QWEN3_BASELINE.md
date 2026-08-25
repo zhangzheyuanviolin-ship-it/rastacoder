@@ -20,3 +20,5 @@ The first project APK is produced by verifying the exact upstream known-good APK
 Development signing certificate SHA-256:
 
 `87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8`
+
+Build trigger provenance: this line was added through the repository Contents API so GitHub receives a normal push event for the deterministic baseline workflow.
