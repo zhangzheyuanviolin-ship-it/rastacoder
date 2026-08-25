@@ -40,6 +40,15 @@ subprojects {
         }
     }
 
+    // flutter_inappwebview_android 1.0.13 + Flutter 3.22 has a known
+    // release-only R8 failure on android.window.BackEvent. Keep app release
+    // compilation intact, but disable minification only for this library.
+    afterEvaluate {
+        if (project.name == "flutter_inappwebview_android") {
+            project.android.buildTypes.release.minifyEnabled = false
+        }
+    }
+
     // Force AndroidX core version for lStar attribute compatibility
     project.configurations.all {
         resolutionStrategy.eachDependency { details ->
