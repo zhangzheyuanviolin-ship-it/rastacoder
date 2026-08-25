@@ -8,8 +8,12 @@ on:
       - '.github/workflows/v6-validation.yml'
       - 'scripts/apply_iteration_v6.py'
       - 'scripts/run_iteration_v6.py'
+      - 'scripts/apply_iteration_v6_reliability2.py'
       - 'scripts/apply_iteration_v6_ui.py'
+      - 'scripts/apply_iteration_v6_history.py'
+      - 'scripts/apply_iteration_v6_native.py'
       - 'scripts/validate_iteration_v6.py'
+      - 'scripts/validate_iteration_v6_extended.py'
       - 'docs/HANDOFF_QWEN3_TOOL_RELIABILITY_V6.md'
   workflow_dispatch:
 
@@ -18,7 +22,7 @@ permissions:
 
 jobs:
   validate-v6:
-    name: Rebuild v5 baseline, apply v6, run full reliability/native gates
+    name: Rebuild v5, apply v6, run systemic tool/history/native gates
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -82,19 +86,35 @@ jobs:
           grep -F 'RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM' python/navixmind/agent.py
           grep -F '[MODEL_TOOL_DISABLED]' python/navixmind/tools/__init__.py
 
-      - name: Apply v6 core reliability and observability patches
+      - name: Compile v6 deterministic patch runners and gates
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile scripts/run_iteration_v6.py scripts/apply_iteration_v6_ui.py scripts/validate_iteration_v6.py
-          python3 scripts/run_iteration_v6.py
-          python3 scripts/apply_iteration_v6_ui.py
+          python3 -m py_compile \
+            scripts/run_iteration_v6.py \
+            scripts/apply_iteration_v6_reliability2.py \
+            scripts/apply_iteration_v6_ui.py \
+            scripts/apply_iteration_v6_history.py \
+            scripts/apply_iteration_v6_native.py \
+            scripts/validate_iteration_v6.py \
+            scripts/validate_iteration_v6_extended.py
 
-      - name: Run full 21-Skill 23-tool regression matrix
+      - name: Apply v6 systemic reliability observability history and native patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/run_iteration_v6.py
+          python3 scripts/apply_iteration_v6_reliability2.py
+          python3 scripts/apply_iteration_v6_ui.py
+          python3 scripts/apply_iteration_v6_history.py
+          python3 scripts/apply_iteration_v6_native.py
+
+      - name: Run full 21-Skill 23-tool regression matrices
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/validate_iteration_v6.py
+          python3 scripts/validate_iteration_v6_extended.py
 
       - name: Compile Python sources
         shell: bash
@@ -166,18 +186,22 @@ jobs:
           test -s build/app/outputs/flutter-apk/app-debug.apk
           echo 'Android/Kotlin/Java/Chaquopy/MLC compile gate passed; APK remains CI-only.'
 
-      - name: Re-run v6 reliability matrix after native build
+      - name: Re-run v6 matrices after native build
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/validate_iteration_v6.py
+          python3 scripts/validate_iteration_v6_extended.py
 
       - name: Validation summary
         shell: bash
         run: |
           echo 'RastaCoder v6 validation passed.'
           echo '21 manually managed Skills cover all 23 canonical local tools.'
+          echo 'Every canonical tool has a representative call satisfying its required top-level schema.'
+          echo 'TXT, DOCX and audio user regression families have dedicated compatibility tests.'
           echo 'Skill IDs are UI-only; model prompt contains canonical callable names/signatures only.'
-          echo 'User audio/Word regressions and cross-Skill malformed-call cases passed the regression matrix.'
+          echo 'MLC streamed structured tool calls accumulate by call index and merge arguments.'
           echo 'Thinking metadata and copy/share diagnostic surfaces passed source/static/native gates.'
+          echo 'Persistent Isar chat history supports new/load/rename/delete and Python session resync.'
           echo 'No release asset was published by this validation workflow.'
