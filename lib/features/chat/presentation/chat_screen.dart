@@ -307,8 +307,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       // Show important messages as chat messages (thinking, tool use, results)
       final msg = log.message;
-      final shouldShowInChat = msg.startsWith('Thinking:') ||
-          msg.startsWith('Tool:') ||
+      // Keep model reasoning content private/collapsed by default.
+      // Live chat messages focus on observable tool activity and results.
+      final shouldShowInChat = msg.startsWith('Tool:') ||
           msg.startsWith('Result:') ||
           msg.startsWith('Executing') ||
           msg.startsWith('Code:') ||
@@ -359,7 +360,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         });
       } else {
         setState(() {
-          _statusMessage = msg;
+          // A Thinking: log may contain a preview of the model's hidden
+          // reasoning. Expose only a generic progress state here; the full
+          // <think> block remains available through the collapsed control
+          // attached to the final assistant message.
+          _statusMessage = msg.startsWith('Thinking:')
+              ? '正在思考…'
+              : _localizeAgentLog(msg);
         });
       }
     });
