@@ -57,6 +57,7 @@ jobs:
           set -euo pipefail
           python3 tools/apply_iteration_v2.py
           sed -i 's/RastaTheme/NavixTheme/g' lib/features/chat/presentation/widgets/message_bubble.dart
+          sed -i 's/NavixTheme.gold/NavixTheme.primary/g; s/NavixTheme.black/NavixTheme.textPrimary/g' lib/features/chat/presentation/widgets/message_bubble.dart
           grep -Fq '思考过程（点击展开）' lib/features/chat/presentation/widgets/message_bubble.dart
           grep -Fq '工具调用和执行结果会实时显示' lib/features/chat/presentation/chat_screen.dart
           if grep -Fq '296863031657-69hn38bhprhqvrda6vd795sp65e8764d.apps.googleusercontent.com' lib/core/services/auth_service.dart; then
