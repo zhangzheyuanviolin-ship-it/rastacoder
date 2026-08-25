@@ -252,98 +252,144 @@ def create_pdf(
         raise ToolError(f"Failed to create PDF: {str(e)}")
 
 
+# RASTACODER_V4_TOOL_CONTRACT
+
+def create_docx(output_path: str, content: str, title: str = None) -> dict:
+    """Create a DOCX document from plain text."""
+    from docx import Document
+
+    if content is None:
+        raise ToolError("create_docx requires 'content'")
+    if len(content) > PROCESSING_LIMITS['text_chars']:
+        raise ToolError(
+            f"Content too large: {len(content)} chars. "
+            f"Maximum: {PROCESSING_LIMITS['text_chars']} chars."
+        )
+
+    try:
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        doc = Document()
+        if title:
+            doc.add_heading(str(title), level=1)
+        # Preserve ordinary line structure while allowing blank lines.
+        for paragraph in str(content).splitlines():
+            doc.add_paragraph(paragraph)
+        if not str(content).splitlines():
+            doc.add_paragraph(str(content))
+        doc.save(output_path)
+        return {
+            "output_path": output_path,
+            "success": True,
+            "format": "docx",
+        }
+    except ToolError:
+        raise
+    except Exception as e:
+        raise ToolError(f"Failed to create DOCX: {str(e)}")
+
+
+def _extract_document_text(input_path: str) -> str:
+    """Extract text for text-oriented format conversion."""
+    ext = os.path.splitext(input_path)[1].lower()
+    if ext == '.txt':
+        with open(input_path, 'r', encoding='utf-8', errors='replace') as f:
+            return f.read()
+    if ext == '.docx':
+        from docx import Document
+        doc = Document(input_path)
+        parts = [p.text for p in doc.paragraphs]
+        for table in doc.tables:
+            for row in table.rows:
+                parts.append('\t'.join(cell.text for cell in row.cells))
+        return '\n'.join(parts)
+    if ext == '.pdf':
+        from pypdf import PdfReader
+        reader = PdfReader(input_path)
+        return '\n\n'.join((p.extract_text() or '') for p in reader.pages)
+    if ext in ('.html', '.htm'):
+        from bs4 import BeautifulSoup
+        with open(input_path, 'r', encoding='utf-8', errors='replace') as f:
+            soup = BeautifulSoup(f.read(), 'lxml')
+        return soup.get_text('\n', strip=True)
+    if ext == '.doc':
+        raise ToolError(
+            "Legacy .doc files are not supported by the bundled python-docx library. "
+            "Please convert the file to .docx first."
+        )
+    raise ToolError(
+        f"Unsupported input format: {ext or '[no extension]'}. "
+        "Supported inputs: .txt, .docx, .pdf, .html, .htm."
+    )
+
+
 def convert_document(
     input_path: str,
-    output_format: str
+    output_format: str,
+    output_path: str = None,
 ) -> dict:
-    """
-    Convert document to another format.
+    """Convert TXT/DOCX/PDF/HTML by extracting and recreating text content.
 
-    Args:
-        input_path: Path to input document
-        output_format: Target format (pdf, html, txt)
-
-    Returns:
-        Dict with output path
+    Complex source layout, embedded media, formulas, and advanced Office styling
+    may be simplified because this is a text-oriented mobile conversion tool.
     """
     validate_file_for_processing(input_path, 'document')
 
-    ext = os.path.splitext(input_path)[1].lower()
+    fmt = str(output_format or '').strip().lower().lstrip('.')
+    fmt = {
+        'word': 'docx', 'msword': 'docx', 'microsoft word': 'docx',
+        'text': 'txt', 'htm': 'html',
+    }.get(fmt, fmt)
+    if fmt not in {'pdf', 'html', 'txt', 'docx'}:
+        raise ToolError(
+            f"Unsupported output format: {output_format}. "
+            "Supported outputs: pdf, html, txt, docx."
+        )
+
     base_name = os.path.splitext(input_path)[0]
-    output_path = f"{base_name}.{output_format}"
+    output_path = output_path or f"{base_name}.{fmt}"
 
     try:
-        if ext in ['.docx', '.doc']:
-            return _convert_docx(input_path, output_format, output_path)
-        elif ext == '.txt':
-            return _convert_txt(input_path, output_format, output_path)
-        else:
-            raise ToolError(f"Unsupported input format: {ext}")
+        text = _extract_document_text(input_path)
+        if len(text) > PROCESSING_LIMITS['text_chars']:
+            text = text[:PROCESSING_LIMITS['text_chars']]
 
+        if fmt == 'txt':
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(text)
+            return {"output_path": output_path, "success": True, "format": "txt"}
+
+        if fmt == 'docx':
+            return create_docx(output_path=output_path, content=text)
+
+        if fmt == 'pdf':
+            return create_pdf(output_path=output_path, content=text)
+
+        # HTML output: escape source text so arbitrary TXT/DOCX content does not
+        # become executable markup.
+        from html import escape
+        paragraphs = text.split('\n\n')
+        html_body = ''.join(f'<p>{escape(p)}</p>' for p in paragraphs if p.strip())
+        html = (
+            '<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8">'
+            '<title>Converted Document</title></head>\n<body>\n'
+            f'{html_body}\n</body>\n</html>'
+        )
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        return {"output_path": output_path, "success": True, "format": "html"}
+
+    except ToolError:
+        raise
     except Exception as e:
         raise ToolError(f"Conversion failed: {str(e)}")
-
-
-def _convert_docx(input_path: str, output_format: str, output_path: str) -> dict:
-    """Convert DOCX to target format."""
-    from docx import Document
-
-    doc = Document(input_path)
-
-    # Extract text
-    full_text = []
-    for para in doc.paragraphs:
-        full_text.append(para.text)
-
-    text = '\n\n'.join(full_text)
-
-    if output_format == 'txt':
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(text)
-        return {"output_path": output_path, "success": True}
-
-    elif output_format == 'pdf':
-        return create_pdf(text, output_path)
-
-    elif output_format == 'html':
-        html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Converted Document</title></head>
-<body>
-{''.join(f'<p>{p}</p>' for p in full_text if p.strip())}
-</body>
-</html>"""
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html)
-        return {"output_path": output_path, "success": True}
-
-    else:
-        raise ToolError(f"Unsupported output format: {output_format}")
-
-
-def _convert_txt(input_path: str, output_format: str, output_path: str) -> dict:
-    """Convert TXT to target format."""
-    with open(input_path, 'r', encoding='utf-8') as f:
-        text = f.read()
-
-    if output_format == 'pdf':
-        return create_pdf(text, output_path)
-
-    elif output_format == 'html':
-        paragraphs = text.split('\n\n')
-        html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Converted Document</title></head>
-<body>
-{''.join(f'<p>{p}</p>' for p in paragraphs if p.strip())}
-</body>
-</html>"""
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(html)
-        return {"output_path": output_path, "success": True}
-
-    else:
-        raise ToolError(f"Unsupported output format: {output_format}")
 
 
 def create_zip(

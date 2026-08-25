@@ -8,14 +8,17 @@ from typing import Any, Dict
 
 from .web import web_fetch, headless_browser
 from .documents import (
-    read_pdf, create_pdf, convert_document, create_zip, read_file, write_file,
+    read_pdf, create_pdf, create_docx, convert_document, create_zip, read_file, write_file,
     read_docx, modify_docx, read_pptx, modify_pptx, read_xlsx, modify_xlsx,
 )
 from .media import download_media
 from .google_api import google_calendar, gmail
 from .code_executor import python_execute
 
-from ..bridge import ToolError
+from ..bridge import ToolError, get_bridge
+from .compat import normalize_tool_call
+
+# RASTACODER_V4_TOOL_CONTRACT
 
 
 # Tool schema for Claude
@@ -91,18 +94,28 @@ TOOLS_SCHEMA = [
     },
     {
         "name": "convert_document",
-        "description": "Convert documents between formats (DOCX to PDF, etc.)",
+        "description": "Text-oriented conversion between TXT, DOCX, PDF, and HTML. Complex layout may be simplified.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "input_path": {"type": "string", "description": "Path to input file"},
-                "output_format": {
-                    "type": "string",
-                    "enum": ["pdf", "html", "txt"],
-                    "description": "Target format"
-                }
+                "input_path": {"type": "string", "description": "Path to .txt, .docx, .pdf, .html, or .htm input"},
+                "output_format": {"type": "string", "enum": ["pdf", "html", "txt", "docx"], "description": "Target format"},
+                "output_path": {"type": "string", "description": "Optional explicit output path"}
             },
             "required": ["input_path", "output_format"]
+        }
+    },
+    {
+        "name": "create_docx",
+        "description": "Create a new DOCX Word document from text.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string", "description": "Where to save the .docx file"},
+                "content": {"type": "string", "description": "Document text"},
+                "title": {"type": "string", "description": "Optional document title"}
+            },
+            "required": ["output_path", "content"]
         }
     },
     {
@@ -331,8 +344,9 @@ TOOLS_SCHEMA = [
                 },
                 "event": {
                     "type": "object",
-                    "description": "For create: {title, start, end, description}"
-                }
+                    "description": "For create: {title, start, end, description, location?}"
+                },
+                "event_id": {"type": "string", "description": "For delete: Calendar event ID"}
             },
             "required": ["action"]
         }
@@ -536,14 +550,28 @@ OFFLINE_TOOLS_SCHEMA = [
     },
     {
         "name": "convert_document",
-        "description": "Convert documents between formats (DOCX, PDF, HTML, TXT).",
+        "description": "Text-oriented conversion among TXT/DOCX/PDF/HTML.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "input_path": {"type": "string", "description": "Input file path"},
-                "output_format": {"type": "string", "enum": ["pdf", "html", "txt"], "description": "Target format"}
+                "output_format": {"type": "string", "enum": ["pdf", "html", "txt", "docx"], "description": "Target format"},
+                "output_path": {"type": "string", "description": "Optional output path"}
             },
             "required": ["input_path", "output_format"]
+        }
+    },
+    {
+        "name": "create_docx",
+        "description": "Create DOCX Word document from text.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "content": {"type": "string"},
+                "title": {"type": "string"}
+            },
+            "required": ["output_path", "content"]
         }
     },
     {
@@ -620,6 +648,21 @@ OFFLINE_TOOLS_SCHEMA = [
 ]
 
 
+# Local inference and tool locality are independent. Expose these app-side
+# capabilities to on-device models too; each tool still enforces its own
+# connectivity/auth requirements.
+_LOCAL_EXTRA_TOOL_NAMES = {
+    "web_fetch", "headless_browser", "download_media",
+    "modify_docx", "modify_pptx", "modify_xlsx",
+    "google_calendar", "gmail",
+}
+_existing_offline_names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
+OFFLINE_TOOLS_SCHEMA.extend(
+    t for t in TOOLS_SCHEMA
+    if t["name"] in _LOCAL_EXTRA_TOOL_NAMES and t["name"] not in _existing_offline_names
+)
+
+
 def execute_tool(
     tool_name: str,
     args: Dict[str, Any],
@@ -639,11 +682,21 @@ def execute_tool(
     Raises:
         ToolError: If tool execution fails
     """
+    original_tool_name = tool_name
+    tool_name, args, compatibility_notes = normalize_tool_call(tool_name, args)
+    bridge = get_bridge()
+    if compatibility_notes:
+        bridge.log(
+            "Tool compatibility: " + "; ".join(compatibility_notes),
+            level="warn",
+        )
+
     tool_map = {
         "web_fetch": web_fetch,
         "headless_browser": headless_browser,
         "read_pdf": read_pdf,
         "create_pdf": create_pdf,
+        "create_docx": create_docx,
         "convert_document": convert_document,
         "read_docx": read_docx,
         "modify_docx": modify_docx,
@@ -665,7 +718,32 @@ def execute_tool(
     }
 
     if tool_name not in tool_map:
-        raise ToolError(f"Unknown tool: {tool_name}")
+        raise ToolError(
+            f"[MODEL_TOOL_NAME_ERROR] Unknown tool '{original_tool_name}'. "
+            f"Normalized name: '{tool_name}'."
+        )
+
+    # Validate required parameters and top-level enum values using the canonical
+    # schema before calling implementation code.
+    schema_entry = next((t for t in TOOLS_SCHEMA if t.get("name") == tool_name), None)
+    if schema_entry:
+        input_schema = schema_entry.get("input_schema", {})
+        missing = [
+            key for key in input_schema.get("required", [])
+            if key not in args or args.get(key) is None
+        ]
+        if missing:
+            raise ToolError(
+                f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name} missing required "
+                f"parameter(s): {', '.join(missing)}. Received: {sorted(args.keys())}"
+            )
+        for key, spec in input_schema.get("properties", {}).items():
+            if key in args and isinstance(spec, dict) and spec.get("enum"):
+                if args[key] not in spec["enum"]:
+                    raise ToolError(
+                        f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name}.{key} received "
+                        f"{args[key]!r}; allowed values: {spec['enum']}"
+                    )
 
     tool_func = tool_map[tool_name]
 
@@ -694,6 +772,12 @@ def execute_tool(
 
     # Strip internal keys that Claude may echo back from context
     args.pop('_timeout_ms', None) if tool_name not in ["ocr_image", "ffmpeg_process", "smart_crop"] else None
+
+    try:
+        import inspect
+        inspect.signature(tool_func).bind(**args)
+    except TypeError as e:
+        raise ToolError(f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name}: {str(e)}")
 
     return tool_func(**args)
 

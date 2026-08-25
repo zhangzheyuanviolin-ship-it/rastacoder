@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -18,6 +19,9 @@ class AuthService {
   AuthService._();
 
   static const _storage = FlutterSecureStorage();
+  // RASTACODER_V4_ANDROID
+  static const rastaAndroidPackage = 'ai.navixmind';
+  static const rastaSigningSha1 = '74:5D:97:54:87:32:A9:DE:D0:96:6E:A5:58:8E:78:68:8F:85:31:B6';
   static const _clientIdKey = 'google_oauth_server_client_id';
   static const _upstreamClientId =
       '296863031657-69hn38bhprhqvrda6vd795sp65e8764d.apps.googleusercontent.com';
@@ -103,6 +107,20 @@ class AuthService {
       await AnalyticsService.instance
           .googleSignInCompleted(success: _currentUser != null);
       return _currentUser;
+    } on PlatformException catch (e) {
+      await AnalyticsService.instance.googleSignInCompleted(success: false);
+      final details = '${e.code} ${e.message ?? ''} ${e.details ?? ''}';
+      if (e.code == 'sign_in_failed' &&
+          (details.contains('ApiException: 10') || details.contains('DEVELOPER_ERROR'))) {
+        throw StateError(
+          'Google OAuth 配置错误（DEVELOPER_ERROR / ApiException 10）。'
+          '请在与当前 Web OAuth Client ID 相同的 Google Cloud 项目中创建或核对 Android OAuth Client：'
+          '包名 $rastaAndroidPackage；签名 SHA-1 $rastaSigningSha1。'
+          '同时启用 Gmail API 和 Google Calendar API，并完成 OAuth consent screen/test user 配置。'
+          '只填写 Web Client ID 仍不足以通过 Android Google Sign-In 校验。',
+        );
+      }
+      throw StateError('Google 登录失败：${e.code}${e.message != null ? ' - ${e.message}' : ''}');
     } catch (e) {
       await AnalyticsService.instance.googleSignInCompleted(success: false);
       rethrow;

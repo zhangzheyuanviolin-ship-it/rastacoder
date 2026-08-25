@@ -24,6 +24,7 @@ import 'local_llm_service.dart';
 ///
 /// Handles FFmpeg, OCR, and other native operations that
 /// must be performed on the Flutter/Android side.
+// RASTACODER_V4_ANDROID
 class NativeToolExecutor {
   static final NativeToolExecutor instance = NativeToolExecutor._();
 
@@ -312,9 +313,29 @@ class NativeToolExecutor {
         break;
 
       case 'extract_audio':
-        final format = params['format'] ?? 'mp3';
+        final format = (params['format'] ?? 'mp3').toString().toLowerCase().replaceAll('.', '');
         final bitrate = params['bitrate'] ?? '192k';
-        command = '-y -i "$inputPath" -vn -acodec libmp3lame -ab $bitrate "$outputPath"';
+        switch (format) {
+          case 'mp3':
+            command = '-y -i "$inputPath" -vn -c:a libmp3lame -b:a $bitrate "$outputPath"';
+            break;
+          case 'aac':
+          case 'm4a':
+            command = '-y -i "$inputPath" -vn -c:a aac -b:a $bitrate "$outputPath"';
+            break;
+          case 'wav':
+            command = '-y -i "$inputPath" -vn -c:a pcm_s16le "$outputPath"';
+            break;
+          case 'flac':
+            command = '-y -i "$inputPath" -vn -c:a flac "$outputPath"';
+            break;
+          case 'ogg':
+          case 'opus':
+            command = '-y -i "$inputPath" -vn -c:a libopus -b:a $bitrate "$outputPath"';
+            break;
+          default:
+            throw ArgumentError('Unsupported audio format: $format. Use mp3, aac/m4a, wav, flac, ogg, or opus.');
+        }
         break;
 
       case 'convert':
@@ -775,16 +796,23 @@ class NativeToolExecutor {
   ) async {
     final inputPath = args['input_path'] as String?;
     final outputPath = args['output_path'] as String?;
-    final targetAspectRatio = args['aspect_ratio'] as String? ?? '9:16';
+    final rawAspectRatio = args['aspect_ratio']?.toString() ?? '9:16';
 
     if (inputPath == null || outputPath == null) {
       throw ArgumentError('Missing input_path or output_path parameter');
     }
 
-    // Parse aspect ratio
+    // Accept common small-model variants: 9:16, 9/16, 9x16.
+    final targetAspectRatio = rawAspectRatio.toLowerCase().replaceAll('x', ':').replaceAll('/', ':').replaceAll(' ', '');
     final parts = targetAspectRatio.split(':');
-    final targetWidth = int.parse(parts[0]);
-    final targetHeight = int.parse(parts[1]);
+    if (parts.length != 2) {
+      throw ArgumentError('Invalid aspect_ratio: $rawAspectRatio. Expected width:height, e.g. 9:16.');
+    }
+    final targetWidth = int.tryParse(parts[0]);
+    final targetHeight = int.tryParse(parts[1]);
+    if (targetWidth == null || targetHeight == null || targetWidth <= 0 || targetHeight <= 0) {
+      throw ArgumentError('Invalid aspect_ratio: $rawAspectRatio. Values must be positive integers.');
+    }
 
     // For video: extract first frame for face detection
     final isVideo = inputPath.toLowerCase().endsWith('.mp4') ||
@@ -928,7 +956,12 @@ class NativeToolExecutor {
         );
 
         final outputFile = File(outputPath);
-        await outputFile.writeAsBytes(img.encodeJpg(cropped, quality: 90));
+        final lowerOutput = outputPath.toLowerCase();
+        if (lowerOutput.endsWith('.png')) {
+          await outputFile.writeAsBytes(img.encodePng(cropped));
+        } else {
+          await outputFile.writeAsBytes(img.encodeJpg(cropped, quality: 90));
+        }
 
         return {
           'success': true,

@@ -259,6 +259,7 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+// RASTACODER_V4_ANDROID
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = true;
   bool _hasApiKey = false;
@@ -447,7 +448,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '原作者的 OAuth Client 可能只允许其测试账号登录。这里可以填写您自己的 Google OAuth Web Client ID；留空则恢复上游默认值。',
+              '这里填写 Google OAuth Web Client ID。Google Android 登录还要求同一 Google Cloud 项目中存在 Android OAuth Client，并登记包名 ai.navixmind 与当前 RastaCoder 签名 SHA-1：74:5D:97:54:87:32:A9:DE:D0:96:6E:A5:58:8E:78:68:8F:85:31:B6。留空会恢复上游 Web Client，但上游配置可能与 RastaCoder 签名不匹配。',
             ),
             const SizedBox(height: 12),
             TextField(
@@ -736,8 +737,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SettingsTile(
             title: 'Google OAuth Client ID',
             subtitle: AuthService.instance.hasCustomOAuthClient
-                ? '已配置独立 OAuth Client'
-                : '当前使用上游 OAuth Client（可能受测试用户限制）',
+                ? '已配置 Web Client；还需匹配 Android 包名与签名 SHA-1'
+                : '当前使用上游 Web Client；可能与 RastaCoder 签名不匹配',
             trailing: const Icon(Icons.key, size: 20),
             onTap: _setGoogleOAuthClientId,
           ),

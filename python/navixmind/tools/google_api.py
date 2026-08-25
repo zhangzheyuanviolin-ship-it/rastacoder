@@ -9,11 +9,14 @@ import requests
 
 from ..bridge import ToolError
 
+# RASTACODER_V4_TOOL_CONTRACT
+
 
 def google_calendar(
     action: str,
     date_range: Optional[str] = None,
     event: Optional[dict] = None,
+    event_id: Optional[str] = None,
     _context: Optional[Dict[str, Any]] = None
 ) -> dict:
     """
@@ -46,7 +49,7 @@ def google_calendar(
         elif action == "create":
             return _create_event(base_url, headers, event)
         elif action == "delete":
-            raise ToolError("Delete action requires event_id parameter")
+            return _delete_event(base_url, headers, event_id)
         else:
             raise ToolError(f"Unknown action: {action}")
 
@@ -123,6 +126,19 @@ def _list_events(base_url: str, headers: dict, date_range: Optional[str]) -> dic
         "count": len(events),
         "range": {"min": time_min, "max": time_max}
     }
+
+
+def _delete_event(base_url: str, headers: dict, event_id: Optional[str]) -> dict:
+    """Delete one Google Calendar event by ID."""
+    if not event_id:
+        raise ToolError("event_id required for delete action")
+    response = requests.delete(
+        f"{base_url}/calendars/primary/events/{event_id}",
+        headers=headers,
+        timeout=30,
+    )
+    response.raise_for_status()
+    return {"success": True, "event_id": event_id, "deleted": True}
 
 
 def _create_event(base_url: str, headers: dict, event: Optional[dict]) -> dict:

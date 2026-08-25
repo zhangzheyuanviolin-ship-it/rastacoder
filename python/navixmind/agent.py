@@ -15,6 +15,9 @@ from .bridge import get_bridge, ToolError
 from .session import get_session, apply_delta
 from .crash_logger import CrashLogger
 from .tools import execute_tool, TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
+from .tools.compat import normalize_tool_call, normalize_tool_name
+
+# RASTACODER_V4_TOOL_CONTRACT
 
 
 # Constants (defaults, overridden by settings via context)
@@ -101,7 +104,8 @@ AVAILABLE TOOLS:
 - **read_pdf** — Extract text from PDF files (supports page ranges)
 - **create_pdf** — Create PDF from text and/or images
 - **create_zip** — Create ZIP archives from one or more files (supports deflated/stored compression)
-- **convert_document** — Convert between DOCX, PDF, HTML, and TXT
+- **convert_document** — Text-oriented conversion among TXT, DOCX, PDF, and HTML; complex layout may be simplified
+- **create_docx** — Create a new Word DOCX document from text
 - **read_docx** — Extract text, tables, and metadata from DOCX files
 - **modify_docx** — Modify existing DOCX files (replace text, add paragraphs, update table cells)
 - **read_pptx** — Extract text, slide content, speaker notes from PPTX files
@@ -158,7 +162,7 @@ PROBLEM-SOLVING — NEVER GIVE UP ON FIRST ATTEMPT:
   1. FIRST read the file to understand its structure (read_pptx, read_docx, read_xlsx, read_pdf).
   2. THEN iterate: process each element (slide, paragraph, row, page) one at a time using modify tools or python_execute.
   3. Each iteration can use YOUR intelligence to generate improved content (new titles, better descriptions, reformatted text).
-- If a dedicated tool (modify_pptx, modify_docx, modify_xlsx) is too limited for a complex operation, use python_execute with the file's library directly (python-pptx, python-docx, openpyxl) — the file_paths parameter gives you read access, and you can write output to OUTPUT_DIR.
+- For Office files, use the dedicated create/read/modify/convert tools. python_execute does not expose python-docx, python-pptx, or openpyxl inside its restricted sandbox.
 - If one approach fails, TRY ANOTHER. Exhaust all options before telling the user something is impossible.
 - This applies to ALL tasks, not just documents: web fetching, media processing, data analysis — always adapt and retry.
 
@@ -325,10 +329,19 @@ TOOLS:
 - write_file(output_path, content) — Write a text file.
 - file_info(file_path) — Get file size/metadata.
 - create_zip(output_path, file_paths, compression?) — Create ZIP archive.
-- convert_document(input_path, output_format) — Convert between docx/pdf/html/txt.
+- convert_document(input_path, output_format, output_path?) — Text-oriented conversion among txt/docx/pdf/html.
+- create_docx(output_path, content, title?) — Create a Word DOCX from text.
 - read_docx(docx_path) — Extract text/tables from DOCX.
 - read_pptx(pptx_path) — Extract text/slides from PPTX.
 - read_xlsx(xlsx_path, sheet?, range?) — Extract data from XLSX.
+- web_fetch(url, extract_mode?) — Fetch web content; requires network.
+- headless_browser(url, wait_seconds?, extract_selector?) — Load JS-heavy page; requires network.
+- download_media(url, format?) — Extract a directly downloadable media URL; requires network.
+- modify_docx(input_path, output_path, operations) — Modify DOCX.
+- modify_pptx(input_path, output_path, operations) — Modify PPTX.
+- modify_xlsx(input_path, output_path, operations) — Modify XLSX.
+- google_calendar(action, date_range?, event?, event_id?) — List/create/delete Calendar events; requires Google connection.
+- gmail(action, query?, message_id?) — List/read Gmail; read-only and requires Google connection.
 
 FFMPEG PATTERNS:
 - Trim: operation="trim", params={"start":"00:00:05","duration":"10"} or {"start":"0","end":"30"}
@@ -356,88 +369,155 @@ Assistant:
 </tool_call>"""
 
 
-def _extract_json_objects(text: str) -> List[str]:
-    """Extract JSON objects from text using brace-counting.
+def _parse_mapping(text: str) -> Optional[dict]:
+    """Parse JSON-like tool call objects without executing model text."""
+    import ast
+    import re
 
-    Handles nested braces correctly (e.g. {"name":"ffmpeg_process","arguments":{"params":{"start":"0"}}}).
-    Also handles malformed JSON with missing trailing braces (common with small 3B models)
-    by appending missing '}' characters and validating with json.loads().
-    Only returns objects that contain both "name" and "arguments" keys.
-    """
+    value = text.strip()
+    candidates = [value, re.sub(r',\s*([}\]])', r'\1', value)]
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+    try:
+        parsed = ast.literal_eval(value)
+        if isinstance(parsed, dict):
+            return parsed
+    except (ValueError, SyntaxError):
+        pass
+    return None
+
+
+def _coerce_tool_args(value: Any) -> dict:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str):
+        parsed = _parse_mapping(value)
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _extract_json_objects(text: str) -> List[str]:
+    """Extract balanced JSON/dict-looking objects, including truncated calls."""
     results = []
     i = 0
     while i < len(text):
-        if text[i] == '{':
-            depth = 0
-            start = i
-            in_string = False
-            escape = False
-            found_complete = False
-            while i < len(text):
-                c = text[i]
-                if escape:
-                    escape = False
-                elif c == '\\' and in_string:
-                    escape = True
-                elif c == '"' and not escape:
-                    in_string = not in_string
-                elif not in_string:
-                    if c == '{':
-                        depth += 1
-                    elif c == '}':
-                        depth -= 1
-                        if depth == 0:
-                            candidate = text[start:i + 1]
-                            if ('"name"' in candidate or '"tool"' in candidate) and '"arguments"' in candidate:
-                                results.append(candidate)
-                            found_complete = True
-                            i += 1
-                            break
-                i += 1
-            # If we reached end of text with unclosed braces, try to repair
-            if not found_complete and depth > 0:
-                candidate = text[start:i]
-                if ('"name"' in candidate or '"tool"' in candidate) and '"arguments"' in candidate:
-                    repaired = candidate + '}' * depth
-                    try:
-                        parsed = json.loads(repaired)
-                        if isinstance(parsed, dict) and ('name' in parsed or 'tool' in parsed) and 'arguments' in parsed:
-                            results.append(repaired)
-                    except (json.JSONDecodeError, ValueError):
-                        pass
-        else:
+        if text[i] != '{':
             i += 1
+            continue
+        depth = 0
+        start = i
+        in_string = False
+        quote = None
+        escape = False
+        while i < len(text):
+            c = text[i]
+            if escape:
+                escape = False
+            elif c == '\\' and in_string:
+                escape = True
+            elif c in ('"', "'"):
+                if not in_string:
+                    in_string = True
+                    quote = c
+                elif c == quote:
+                    in_string = False
+                    quote = None
+            elif not in_string:
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                    if depth == 0:
+                        results.append(text[start:i + 1])
+                        i += 1
+                        break
+            i += 1
+        if depth > 0:
+            # Small models occasionally omit only trailing braces. Repair JSON
+            # candidates conservatively; invalid objects are rejected later.
+            results.append(text[start:i] + '}' * depth)
     return results
 
 
+def _build_tool_use(name: Any, arguments: Any, source: str, index: int) -> Optional[dict]:
+    canonical = normalize_tool_name(name)
+    known = {t['name'] for t in TOOLS_SCHEMA}
+    if canonical not in known:
+        return None
+    args = _coerce_tool_args(arguments)
+    canonical, args, _ = normalize_tool_call(canonical, args)
+    return {
+        "type": "tool_use",
+        "id": f"call_{abs(hash(source)) % 10**8:08d}_{index}",
+        "name": canonical,
+        "input": args,
+    }
+
+
 def _try_parse_tool_json(json_str: str, index: int) -> Optional[dict]:
-    """Try to parse a JSON string as a tool call. Returns tool_use block or None."""
-    try:
-        call_data = json.loads(json_str)
-        name = call_data.get('name') or call_data.get('tool', '')
-        arguments = call_data.get('arguments', {})
-        # Handle OpenAI function calling format: {"type":"function","function":{"name":"...","arguments":{...}}}
-        if not name and 'function' in call_data:
-            func = call_data['function']
-            if isinstance(func, dict):
-                name = func.get('name', '')
-                arguments = func.get('arguments', arguments)
-        if isinstance(arguments, str):
+    """Parse common JSON/dict function-call variants into a tool_use block."""
+    call_data = _parse_mapping(json_str)
+    if not call_data:
+        return None
+
+    # OpenAI-style nested function / function_call objects.
+    nested = call_data.get('function') or call_data.get('function_call')
+    if isinstance(nested, dict):
+        return _build_tool_use(
+            nested.get('name') or nested.get('tool') or nested.get('tool_name'),
+            nested.get('arguments', nested.get('args', nested.get('parameters', nested.get('input', {})))),
+            json_str,
+            index,
+        )
+
+    name = call_data.get('name') or call_data.get('tool') or call_data.get('tool_name')
+    arg_key = next((k for k in ('arguments', 'args', 'parameters', 'input') if k in call_data), None)
+    if arg_key:
+        arguments = call_data.get(arg_key)
+    else:
+        # Some models emit {"name":"tool","input_path":"x",...}.
+        arguments = {
+            k: v for k, v in call_data.items()
+            if k not in {'name', 'tool', 'tool_name', 'type', 'id'}
+        }
+    return _build_tool_use(name, arguments, json_str, index)
+
+
+def _try_parse_function_syntax(text: str, index: int) -> Optional[dict]:
+    """Safely parse tool_name(key=value, ...) syntax using AST literals only."""
+    import ast
+    import re
+
+    known = {t['name'] for t in TOOLS_SCHEMA}
+    for match in re.finditer(r'([A-Za-z_][A-Za-z0-9_\-]*)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)', text, re.DOTALL):
+        raw = match.group(0)
+        try:
+            node = ast.parse(raw, mode='eval').body
+        except SyntaxError:
+            continue
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name) or node.args:
+            continue
+        name = normalize_tool_name(node.func.id)
+        if name not in known:
+            continue
+        args = {}
+        valid = True
+        for kw in node.keywords:
+            if kw.arg is None:
+                valid = False
+                break
             try:
-                arguments = json.loads(arguments)
-            except (json.JSONDecodeError, ValueError):
-                arguments = {}
-        if not isinstance(arguments, dict):
-            arguments = {}
-        if name:
-            return {
-                "type": "tool_use",
-                "id": f"call_{abs(hash(json_str)) % 10**8:08d}_{index}",
-                "name": name,
-                "input": arguments,
-            }
-    except (json.JSONDecodeError, ValueError):
-        pass
+                args[kw.arg] = ast.literal_eval(kw.value)
+            except (ValueError, TypeError):
+                valid = False
+                break
+        if valid:
+            return _build_tool_use(name, args, raw, index)
     return None
 
 
@@ -516,16 +596,12 @@ class LocalLLMClient:
         sanitized_content = []
         for block in content:
             if block.get('type') == 'tool_use':
-                tool_input = block.get('input', {})
-                if not isinstance(tool_input, dict):
-                    # Garbled tool call — convert to text
-                    sanitized_content.append({
-                        "type": "text",
-                        "text": f"I tried to use tool {block.get('name', 'unknown')} but had trouble formatting the request. Let me try differently."
-                    })
-                    # Change stop reason since we removed the tool call
-                    response['stop_reason'] = 'end_turn'
-                    continue
+                name, tool_input, _ = normalize_tool_call(
+                    block.get('name'), _coerce_tool_args(block.get('input', {}))
+                )
+                block = dict(block)
+                block['name'] = name
+                block['input'] = tool_input
             sanitized_content.append(block)
         response['content'] = sanitized_content
 
@@ -538,85 +614,88 @@ class LocalLLMClient:
 
     @staticmethod
     def _parse_tool_calls_from_text(response: dict) -> dict:
-        """Extract tool calls from text content and convert to tool_use blocks.
-
-        Handles two formats small models may produce:
-        1. Hermes format: <tool_call>{"name":"...", "arguments":{...}}</tool_call>
-        2. Raw JSON: {"name":"...", "arguments":{...}} (without XML tags)
-
-        Both are converted to Claude-format tool_use blocks.
-        """
+        """Recover common tool-call variants emitted as text by small models."""
         import re
 
         if response.get('stop_reason') == 'tool_use':
-            return response  # Already has proper tool calls
+            # Structured calls still need name/argument normalization.
+            normalized = []
+            for block in response.get('content', []):
+                if block.get('type') == 'tool_use':
+                    name, args, _ = normalize_tool_call(
+                        block.get('name'), _coerce_tool_args(block.get('input', {}))
+                    )
+                    block = dict(block)
+                    block['name'] = name
+                    block['input'] = args
+                normalized.append(block)
+            response['content'] = normalized
+            return response
 
-        content = response.get('content', [])
         new_content = []
-        found_tool_calls = False
-
-        for block in content:
+        found = False
+        for block in response.get('content', []):
             if block.get('type') != 'text':
                 new_content.append(block)
                 continue
 
-            text = block.get('text', '')
-
-            # Strip <think>...</think> blocks (Qwen3 extended thinking)
-            text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
-
-            # Strip markdown code fences that wrap JSON
-            text = re.sub(r'```(?:json|python)?\s*', '', text)
-            text = re.sub(r'```', '', text)
-            text = text.strip()
-
-            tool_use_blocks = []
+            original = block.get('text', '')
+            text = re.sub(r'<think>[\s\S]*?</think>', '', original, flags=re.IGNORECASE).strip()
+            text = re.sub(r'```(?:json|javascript|python)?\s*', '', text, flags=re.IGNORECASE)
+            text = text.replace('```', '').strip()
+            tool_blocks = []
             remaining = text
 
-            # Try 1: Match <tool_call>...</tool_call> blocks (Hermes format)
-            tc_pattern = r'<tool_call>\s*([\s\S]*?)\s*</tool_call>'
-            tc_matches = re.findall(tc_pattern, text, re.DOTALL)
-            if tc_matches:
-                for i, match in enumerate(tc_matches):
-                    # Use _extract_json_objects for robust nested-brace parsing
-                    json_objects = _extract_json_objects(match)
-                    if json_objects:
-                        for j, obj in enumerate(json_objects):
-                            parsed = _try_parse_tool_json(obj, i * 10 + j)
-                            if parsed:
-                                tool_use_blocks.append(parsed)
-                    else:
-                        # Fallback: try the raw match directly
-                        parsed = _try_parse_tool_json(match.strip(), i)
-                        if parsed:
-                            tool_use_blocks.append(parsed)
-                remaining = re.sub(tc_pattern, '', text, flags=re.DOTALL).strip()
-
-            # Try 2: Raw JSON with "name" and "arguments" keys
-            # Use brace-counting to extract complete JSON objects (handles nesting)
-            if not tool_use_blocks:
-                json_matches = _extract_json_objects(text)
-                for i, match in enumerate(json_matches):
-                    parsed = _try_parse_tool_json(match, i)
+            # Hermes and common function-call XML-ish tags.
+            tag_pattern = r'<(?:tool_call|function_call|function)>\s*([\s\S]*?)\s*</(?:tool_call|function_call|function)>'
+            tag_matches = re.findall(tag_pattern, text, flags=re.IGNORECASE)
+            for i, tagged in enumerate(tag_matches):
+                parsed_any = False
+                for j, obj in enumerate(_extract_json_objects(tagged)):
+                    parsed = _try_parse_tool_json(obj, i * 10 + j)
                     if parsed:
-                        tool_use_blocks.append(parsed)
-                if tool_use_blocks:
-                    for match in json_matches:
-                        remaining = remaining.replace(match, '', 1)
-                    remaining = remaining.strip()
+                        tool_blocks.append(parsed)
+                        parsed_any = True
+                if not parsed_any:
+                    parsed = _try_parse_tool_json(tagged.strip(), i)
+                    if parsed:
+                        tool_blocks.append(parsed)
+                    else:
+                        fn = _try_parse_function_syntax(tagged, i)
+                        if fn:
+                            tool_blocks.append(fn)
+            if tag_matches:
+                remaining = re.sub(tag_pattern, '', remaining, flags=re.IGNORECASE).strip()
 
-            if tool_use_blocks:
-                found_tool_calls = True
+            # Raw JSON/dict objects.
+            if not tool_blocks:
+                objects = _extract_json_objects(text)
+                for i, obj in enumerate(objects):
+                    parsed = _try_parse_tool_json(obj, i)
+                    if parsed:
+                        tool_blocks.append(parsed)
+                        remaining = remaining.replace(obj, '', 1).strip()
+
+            # Last-resort safe function syntax: tool_name(key="value").
+            if not tool_blocks:
+                fn = _try_parse_function_syntax(text, 0)
+                if fn:
+                    tool_blocks.append(fn)
+                    # Preserve prose only when it is not just the function call.
+                    name = fn['name']
+                    remaining = re.sub(rf'\b{re.escape(name)}\s*\([\s\S]*?\)', '', remaining, count=1).strip()
+
+            if tool_blocks:
+                found = True
                 if remaining:
                     new_content.append({"type": "text", "text": remaining})
-                new_content.extend(tool_use_blocks)
+                new_content.extend(tool_blocks)
             else:
                 new_content.append(block)
 
-        if found_tool_calls:
+        if found:
             response['content'] = new_content
             response['stop_reason'] = 'tool_use'
-
         return response
 
     def _convert_messages(self, messages: List[Dict[str, Any]], system: str) -> List[Dict[str, Any]]:
@@ -1003,6 +1082,12 @@ def process_query(
                     tool_name = block.get('name')
                     tool_input = block.get('input', {})
                     tool_id = block.get('id')
+                    tool_name, tool_input, compat_notes = normalize_tool_call(tool_name, tool_input)
+                    if compat_notes:
+                        bridge.log(
+                            "Tool compatibility: " + "; ".join(compat_notes),
+                            level="warn",
+                        )
 
                     tool_call_count += 1
                     if tool_call_count > max_tool_calls:
@@ -1242,6 +1327,21 @@ def _summarize_tool_input(tool_name: str, tool_input: dict) -> str:
                 return f"Creating '{title}' with {len(images)} image(s)"
             return f"Creating '{title}'"
 
+        if tool_name == 'convert_document':
+            import os
+            source = tool_input.get('input_path', '')
+            fmt = tool_input.get('output_format', '?')
+            return f"{os.path.basename(source) if source else '?'} -> {fmt}"
+
+        if tool_name == 'create_docx':
+            import os
+            output = tool_input.get('output_path', '')
+            return f"create {os.path.basename(output) if output else 'DOCX'}"
+
+        if tool_name in ('google_calendar', 'gmail'):
+            action = tool_input.get('action', '?')
+            return f"action={action}"
+
         if tool_name == 'ffmpeg_process':
             op = tool_input.get('operation', '?')
             params = tool_input.get('params', {})
@@ -1250,11 +1350,18 @@ def _summarize_tool_input(tool_name: str, tool_input: dict) -> str:
                 params_str = params_str[:100] + '...'
             return f"{op}: {params_str}" if params_str else op
 
-        # Generic fallback
-        keys = list(tool_input.keys())
-        if keys:
-            return f"params: {', '.join(keys[:3])}"
-        return "no params"
+        # Generic fallback: include short scalar values so model formatting
+        # mistakes are diagnosable without dumping large user content.
+        parts = []
+        for key, value in list(tool_input.items())[:4]:
+            if isinstance(value, (str, int, float, bool)):
+                shown = str(value)
+                if len(shown) > 60:
+                    shown = shown[:57] + '...'
+                parts.append(f"{key}={shown}")
+            else:
+                parts.append(key)
+        return "params: " + ", ".join(parts) if parts else "no params"
     except Exception:
         return "..."
 
