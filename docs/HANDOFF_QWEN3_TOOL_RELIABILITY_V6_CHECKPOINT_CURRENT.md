@@ -8,6 +8,8 @@ Current branch HEAD before this documentation update: `c17cedd9f56fff8256702387d
 
 This file is the canonical continuation checkpoint for the next ChatGPT/Codex/agent context. Read this file first, then read `docs/HANDOFF_QWEN3_TOOL_RELIABILITY_V6.md`, the current branch source, and the v6 workflow before changing code.
 
+**Precedence rule:** if any older handoff/checkpoint contains a stale pre-release statement such as “v6 has not been released yet” or otherwise conflicts with this file, treat that statement as historical. This 2026-08-26 master checkpoint is authoritative for current project state.
+
 ## 1. Immediate user state and next action
 
 The user has already obtained the final v6 APK download link and has downloaded the APK, but at the time of this handoff has not yet reported a complete real-device v6 test result.
