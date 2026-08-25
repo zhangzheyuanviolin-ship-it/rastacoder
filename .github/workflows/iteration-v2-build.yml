@@ -1,0 +1,227 @@
+name: Build RastaCoder Qwen3 Chinese UI v2
+
+on:
+  push:
+    branches:
+      - 'iteration/v2-zh-ui-thinking-google'
+    paths:
+      - '.github/workflows/iteration-v2-build.yml'
+      - 'tools/apply_iteration_v2.py'
+      - 'V2_BUILD_TRIGGER.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-v2:
+    name: Patch, build, verify, and publish v2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FLUTTER_VERSION: '3.22.0'
+      SOURCE_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+      SOURCE_SIZE: '593655513'
+      RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+      RUNTIME_SIZE: '38786520'
+      KEYSTORE_SHA256: 7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169
+      EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+      EXPECTED_CERT_SHA1: 745d97548732a9ded0966ea5588e78688f8531b6
+      KEYSTORE_PASSWORD: RastaCoderDev2026!
+      KEY_ALIAS: rastacoder-dev
+      OUTPUT_APK: RastaCoder-Qwen3-4B-zh-ui-v2.apk
+      RELEASE_TAG: qwen3-zh-ui-v2
+
+    steps:
+      - name: Checkout Qwen3 known-good source branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Apply iteration v2 source patch
+        run: |
+          set -euo pipefail
+          python3 tools/apply_iteration_v2.py
+          grep -Fq '思考过程（点击展开）' lib/features/chat/presentation/widgets/message_bubble.dart
+          grep -Fq '工具调用和执行结果会实时显示' lib/features/chat/presentation/chat_screen.dart
+          if grep -Fq '296863031657-69hn38bhprhqvrda6vd795sp65e8764d.apps.googleusercontent.com' lib/core/services/auth_service.dart; then
+            echo 'Upstream OAuth client ID is still present' >&2
+            exit 1
+          fi
+          grep -Fq "https://www.googleapis.com/auth/gmail.readonly" lib/core/services/auth_service.dart
+          grep -Fq "https://www.googleapis.com/auth/calendar.events" lib/core/services/auth_service.dart
+
+      - name: Download exact known-good upstream APK
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_URL"
+          echo "$SOURCE_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq "$SOURCE_SIZE"
+
+      - name: Restore exact Qwen3 MLC native runtime
+        run: |
+          set -euo pipefail
+          mkdir -p android/mlc4j/output/arm64-v8a
+          python3 - <<'PY'
+          import hashlib, zipfile
+          src = 'upstream-known-good.apk'
+          path = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+          out = 'android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so'
+          with zipfile.ZipFile(src, 'r') as z:
+              data = z.read(path)
+          assert len(data) == 38786520, len(data)
+          assert hashlib.sha256(data).hexdigest() == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48'
+          open(out, 'wb').write(data)
+          PY
+
+      - name: Build TVM4J Java binding
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v0.17.0 https://github.com/apache/tvm.git /tmp/tvm
+          mvn -q -f /tmp/tvm/jvm/pom.xml -pl core -am package -DskipTests -Dcheckstyle.skip=true -Dmaven.javadoc.skip=true
+          JAR="$(find /tmp/tvm/jvm/core/target -maxdepth 1 -type f -name 'tvm4j-core-*.jar' ! -name '*sources*' ! -name '*javadoc*' | head -n 1)"
+          test -n "$JAR"
+          cp "$JAR" android/mlc4j/output/tvm4j_core.jar
+          jar tf android/mlc4j/output/tvm4j_core.jar | grep -Fq 'org/apache/tvm/Device.class'
+          jar tf android/mlc4j/output/tvm4j_core.jar | grep -Fq 'org/apache/tvm/Function.class'
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze patched source
+        run: flutter analyze --no-fatal-infos
+
+      - name: Build arm64 debug APK
+        run: flutter build apk --debug --target-platform android-arm64
+
+      - name: Restore stable RastaCoder signing key
+        run: |
+          set -euo pipefail
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 > rastacoder-dev-keystore.p12.b64
+          base64 -d rastacoder-dev-keystore.p12.b64 > rastacoder-dev.p12
+          test "$(sha256sum rastacoder-dev.p12 | awk '{print $1}')" = "$KEYSTORE_SHA256"
+
+      - name: Re-sign APK with stable RastaCoder certificate
+        id: sign
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          BUILD_TOOLS_DIR="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          if [ -z "$BUILD_TOOLS_DIR" ] || [ ! -x "$BUILD_TOOLS_DIR/apksigner" ] || [ ! -x "$BUILD_TOOLS_DIR/zipalign" ]; then
+            yes | sdkmanager 'build-tools;35.0.0' >/dev/null
+            BUILD_TOOLS_DIR="$SDK_ROOT/build-tools/35.0.0"
+          fi
+          cp build/app/outputs/flutter-apk/app-debug.apk unsigned-v2.apk
+          zip -q -d unsigned-v2.apk 'META-INF/*.RSA' 'META-INF/*.SF' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF' || true
+          "$BUILD_TOOLS_DIR/zipalign" -f -p 4 unsigned-v2.apk aligned-v2.apk
+          "$BUILD_TOOLS_DIR/apksigner" sign \
+            --ks rastacoder-dev.p12 \
+            --ks-type PKCS12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --key-pass "pass:$KEYSTORE_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$OUTPUT_APK" \
+            aligned-v2.apk
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner-v2.txt
+          CERT_SHA256="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner-v2.txt | tr -d ':')"
+          CERT_SHA1="$(awk -F': ' '/certificate SHA-1 digest/{print tolower($NF); exit}' apksigner-v2.txt | tr -d ':')"
+          test "$CERT_SHA256" = "$EXPECTED_CERT_SHA256"
+          test "$CERT_SHA1" = "$EXPECTED_CERT_SHA1"
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Qwen3 runtime and config in final APK
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk, 'r') as z:
+              names = z.namelist()
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              assert runtime in names, runtime
+              data = z.read(runtime)
+              assert len(data) == int(os.environ['RUNTIME_SIZE'])
+              assert hashlib.sha256(data).hexdigest() == os.environ['RUNTIME_SHA256']
+              config = next(n for n in names if n.endswith('mlc-app-config.json'))
+              cfg = z.read(config)
+              assert b'Qwen3-4B-q4f16_0-MLC' in cfg
+              assert b'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc' in cfg
+          print('Qwen3 runtime/config verified')
+          PY
+
+      - name: Publish v2 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_SHA: ${{ steps.sign.outputs.sha }}
+          APK_SIZE: ${{ steps.sign.outputs.size }}
+        run: |
+          set -euo pipefail
+          cat > release-notes-v2.md <<EOF
+          RastaCoder Qwen3 4B Chinese UI / reasoning-display iteration v2.
+
+          Changes:
+          - Chinese-first UI copy across chat, onboarding, settings, accessibility labels, status and tool activity.
+          - <think> reasoning is preserved but collapsed by default; final answer is displayed normally and exposed to accessibility semantics.
+          - Tool execution trace is emitted and rendered progressively: thinking, tool start, execution, result and completion.
+          - Removed the upstream developer's hard-coded Google OAuth Web client binding while preserving Gmail readonly and Calendar event scopes and the existing agent-side Google tools.
+          - Package identity remains ai.navixmind. RastaCoder signing certificate SHA-1: $EXPECTED_CERT_SHA1.
+          - Qwen3 4B known-good MLC runtime/config are verified in the final APK.
+
+          APK SHA-256: $APK_SHA
+          APK size: $APK_SIZE bytes
+          Signing certificate SHA-256: $EXPECTED_CERT_SHA256
+          EOF
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target "$GITHUB_SHA" \
+            --title 'RastaCoder Qwen3 4B Chinese UI v2' \
+            --notes-file release-notes-v2.md
+
+      - name: Record build result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          APK_SHA: ${{ steps.sign.outputs.sha }}
+          APK_SIZE: ${{ steps.sign.outputs.size }}
+        run: |
+          set +e
+          cat > V2_BUILD_STATUS.json <<EOF
+          {
+            "workflow": "Build RastaCoder Qwen3 Chinese UI v2",
+            "run_id": ${GITHUB_RUN_ID},
+            "run_number": ${GITHUB_RUN_NUMBER},
+            "status": "${JOB_STATUS}",
+            "head_sha": "${GITHUB_SHA}",
+            "apk": "${OUTPUT_APK}",
+            "apk_sha256": "${APK_SHA}",
+            "apk_size": "${APK_SIZE}",
+            "release_tag": "${RELEASE_TAG}",
+            "run_url": "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          }
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add V2_BUILD_STATUS.json
+          git commit -m 'ci: record v2 build result' || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
