@@ -1,4 +1,4 @@
-name: Build RastaCoder ARM64 Tool Hardened v4
+name: Build RastaCoder Skills Parameters Stream v5
 
 on:
   push:
@@ -11,6 +11,9 @@ on:
       - 'scripts/apply_iteration_v2_stage3.py'
       - 'scripts/apply_iteration_v4_tools.py'
       - 'scripts/apply_iteration_v4_android.py'
+      - 'scripts/apply_iteration_v5.py'
+      - 'scripts/v5_payload_*.b64'
+      - 'scripts/validate_iteration_v5.py'
       - 'python/navixmind/**'
       - 'ITERATION_V2_TRIGGER.md'
   workflow_dispatch:
@@ -20,9 +23,9 @@ permissions:
 
 jobs:
   build-release:
-    name: Build, verify ARM64 tools, and release APK
+    name: Build, verify v5 ARM64 update, and release APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
       BASELINE_COMMIT: e165c311eb464722c5db0883426e82af69468330
       SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
@@ -30,10 +33,10 @@ jobs:
       EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
       EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
       EXPECTED_PACKAGE: ai.navixmind
-      BUILD_NAME: 0.0.3
-      BUILD_NUMBER: '17'
-      OUTPUT_APK: RastaCoder-Qwen3-4B-arm64-tools-v4-update.apk
-      RELEASE_TAG: qwen3-arm64-tools-v4
+      BUILD_NAME: 0.0.4
+      BUILD_NUMBER: '18'
+      OUTPUT_APK: RastaCoder-Qwen3-4B-skills-params-stream-v5-update.apk
+      RELEASE_TAG: qwen3-skills-params-stream-v5
 
     steps:
       - name: Checkout iteration branch
@@ -58,14 +61,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Restore the application-layer files patched by the iteration scripts.
-          # Python v4 patches are applied from the current branch and persisted after
-          # a successful build; each v4 patch script is idempotent.
+          # Rebuild the Flutter application layer from the known-good upstream
+          # baseline, then deterministically replay every RastaCoder patch.
           git checkout "$BASELINE_COMMIT" -- lib android/app/build.gradle
           grep -F 'applicationId "ai.navixmind"' android/app/build.gradle
           echo 'Restored clean known-good application source from' "$BASELINE_COMMIT"
 
-      - name: Apply RastaCoder iteration patches
+      - name: Apply RastaCoder v2 through v5 patches
         shell: bash
         run: |
           set -euo pipefail
@@ -74,6 +76,7 @@ jobs:
           python3 scripts/apply_iteration_v2_stage3.py
           python3 scripts/apply_iteration_v4_tools.py
           python3 scripts/apply_iteration_v4_android.py
+          python3 scripts/apply_iteration_v5.py
 
           python3 - <<'PY'
           from pathlib import Path
@@ -87,14 +90,23 @@ jobs:
 
           grep -F 'abiFilters "arm64-v8a"' android/app/build.gradle
           grep -F 'RASTACODER_V4_TOOL_CONTRACT' python/navixmind/agent.py
-          grep -F '"create_docx": create_docx' python/navixmind/tools/__init__.py
+          grep -F 'RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM' python/navixmind/agent.py
+          grep -F '[MODEL_TOOL_DISABLED]' python/navixmind/tools/__init__.py
+          grep -F "generation_started" android/app/src/main/kotlin/ai/navixmind/services/MLCInferenceChannel.kt
 
-      - name: Validate Python tool sources
+      - name: Verify v5 invariants and original-tool coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v5.py
+
+      - name: Validate Python sources
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile \
             python/navixmind/agent.py \
+            python/navixmind/session.py \
             python/navixmind/tools/__init__.py \
             python/navixmind/tools/documents.py \
             python/navixmind/tools/google_api.py \
@@ -196,7 +208,7 @@ jobs:
           flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
           cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
 
-      - name: Verify package, ARM64-only ABI, signature and Qwen3 runtime
+      - name: Verify package, version, ARM64 ABI, signature and Qwen3 runtime
         id: verify
         shell: bash
         run: |
@@ -244,21 +256,25 @@ jobs:
               print('Verified runtime:', matches[0], digest)
           PY
 
+          # Re-run source contract validation immediately before release so the
+          # published APK is tied to a build where all original local tools are covered.
+          python3 scripts/validate_iteration_v5.py
+
           OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
           OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
           echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
           echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
           echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Persist final patched source on iteration branch
+      - name: Persist final v5 patched source on iteration branch
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib android/app/build.gradle python/navixmind
+          git add lib android/app/build.gradle android/app/src/main/kotlin python/navixmind
           if ! git diff --cached --quiet; then
-            git commit -m 'feat: persist ARM64 tool-hardened v4 source [skip ci]'
+            git commit -m 'feat: persist skills parameters stream v5 source [skip ci]'
             git push origin HEAD:iteration/qwen3-cn-ui-live-tools-google
           fi
 
@@ -272,7 +288,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<EOF
-          RastaCoder Qwen3 4B ARM64 Tool Hardened v4 — in-place update APK.
+          RastaCoder Qwen3 4B Skills / Parameters / Stream v5 — in-place ARM64 update APK.
 
           Upgrade compatibility verified during CI:
           - package/applicationId: $EXPECTED_PACKAGE
@@ -280,29 +296,30 @@ jobs:
           - versionName: $BUILD_NAME
           - signing certificate SHA-256: $CERT_SHA (same stable RastaCoder certificate)
           - known-good Qwen3 4B MLC runtime byte-verified
-          - native APK ABI verified as arm64-v8a only; x86_64 and armeabi-v7a are absent
+          - native APK ABI verified as arm64-v8a only
 
-          Tool/runtime changes:
-          - Preserves full Python, FFmpeg, ML Kit, Office, web and MLC capabilities while reducing ABI duplication.
-          - Aligns system prompts, tool schemas and actual document conversion behavior.
-          - Adds TXT/DOCX/PDF/HTML text-oriented conversion plus direct DOCX creation.
-          - Adds tolerant small-model parsing for common tool/function JSON variants, aliases and parameter layouts.
-          - Adds model-argument versus tool-runtime error classification and more useful live parameter summaries.
-          - Exposes app-side web, Office modification, Gmail and Calendar tools to the local Qwen agent when their network/auth requirements are met.
-          - Calendar delete now accepts event_id; Gmail remains read-only.
-          - FFmpeg audio extraction now honors mp3/aac/m4a/wav/flac/ogg/opus; smart-crop validates common aspect-ratio variants and preserves PNG output.
-          - Google ApiException 10 is diagnosed with the exact Android OAuth package/SHA-1 requirements. A matching Google Cloud Android OAuth client is still required externally.
-          - Existing Chinese UI, collapsed reasoning and live tool progress are preserved.
+          v5 modules:
+          - Adds 21 manually controlled Skill categories. There is no automatic Skill selection.
+          - Programmatic coverage gate proves the 21 Skills collectively cover all 23 original local tool functions with zero loss; shared functions are de-duplicated at schema injection.
+          - Enabled Skills dynamically control which local tool schemas/prompts are injected, with an execution-layer allowed-tool boundary as a second safeguard.
+          - Skill selection and Thinking Mode are independent. Thinking remains explicitly user controlled: model default / enabled / disabled.
+          - Adds precise local model settings for temperature, Top P, context budget and maximum output tokens. Token budgets use integer text fields with Token units, not sliders or K presets.
+          - Fixes the old local max-output hard cap path and wires the explicit local context budget into conversation retrieval.
+          - Adds local benchmark metrics including prefill/decode speed, TTFT, end-to-end latency, token counts and memory measurements.
+          - Benchmark results can be saved and the current result can be copied directly to the clipboard.
+          - Adds MLC inference event streaming for generation start, first token, thinking state, tool-call state and completion timing without exposing hidden thinking text.
+          - Preserves v4 document conversion, DOCX creation, multimedia fixes, Google diagnostics, small-model tool-call compatibility, Chinese UI and collapsed reasoning behavior.
 
           Verification:
           - APK: $OUTPUT_APK
           - APK SHA-256: $OUT_SHA
           - APK size: $OUT_SIZE bytes
           - MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+          - v5 source/coverage validator passed both before build and immediately before release
           EOF
 
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
           gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
             --target iteration/qwen3-cn-ui-live-tools-google \
-            --title 'RastaCoder Qwen3 4B ARM64 Tool Hardened v4' \
+            --title 'RastaCoder Qwen3 4B Skills Parameters Stream v5' \
             --notes-file release-notes.md
