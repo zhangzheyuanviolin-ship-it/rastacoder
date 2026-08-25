@@ -101,14 +101,40 @@ jobs:
           CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($2); exit}' apksigner-verify.txt | tr -d ':')"
           test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
 
-          unzip -l "$OUTPUT_APK" 'lib/arm64-v8a/libtvm4j_runtime_packed.so' | grep -F 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
-          CONFIG_PATH="$(unzip -Z1 "$OUTPUT_APK" | grep 'mlc-app-config.json$' | head -n 1)"
-          test -n "$CONFIG_PATH"
-          unzip -p "$OUTPUT_APK" "$CONFIG_PATH" > mlc-app-config.json
-          grep -F 'Qwen3-4B-q4f16_0-MLC' mlc-app-config.json
-          grep -F 'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc' mlc-app-config.json
+          unzip -Z1 "$OUTPUT_APK" > apk-entries.txt
 
-          unzip -p "$OUTPUT_APK" lib/arm64-v8a/libtvm4j_runtime_packed.so > libtvm4j_runtime_packed.so
+          RUNTIME_PATH=""
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            unzip -p "$OUTPUT_APK" "$candidate" > runtime-candidate.so
+            CANDIDATE_SHA="$(sha256sum runtime-candidate.so | awk '{print $1}')"
+            CANDIDATE_SIZE="$(stat -c '%s' runtime-candidate.so)"
+            if [ "$CANDIDATE_SHA" = '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48' ] && [ "$CANDIDATE_SIZE" -eq 38786520 ]; then
+              RUNTIME_PATH="$candidate"
+              mv runtime-candidate.so libtvm4j_runtime_packed.so
+              break
+            fi
+          done < <(awk '/libtvm4j_runtime_packed\.so$/ {print}' apk-entries.txt)
+          test -n "$RUNTIME_PATH"
+          case "$RUNTIME_PATH" in
+            *arm64*) ;;
+            *) echo "Expected arm64 runtime, found: $RUNTIME_PATH" >&2; exit 1 ;;
+          esac
+          echo "Verified runtime path: $RUNTIME_PATH"
+
+          CONFIG_PATH=""
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            unzip -p "$OUTPUT_APK" "$candidate" > config-candidate.json
+            if grep -Fq 'Qwen3-4B-q4f16_0-MLC' config-candidate.json && \
+               grep -Fq 'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc' config-candidate.json; then
+              CONFIG_PATH="$candidate"
+              mv config-candidate.json mlc-app-config.json
+              break
+            fi
+          done < <(awk '/mlc-app-config\.json$/ {print}' apk-entries.txt)
+          test -n "$CONFIG_PATH"
+          echo "Verified MLC config path: $CONFIG_PATH"
 
           OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
           OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
