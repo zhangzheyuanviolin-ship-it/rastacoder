@@ -1,12 +1,12 @@
 {
   "workflow": "Build RastaCoder Qwen3 Chinese UI v2",
-  "run_id": 32818331377,
-  "run_number": 3,
-  "status": "failure",
-  "head_sha": "8fbbc0c9725f3f775e1de29dcf325c0e099f3f77",
+  "run_id": 32818584285,
+  "run_number": 4,
+  "status": "success",
+  "head_sha": "15906aa8e43a5c43ea944eb621219d55858b61da",
   "apk": "RastaCoder-Qwen3-4B-zh-ui-v2.apk",
-  "apk_sha256": "",
-  "apk_size": "",
+  "apk_sha256": "8904b79e3a3e93c9c63c9d683c7f44f5925c4eb47f0b545012b9981b752c59fb",
+  "apk_size": "499554074",
   "release_tag": "qwen3-zh-ui-v2",
-  "run_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32818331377"
+  "run_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32818584285"
 }
