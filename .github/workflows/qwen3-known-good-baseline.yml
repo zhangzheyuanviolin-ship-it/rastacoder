@@ -101,40 +101,56 @@ jobs:
           CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($2); exit}' apksigner-verify.txt | tr -d ':')"
           test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
 
-          unzip -Z1 "$OUTPUT_APK" > apk-entries.txt
+          python - <<'PY'
+          import hashlib
+          import os
+          import zipfile
 
-          RUNTIME_PATH=""
-          while IFS= read -r candidate; do
-            [ -n "$candidate" ] || continue
-            unzip -p "$OUTPUT_APK" "$candidate" > runtime-candidate.so
-            CANDIDATE_SHA="$(sha256sum runtime-candidate.so | awk '{print $1}')"
-            CANDIDATE_SIZE="$(stat -c '%s' runtime-candidate.so)"
-            if [ "$CANDIDATE_SHA" = '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48' ] && [ "$CANDIDATE_SIZE" -eq 38786520 ]; then
-              RUNTIME_PATH="$candidate"
-              mv runtime-candidate.so libtvm4j_runtime_packed.so
-              break
-            fi
-          done < <(awk '/libtvm4j_runtime_packed\.so$/ {print}' apk-entries.txt)
-          test -n "$RUNTIME_PATH"
-          case "$RUNTIME_PATH" in
-            *arm64*) ;;
-            *) echo "Expected arm64 runtime, found: $RUNTIME_PATH" >&2; exit 1 ;;
-          esac
-          echo "Verified runtime path: $RUNTIME_PATH"
+          apk = os.environ['OUTPUT_APK']
+          expected_runtime_sha = '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48'
+          expected_runtime_size = 38786520
+          expected_model_id = b'Qwen3-4B-q4f16_0-MLC'
+          expected_model_lib = b'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc'
 
-          CONFIG_PATH=""
-          while IFS= read -r candidate; do
-            [ -n "$candidate" ] || continue
-            unzip -p "$OUTPUT_APK" "$candidate" > config-candidate.json
-            if grep -Fq 'Qwen3-4B-q4f16_0-MLC' config-candidate.json && \
-               grep -Fq 'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc' config-candidate.json; then
-              CONFIG_PATH="$candidate"
-              mv config-candidate.json mlc-app-config.json
-              break
-            fi
-          done < <(awk '/mlc-app-config\.json$/ {print}' apk-entries.txt)
-          test -n "$CONFIG_PATH"
-          echo "Verified MLC config path: $CONFIG_PATH"
+          with zipfile.ZipFile(apk, 'r') as archive:
+              names = archive.namelist()
+              runtime_candidates = [
+                  name for name in names
+                  if name.endswith('libtvm4j_runtime_packed.so') and 'arm64-v8a' in name
+              ]
+              if not runtime_candidates:
+                  raise SystemExit('arm64 libtvm4j_runtime_packed.so missing from signed APK')
+
+              verified_runtime = None
+              runtime_data = None
+              for name in runtime_candidates:
+                  data = archive.read(name)
+                  digest = hashlib.sha256(data).hexdigest()
+                  if len(data) == expected_runtime_size and digest == expected_runtime_sha:
+                      verified_runtime = name
+                      runtime_data = data
+                      break
+              if verified_runtime is None:
+                  raise SystemExit('arm64 MLC runtime exists but checksum/size does not match known-good baseline')
+              with open('libtvm4j_runtime_packed.so', 'wb') as handle:
+                  handle.write(runtime_data)
+              print(f'Verified runtime path: {verified_runtime}')
+
+              config_candidates = [name for name in names if name.endswith('mlc-app-config.json')]
+              verified_config = None
+              config_data = None
+              for name in config_candidates:
+                  data = archive.read(name)
+                  if expected_model_id in data and expected_model_lib in data:
+                      verified_config = name
+                      config_data = data
+                      break
+              if verified_config is None:
+                  raise SystemExit('MLC app config with expected Qwen3 model_id/model_lib missing')
+              with open('mlc-app-config.json', 'wb') as handle:
+                  handle.write(config_data)
+              print(f'Verified MLC config path: {verified_config}')
+          PY
 
           OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
           OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
