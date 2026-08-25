@@ -1,4 +1,4 @@
-name: Build RastaCoder Chinese Live Tools v2
+name: Build RastaCoder Chinese Live Tools v3
 
 on:
   push:
@@ -17,16 +17,20 @@ permissions:
 
 jobs:
   build-release:
-    name: Patch source, verify, build and release APK
+    name: Build, verify upgrade compatibility, and release APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      BASELINE_COMMIT: e165c311eb464722c5db0883426e82af69468330
       SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
       SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
       EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
       EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
-      OUTPUT_APK: RastaCoder-Qwen3-4B-cn-live-tools-v2.apk
-      RELEASE_TAG: qwen3-cn-live-tools-v2
+      EXPECTED_PACKAGE: ai.navixmind
+      BUILD_NAME: 0.0.2
+      BUILD_NUMBER: '16'
+      OUTPUT_APK: RastaCoder-Qwen3-4B-cn-live-tools-v3-update.apk
+      RELEASE_TAG: qwen3-cn-live-tools-v3
 
     steps:
       - name: Checkout iteration branch
@@ -47,6 +51,17 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Restore clean known-good application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Successful v2 builds persist their patched Dart source on this branch.
+          # Reset only application-layer files which the iteration scripts patch,
+          # while retaining branch-level TVM4J build fixes and CI infrastructure.
+          git checkout "$BASELINE_COMMIT" -- lib android/app/build.gradle
+          grep -F 'applicationId "ai.navixmind"' android/app/build.gradle
+          echo 'Restored clean known-good application source from' "$BASELINE_COMMIT"
+
       - name: Apply RastaCoder iteration patches
         shell: bash
         run: |
@@ -60,6 +75,7 @@ jobs:
           p = Path('android/app/build.gradle')
           text = p.read_text()
           text = text.replace('    id "com.google.gms.google-services"\n', '')
+          text = text.replace('    id "com.firebase.crashlytics"\n', '')
           text = text.replace('    id "com.google.firebase.crashlytics"\n', '')
           p.write_text(text)
           PY
@@ -150,17 +166,17 @@ jobs:
           if count != 1:
               raise SystemExit(f'Expected one debug buildType anchor, found {count}')
           p.write_text(text)
-          print('Configured stable project signing for debug build')
+          print('Configured stable project signing for upgrade build')
           PY
 
-      - name: Build signed test APK from patched source
+      - name: Build signed in-place update APK
         shell: bash
         run: |
           set -euo pipefail
-          flutter build apk --debug
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
           cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
 
-      - name: Verify APK signature and known-good Qwen3 runtime
+      - name: Verify package, version, signature and Qwen3 runtime
         id: verify
         shell: bash
         run: |
@@ -171,6 +187,15 @@ jobs:
             sdkmanager 'build-tools;35.0.0' >/dev/null
             APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
           fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          test -x "$AAPT"
+
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+
           "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
           CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
           test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
@@ -186,8 +211,7 @@ jobs:
               assert len(data) == 38786520, len(data)
               digest = hashlib.sha256(data).hexdigest()
               assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
-              dart_assets = [n for n in names if 'flutter_assets' in n]
-              assert dart_assets, 'Flutter assets missing'
+              assert any('flutter_assets' in n for n in names), 'Flutter assets missing'
               print('Verified runtime:', matches[0], digest)
           PY
 
@@ -197,7 +221,7 @@ jobs:
           echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
           echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Persist patched source on iteration branch
+      - name: Persist final patched source on iteration branch
         shell: bash
         run: |
           set -euo pipefail
@@ -205,7 +229,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib android/app/build.gradle
           if ! git diff --cached --quiet; then
-            git commit -m 'feat: Chinese UI, collapsible reasoning, live tool progress and OAuth config [skip ci]'
+            git commit -m 'feat: finalize hidden reasoning and upgrade-compatible v3 source [skip ci]'
             git push origin HEAD:iteration/qwen3-cn-ui-live-tools-google
           fi
 
@@ -219,26 +243,31 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<EOF
-          RastaCoder Qwen3 4B iteration v2 test APK.
+          RastaCoder Qwen3 4B Chinese Live Tools v3 — in-place update APK.
+
+          Upgrade compatibility verified during CI:
+          - package/applicationId: $EXPECTED_PACKAGE (same as v2)
+          - Android versionCode: $BUILD_NUMBER (higher than v2's 15)
+          - versionName: $BUILD_NAME
+          - signing certificate SHA-256: $CERT_SHA (same stable RastaCoder certificate as v2)
+          - installing this APK over v2 preserves the app data directory and previously downloaded local model files.
 
           Changes:
           - Chinese-first primary UI and settings localization.
-          - Assistant <think> reasoning is separated from the final answer and collapsed by default; live progress never exposes reasoning previews.
-          - Python and native tool activity is surfaced during execution instead of waiting only for the final reply.
-          - Google OAuth Web Client ID is configurable in Settings so this fork is no longer permanently tied to the upstream developer's hard-coded client. Gmail remains read-only; Calendar list/create uses the existing access-token pipeline.
+          - Assistant <think> reasoning is collapsed by default; live progress exposes only generic thinking status, never reasoning previews.
+          - Python and native tool calls/results are surfaced live during execution.
+          - Google OAuth Web Client ID is configurable in Settings; Gmail remains read-only and Calendar list/create continues through the existing token pipeline.
           - Known-good Qwen3 4B MLC runtime preserved and byte-verified.
-          - This device-test artifact uses a debug Flutter build signed with the stable RastaCoder project certificate to avoid the upstream release R8/android.window.BackEvent build-tool incompatibility.
 
           Verification:
           - APK: $OUTPUT_APK
           - APK SHA-256: $OUT_SHA
           - APK size: $OUT_SIZE bytes
-          - Certificate SHA-256: $CERT_SHA
           - MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
           EOF
 
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
           gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
             --target iteration/qwen3-cn-ui-live-tools-google \
-            --title 'RastaCoder Qwen3 4B Chinese Live Tools v2' \
+            --title 'RastaCoder Qwen3 4B Chinese Live Tools v3' \
             --notes-file release-notes.md
