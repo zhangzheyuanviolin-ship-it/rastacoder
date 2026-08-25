@@ -35,4 +35,4 @@ The access token obtained by Flutter is injected into the Python agent context f
 
 ## Android release-build compatibility
 
-The pinned Flutter 3.22 / `flutter_inappwebview_android` 1.0.13 combination has a known release-only R8 failure involving `android.window.BackEvent`. RastaCoder v2 disables minification only for that WebView library module while retaining the normal release build for the application. This workaround does not modify the MLC runtime, Qwen3 model registration, or agent/tool execution path.
+The pinned Flutter 3.22 / `flutter_inappwebview_android` 1.0.13 combination has a known release-only R8 failure involving `android.window.BackEvent`. RastaCoder v2 disables minification only for that WebView library module while retaining the normal release build for the application. The override is attached through the Android Library plugin's `buildTypes.configureEach` lifecycle so it also works when Flutter has already evaluated Android subprojects. This workaround does not modify the MLC runtime, Qwen3 model registration, or agent/tool execution path.
