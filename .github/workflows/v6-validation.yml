@@ -11,6 +11,7 @@ on:
       - 'scripts/apply_iteration_v6_reliability2.py'
       - 'scripts/apply_iteration_v6_ui.py'
       - 'scripts/apply_iteration_v6_history.py'
+      - 'scripts/apply_iteration_v6_history2.py'
       - 'scripts/apply_iteration_v6_native.py'
       - 'scripts/validate_iteration_v6.py'
       - 'scripts/validate_iteration_v6_extended.py'
@@ -95,6 +96,7 @@ jobs:
             scripts/apply_iteration_v6_reliability2.py \
             scripts/apply_iteration_v6_ui.py \
             scripts/apply_iteration_v6_history.py \
+            scripts/apply_iteration_v6_history2.py \
             scripts/apply_iteration_v6_native.py \
             scripts/validate_iteration_v6.py \
             scripts/validate_iteration_v6_extended.py
@@ -107,6 +109,7 @@ jobs:
           python3 scripts/apply_iteration_v6_reliability2.py
           python3 scripts/apply_iteration_v6_ui.py
           python3 scripts/apply_iteration_v6_history.py
+          python3 scripts/apply_iteration_v6_history2.py
           python3 scripts/apply_iteration_v6_native.py
 
       - name: Run full 21-Skill 23-tool regression matrices
@@ -115,6 +118,8 @@ jobs:
           set -euo pipefail
           python3 scripts/validate_iteration_v6.py
           python3 scripts/validate_iteration_v6_extended.py
+          grep -F 'didUpdateWidget(covariant ChatScreen oldWidget)' lib/features/chat/presentation/chat_screen.dart
+          grep -F 'oldWidget.initializing && !widget.initializing && !_conversationLoaded' lib/features/chat/presentation/chat_screen.dart
 
       - name: Compile Python sources
         shell: bash
@@ -192,6 +197,7 @@ jobs:
           set -euo pipefail
           python3 scripts/validate_iteration_v6.py
           python3 scripts/validate_iteration_v6_extended.py
+          grep -F 'oldWidget.initializing && !widget.initializing && !_conversationLoaded' lib/features/chat/presentation/chat_screen.dart
 
       - name: Validation summary
         shell: bash
@@ -203,5 +209,5 @@ jobs:
           echo 'Skill IDs are UI-only; model prompt contains canonical callable names/signatures only.'
           echo 'MLC streamed structured tool calls accumulate by call index and merge arguments.'
           echo 'Thinking metadata and copy/share diagnostic surfaces passed source/static/native gates.'
-          echo 'Persistent Isar chat history supports new/load/rename/delete and Python session resync.'
+          echo 'Persistent Isar chat history supports new/load/rename/delete, cold-start restoration and Python session resync.'
           echo 'No release asset was published by this validation workflow.'
