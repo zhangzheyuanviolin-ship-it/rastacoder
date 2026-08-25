@@ -53,9 +53,6 @@ jobs:
           python3 scripts/apply_iteration_v2.py
           python3 scripts/apply_iteration_v2_stage2.py
 
-          # The upstream repository intentionally omits google-services.json.
-          # Firebase is optional in main.dart, so remove only the Gradle processors
-          # which otherwise require that private configuration file at build time.
           python3 - <<'PY'
           from pathlib import Path
           p = Path('android/app/build.gradle')
@@ -67,6 +64,30 @@ jobs:
 
       - name: Install Flutter dependencies
         run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          original = text
+          for old in ('compileSdkVersion 33', 'compileSdkVersion 34', 'compileSdk 33', 'compileSdk 34'):
+              text = text.replace(old, old.split()[0] + ('Version 35' if 'Version' in old else ' 35'))
+          if text == original:
+              print('No compileSdk replacement needed; current file follows root SDK configuration')
+          else:
+              p.write_text(text)
+              print('Patched', p, 'to compileSdk 35')
+          PY
 
       - name: Static analysis
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
