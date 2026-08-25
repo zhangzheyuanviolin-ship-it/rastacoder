@@ -1,0 +1,167 @@
+name: Produce Qwen3 Known-Good Baseline APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/qwen3-known-good-baseline.yml'
+      - '.github/signing/rastacoder-dev-keystore.p12.b64'
+      - 'KNOWN_GOOD_QWEN3_BASELINE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  produce-baseline:
+    name: Verify, re-sign, and release known-good Qwen3 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+      SOURCE_COMMIT: e165c311eb464722c5db0883426e82af69468330
+      EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+      KEYSTORE_PASSWORD: RastaCoderDev2026!
+      KEY_ALIAS: rastacoder-dev
+      OUTPUT_APK: RastaCoder-Qwen3-4B-known-good-v1.apk
+      RELEASE_TAG: qwen3-known-good-v1
+
+    steps:
+      - name: Checkout repository metadata
+        uses: actions/checkout@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Download exact upstream APK and verify provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_URL"
+          echo "$SOURCE_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+
+      - name: Locate Android signing tools
+        id: tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK_ROOT" ]; then
+            echo "Android SDK root not available" >&2
+            exit 1
+          fi
+          BUILD_TOOLS_DIR="$(find "$SDK_ROOT/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          if [ -z "$BUILD_TOOLS_DIR" ] || [ ! -x "$BUILD_TOOLS_DIR/apksigner" ] || [ ! -x "$BUILD_TOOLS_DIR/zipalign" ]; then
+            yes | sdkmanager 'build-tools;35.0.0' >/dev/null
+            BUILD_TOOLS_DIR="$SDK_ROOT/build-tools/35.0.0"
+          fi
+          echo "apksigner=$BUILD_TOOLS_DIR/apksigner" >> "$GITHUB_OUTPUT"
+          echo "zipalign=$BUILD_TOOLS_DIR/zipalign" >> "$GITHUB_OUTPUT"
+
+      - name: Restore stable RastaCoder development signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .github/signing/rastacoder-dev-keystore.p12.b64 > rastacoder-dev.p12
+          test "$(sha256sum rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+
+      - name: Re-sign the exact known-good APK
+        shell: bash
+        env:
+          APKSIGNER: ${{ steps.tools.outputs.apksigner }}
+          ZIPALIGN: ${{ steps.tools.outputs.zipalign }}
+        run: |
+          set -euo pipefail
+          cp upstream-known-good.apk unsigned-baseline.apk
+          zip -q -d unsigned-baseline.apk 'META-INF/*.RSA' 'META-INF/*.SF' 'META-INF/*.DSA' 'META-INF/*.EC' 'META-INF/MANIFEST.MF' || true
+          "$ZIPALIGN" -f -p 4 unsigned-baseline.apk aligned-baseline.apk
+          "$APKSIGNER" sign \
+            --ks rastacoder-dev.p12 \
+            --ks-type PKCS12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --key-pass "pass:$KEYSTORE_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$OUTPUT_APK" \
+            aligned-baseline.apk
+
+      - name: Validate APK content, Qwen3 runtime, and signature
+        id: verify
+        shell: bash
+        env:
+          APKSIGNER: ${{ steps.tools.outputs.apksigner }}
+        run: |
+          set -euo pipefail
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner-verify.txt
+
+          CERT_SHA="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/{print tolower($2); exit}' apksigner-verify.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+
+          unzip -l "$OUTPUT_APK" 'lib/arm64-v8a/libtvm4j_runtime_packed.so' | grep -F 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+          CONFIG_PATH="$(unzip -Z1 "$OUTPUT_APK" | grep 'mlc-app-config.json$' | head -n 1)"
+          test -n "$CONFIG_PATH"
+          unzip -p "$OUTPUT_APK" "$CONFIG_PATH" > mlc-app-config.json
+          grep -F 'Qwen3-4B-q4f16_0-MLC' mlc-app-config.json
+          grep -F 'qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc' mlc-app-config.json
+
+          unzip -p "$OUTPUT_APK" lib/arm64-v8a/libtvm4j_runtime_packed.so > libtvm4j_runtime_packed.so
+
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          RUNTIME_SHA="$(sha256sum libtvm4j_runtime_packed.so | awk '{print $1}')"
+          RUNTIME_SIZE="$(stat -c '%s' libtvm4j_runtime_packed.so)"
+
+          test "$RUNTIME_SHA" = '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48'
+          test "$RUNTIME_SIZE" -eq 38786520
+
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "runtime_sha=$RUNTIME_SHA" >> "$GITHUB_OUTPUT"
+          echo "runtime_size=$RUNTIME_SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable GitHub Release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify.outputs.cert_sha }}
+          RUNTIME_SHA: ${{ steps.verify.outputs.runtime_sha }}
+          RUNTIME_SIZE: ${{ steps.verify.outputs.runtime_size }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          Known-good Qwen3 4B tool-calling baseline for the RastaCoder project.
+
+          Binary provenance:
+          - Upstream release: alexandertaboriskiy/navixmind v0.5.0-beta
+          - Exact source commit: $SOURCE_COMMIT
+          - Upstream APK SHA-256: $SOURCE_SHA256
+          - Upstream APK size: 593655513 bytes
+          - This repository also preserves the source snapshot on branch: baseline/qwen3-official-v0.5.0
+
+          RastaCoder baseline verification:
+          - APK: $OUTPUT_APK
+          - APK SHA-256: $OUT_SHA
+          - APK size: $OUT_SIZE bytes
+          - Dedicated project development certificate SHA-256: $CERT_SHA
+          - ABI runtime verified: arm64-v8a
+          - libtvm4j_runtime_packed.so size: $RUNTIME_SIZE bytes
+          - libtvm4j_runtime_packed.so SHA-256: $RUNTIME_SHA
+          - Qwen3 model_id: Qwen3-4B-q4f16_0-MLC
+          - Qwen3 model_lib: qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc
+          - bundle_weight: false (model weights remain downloadable, not embedded)
+
+          This APK intentionally preserves the exact upstream known-good executable contents and replaces the signing identity with the stable RastaCoder project development signature. This makes it a reliable binary baseline before source-level RastaCoder changes are layered back one version at a time.
+          EOF
+
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target "$GITHUB_SHA" \
+            --title 'RastaCoder Qwen3 4B Known-Good Baseline v1' \
+            --notes-file release-notes.md
