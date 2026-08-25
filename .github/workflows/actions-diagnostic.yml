@@ -1,0 +1,36 @@
+name: RastaCoder Actions Diagnostic
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'CI_ACTIONS_DIAGNOSTIC.md'
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report recent workflow runs into repository issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=30" \
+            --jq '.workflow_runs[] | [.id,.name,.event,.status,(.conclusion // "null"),.head_sha,.html_url] | @tsv' \
+            > recent-runs.tsv
+          {
+            echo 'GitHub Actions diagnostic snapshot.'
+            echo
+            echo '```'
+            cat recent-runs.tsv
+            echo '```'
+          } > issue-body.md
+          gh issue create \
+            --title "CI diagnostic $GITHUB_RUN_ID" \
+            --body-file issue-body.md
