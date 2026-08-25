@@ -1,0 +1,133 @@
+name: Validate RastaCoder Skills Parameters Benchmark v5
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-cn-ui-live-tools-google
+    paths:
+      - '.github/workflows/v5-validation.yml'
+      - 'scripts/apply_iteration_v5.py'
+      - 'scripts/v5_payload_*.b64'
+      - 'scripts/validate_iteration_v5.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-v5:
+    name: Apply v5 and run static/compile gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BASELINE_COMMIT: e165c311eb464722c5db0883426e82af69468330
+
+    steps:
+      - name: Checkout iteration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Restore known-good application baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout "$BASELINE_COMMIT" -- lib android/app/build.gradle
+          grep -F 'applicationId "ai.navixmind"' android/app/build.gradle
+
+      - name: Apply v2 through v5 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v2.py
+          python3 scripts/apply_iteration_v2_stage2.py
+          python3 scripts/apply_iteration_v2_stage3.py
+          python3 scripts/apply_iteration_v4_tools.py
+          python3 scripts/apply_iteration_v4_android.py
+          python3 scripts/apply_iteration_v5.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          text = text.replace('    id "com.google.gms.google-services"\n', '')
+          text = text.replace('    id "com.firebase.crashlytics"\n', '')
+          text = text.replace('    id "com.google.firebase.crashlytics"\n', '')
+          p.write_text(text)
+          PY
+
+      - name: Verify v5 invariants and full original-tool coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v5.py
+          grep -F 'RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM' python/navixmind/agent.py
+          grep -F '[MODEL_TOOL_DISABLED]' python/navixmind/tools/__init__.py
+          grep -F "generation_started" android/app/src/main/kotlin/ai/navixmind/services/MLCInferenceChannel.kt
+
+      - name: Compile Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/session.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/documents.py \
+            python/navixmind/tools/google_api.py \
+            python/navixmind/tools/compat.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Kotlin compile gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          ./gradlew :app:compileDebugKotlin --stacktrace
+
+      - name: Validation summary
+        shell: bash
+        run: |
+          echo 'RastaCoder v5 validation passed without building an APK.'
+          echo '21 manually controlled skills cover all 23 original local tool functions.'
