@@ -23,18 +23,24 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate-v6:
     name: Rebuild v5, apply complete v6, run deep tool/history/native gates
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     env:
       BASELINE_COMMIT: e165c311eb464722c5db0883426e82af69468330
       SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
       SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
       EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+      EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+      EXPECTED_PACKAGE: ai.navixmind
+      BUILD_NAME: 0.0.5
+      BUILD_NUMBER: '19'
+      OUTPUT_APK: RastaCoder-Qwen3-4B-tool-reliability-history-v6-update.apk
+      RELEASE_TAG: qwen3-tool-reliability-history-v6
 
     steps:
       - name: Checkout v6 reliability branch
@@ -202,9 +208,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          flutter build apk --debug --build-name=0.0.5 --build-number=19
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
           test -s build/app/outputs/flutter-apk/app-debug.apk
-          echo 'Android/Kotlin/Java/Chaquopy/MLC compile gate passed; APK remains CI-only.'
+          echo 'Android/Kotlin/Java/Chaquopy/MLC compile gate passed; validation APK is CI-only.'
 
       - name: Re-run all v6 matrices after native build
         shell: bash
@@ -228,4 +234,170 @@ jobs:
           echo 'MLC streamed structured tool calls accumulate by call index and merge arguments.'
           echo 'Thinking UI explicitly reports /think, /no_think or model-default directive behavior.'
           echo 'Persistent Isar chat history supports new/load/rename/delete, cold-start restoration, durable attachments and Python SessionState resync.'
-          echo 'No release asset was published by this validation workflow.'
+
+      - name: Restore stable RastaCoder signing identity
+        if: contains(github.event.head_commit.message, '[release-v6]')
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 | base64 -d > android/app/rastacoder-dev.p12
+          test "$(sha256sum android/app/rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+          cat > android/key.properties <<'EOF'
+          storeFile=rastacoder-dev.p12
+          storePassword=RastaCoderDev2026!
+          keyAlias=rastacoder-dev
+          keyPassword=RastaCoderDev2026!
+          EOF
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          pattern = re.compile(
+              r'(\bdebug\s*\{\s*\n\s*buildConfigField\s+"boolean",\s*"NAVIXMIND_DEBUG",\s*"true"\s*\n)',
+              re.MULTILINE,
+          )
+          replacement = r"\1            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug\n"
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one debug buildType anchor, found {count}')
+          p.write_text(text)
+          print('Configured stable RastaCoder signing for v6 release build')
+          PY
+
+      - name: Build stable-signed ARM64 v6 release candidate
+        if: contains(github.event.head_commit.message, '[release-v6]')
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
+          test -s "$OUTPUT_APK"
+
+      - name: Verify final signed APK and final systemic gates
+        if: contains(github.event.head_commit.message, '[release-v6]')
+        id: verify_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          test -x "$AAPT"
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
+          CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+              abis = sorted({n.split('/')[1] for n in names if n.startswith('lib/') and len(n.split('/')) >= 3})
+              print('Native ABIs packaged:', abis)
+              assert abis == ['arm64-v8a'], f'APK is not ARM64-only: {abis}'
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              assert runtime in names, 'arm64 MLC runtime missing'
+              data = z.read(runtime)
+              assert len(data) == 38786520, len(data)
+              digest = hashlib.sha256(data).hexdigest()
+              assert digest == os.environ['EXPECTED_RUNTIME_SHA256'], digest
+              assert any('flutter_assets' in n for n in names), 'Flutter assets missing'
+              print('Verified MLC runtime:', digest)
+          PY
+          python3 scripts/validate_iteration_v6.py
+          python3 scripts/validate_iteration_v6_extended.py
+          python3 scripts/validate_iteration_v6_deep.py
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Final APK SHA-256: $OUT_SHA"
+          echo "Final APK size: $OUT_SIZE"
+
+      - name: Persist final v6 source and release checkpoint
+        if: contains(github.event.head_commit.message, '[release-v6]')
+        env:
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
+          cat >> docs/HANDOFF_QWEN3_TOOL_RELIABILITY_V6.md <<EOF
+
+          ## Final signed v6 release checkpoint
+
+          - Release workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          - Release tag: \`$RELEASE_TAG\`
+          - APK: \`$OUTPUT_APK\`
+          - APK SHA-256: \`$OUT_SHA\`
+          - APK size: \`$OUT_SIZE\` bytes
+          - versionName/versionCode: \`$BUILD_NAME\` / \`$BUILD_NUMBER\`
+          - package/applicationId: \`$EXPECTED_PACKAGE\`
+          - stable signing certificate SHA-256: \`$EXPECTED_CERT_SHA256\`
+          - ABI: \`arm64-v8a\` only
+          - MLC runtime SHA-256: \`$EXPECTED_RUNTIME_SHA256\`
+          - Three systemic v6 validators passed before native build, after native build, and immediately before release.
+          EOF
+          git add lib python/navixmind android/app/src/main/kotlin docs/HANDOFF_QWEN3_TOOL_RELIABILITY_V6.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: persist final tool reliability history v6 source and handoff [skip ci]'
+            git push origin HEAD:iteration/qwen3-tool-reliability-v6
+          fi
+
+      - name: Publish GitHub Release
+        if: contains(github.event.head_commit.message, '[release-v6]')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify_release.outputs.cert_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          RastaCoder Qwen3 4B Tool Reliability + Chat History v6 — stable-signed ARM64 in-place update.
+
+          Reliability:
+          - 21 manually managed Skills still cover all 23 canonical local tools with zero capability loss.
+          - The local model sees only enabled canonical function names and exact signatures; UI Skill IDs stay UI-only.
+          - Systemic repair covers Skill-name hallucinations, aliases, generic free-form arguments, safe output naming, attachment/path resolution, and bounded parser retries.
+          - Dedicated regression gates cover the reported TXT write, content-only DOCX creation, document conversion, and MP3-to-WAV failures.
+          - Recognizable malformed tool calls cannot silently leak into final assistant prose.
+          - MLC structured streamed tool calls accumulate by call index and merge argument fragments.
+
+          Observability and chat lifecycle:
+          - Local Qwen reasoning is preserved separately and exposed through an accessible collapsed Thinking panel.
+          - UI explicitly reports /think, /no_think or model-default directive behavior.
+          - Redacted per-response tool diagnostics can be expanded, copied and shared.
+          - Persistent Isar chat history supports new conversation, history list, switch/load, rename, delete, cold-start restoration, durable attachments and Python SessionState resync.
+          - v5 local model parameter and benchmark pages are retained.
+
+          Verified final APK:
+          - package/applicationId: $EXPECTED_PACKAGE
+          - versionName: $BUILD_NAME
+          - versionCode: $BUILD_NUMBER
+          - signing certificate SHA-256: $CERT_SHA
+          - ABI: arm64-v8a only
+          - MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+          - APK SHA-256: $OUT_SHA
+          - APK size: $OUT_SIZE bytes
+          EOF
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target iteration/qwen3-tool-reliability-v6 \
+            --title 'RastaCoder Qwen3 4B Tool Reliability + Chat History v6' \
+            --notes-file release-notes.md
