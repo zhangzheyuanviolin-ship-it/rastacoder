@@ -16,6 +16,9 @@ import '../../core/database/database.dart';
 import '../../core/database/collections/api_usage.dart';
 import '../legal/terms_of_service.dart';
 import '../legal/privacy_policy.dart';
+import 'tool_skills_screen.dart';
+import 'local_model_parameters_screen.dart';
+import 'local_model_benchmark_screen.dart';
 
 bool _extraLicensesRegistered = false;
 
@@ -599,6 +602,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
 
+
+          // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+          _SettingsTile(
+            title: '默认工具与技能',
+            subtitle: '管理新会话默认开启的 21 个技能；完整覆盖原有 23 个本地工具',
+            trailing: const Icon(Icons.build_outlined, size: 20),
+            onTap: () async {
+              await Navigator.push<Set<String>>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ToolSkillsScreen(persistAsDefaults: true),
+                ),
+              );
+            },
+          ),
+          _SettingsTile(
+            title: '本地模型参数',
+            subtitle: 'Temperature、Top P、上下文预算、最大输出与手动思考模式',
+            trailing: const Icon(Icons.tune, size: 20),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LocalModelParametersScreen()),
+            ),
+          ),
+          _SettingsTile(
+            title: '本地模型性能基准',
+            subtitle: 'Prefill、Decode、TTFT、内存；支持保存和复制测试结果',
+            trailing: const Icon(Icons.speed, size: 20),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LocalModelBenchmarkScreen()),
+            ),
+          ),
+
           // System Prompt
           _SettingsTile(
             title: '系统提示词',
@@ -694,8 +731,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           _SettingsTile(
-            title: '单次回复最大 Token',
-            subtitle: '$_maxTokens — 数值越高允许回复越长',
+            title: '云端单次回复最大 Token',
+            subtitle: '$_maxTokens — 仅用于云端模型；本地模型请在“本地模型参数”中设置',
             trailing: DropdownButton<int>(
               value: _maxTokens,
               underline: const SizedBox(),

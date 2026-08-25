@@ -18,7 +18,11 @@ class StatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+    return Semantics(
+      liveRegion: true,
+      label: message,
+      child: Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       color: isError
@@ -53,6 +57,7 @@ class StatusBanner extends StatelessWidget {
               child: const Text('Retry'),
             ),
         ],
+      ),
       ),
     );
   }

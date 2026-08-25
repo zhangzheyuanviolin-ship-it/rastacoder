@@ -9,6 +9,7 @@ import '../../../core/services/analytics_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/models/model_registry.dart';
+import '../../../core/models/tool_skill.dart';
 import '../../../core/services/local_llm_service.dart';
 import '../../../core/services/offline_queue_manager.dart';
 import '../../../core/services/share_receiver_service.dart';
@@ -18,6 +19,7 @@ import 'widgets/message_list.dart';
 import 'widgets/input_bar.dart';
 import 'widgets/status_banner.dart';
 import 'widgets/context_bar.dart';
+import '../../settings/tool_skills_screen.dart';
 
 /// Main chat screen - the "Living Log" interface
 class ChatScreen extends StatefulWidget {
@@ -50,6 +52,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   List<String> _externalFiles = [];
   StreamSubscription<SharedFilesEvent>? _shareSubscription;
   StreamSubscription? _nativeToolSubscription;
+  StreamSubscription<Map<String, dynamic>>? _mlcEventSubscription;
+  Set<String> _enabledSkills = Set<String>.from(LocalToolSkillCatalog.allIds);
   final Set<String> _announcedNativeToolIds = <String>{};
 
   @override
@@ -58,9 +62,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _checkApiKey();
     _loadSelfImproveSetting();
+    _loadSkillDefaults();
     _listenToPythonStatus();
     _listenToLogs();
     _listenToNativeTools();
+    _listenToMlcEvents();
     _listenToConnectivity();
     _listenToAuth();
     _listenToSharedFiles();
@@ -81,6 +87,58 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _scrollToBottom();
       }
       _lastKeyboardHeight = keyboardHeight;
+    });
+  }
+
+
+  // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+  Future<void> _loadSkillDefaults() async {
+    final enabled = await StorageService.instance.getLocalEnabledSkills();
+    if (!mounted) return;
+    setState(() => _enabledSkills = enabled);
+  }
+
+  Future<void> _manageTools() async {
+    final result = await Navigator.push<Set<String>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ToolSkillsScreen(
+          initialEnabled: Set<String>.from(_enabledSkills),
+          persistAsDefaults: false,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() => _enabledSkills = result);
+    }
+  }
+
+  void _listenToMlcEvents() {
+    _mlcEventSubscription = LocalLLMService.instance.inferenceEventStream.listen((event) {
+      if (!mounted || !_isProcessing) return;
+      final phase = event['phase']?.toString();
+      String? message;
+      switch (phase) {
+        case 'generation_started':
+          message = '本地模型开始生成…';
+          break;
+        case 'first_token':
+          final ms = event['elapsed_ms'];
+          message = ms == null ? '已生成首个 Token' : '已生成首个 Token（${ms} ms）';
+          break;
+        case 'thinking_started':
+          message = '正在思考…';
+          break;
+        case 'tool_call_started':
+          message = '正在形成工具调用…';
+          break;
+        case 'generation_completed':
+          message = '模型生成完成，正在处理响应…';
+          break;
+      }
+      if (message != null) setState(() => _statusMessage = message);
+    }, onError: (Object error) {
+      debugPrint('[MLC telemetry] $error');
     });
   }
 
@@ -479,6 +537,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final response = await PythonBridge.instance.sendQuery(
         query: text,
         filePaths: _attachedFiles.isNotEmpty ? _attachedFiles : null,
+        context: {
+          'enabled_skills': _enabledSkills.toList(),
+        },
       );
 
       if (!mounted) return;
@@ -805,6 +866,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               onSend: _sendMessage,
               enabled: (isPythonReady || _awaitingApiKey) && !_isProcessing,
               isProcessing: _isProcessing,
+              onManageTools: _manageTools,
+              enabledSkillCount: _enabledSkills.length,
+              totalSkillCount: LocalToolSkillCatalog.all.length,
               externalFiles: _externalFiles,
               onFilesSelected: (files) {
                 setState(() {
@@ -822,6 +886,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void dispose() {
     _shareSubscription?.cancel();
     _nativeToolSubscription?.cancel();
+    _mlcEventSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _inputController.dispose();
     _scrollController.dispose();

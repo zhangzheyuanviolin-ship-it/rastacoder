@@ -26,6 +26,9 @@ class LocalLLMService {
       EventChannel('ai.navixmind/model_download_events');
   static const _inferenceMethodChannel =
       MethodChannel('ai.navixmind/mlc_inference');
+  // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+  static const _inferenceEventChannel =
+      EventChannel('ai.navixmind/mlc_inference_events');
 
   LocalLLMService._();
 
@@ -89,6 +92,7 @@ class LocalLLMService {
   ModelLoadState _loadState = ModelLoadState.unloaded;
   String? _loadError;
   StreamSubscription<dynamic>? _downloadEventSubscription;
+  Stream<Map<String, dynamic>>? _inferenceEvents;
 
   final _stateController =
       StreamController<Map<String, OfflineModelState>>.broadcast();
@@ -103,6 +107,14 @@ class LocalLLMService {
 
   /// Current model load state.
   ModelLoadState get loadState => _loadState;
+
+  Stream<Map<String, dynamic>> get inferenceEventStream {
+    return _inferenceEvents ??= _inferenceEventChannel
+        .receiveBroadcastStream()
+        .where((event) => event is Map)
+        .map((event) => Map<String, dynamic>.from(event as Map))
+        .asBroadcastStream();
+  }
 
   /// Current load error message, if any.
   String? get loadError => _loadError;
@@ -373,6 +385,8 @@ class LocalLLMService {
     String messagesJson, {
     String? toolsJson,
     int maxTokens = 2048,
+    double temperature = 0.7,
+    double topP = 0.95,
   }) async {
     if (_loadedModelId == null || _loadState != ModelLoadState.loaded) {
       throw StateError('No model loaded. Call loadModel() first.');
@@ -391,6 +405,8 @@ class LocalLLMService {
             'messagesJson': messagesJson,
             'toolsJson': toolsJson,
             'maxTokens': maxTokens,
+            'temperature': temperature,
+            'topP': topP,
           },
         );
         if (response == null) {
@@ -417,6 +433,28 @@ class LocalLLMService {
       debugPrint('[LocalLLM] Generate failed: $e');
       rethrow;
     }
+  }
+
+
+  // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+  Future<Map<String, dynamic>> runBenchmark({
+    int maxTokens = 128,
+    double temperature = 0.7,
+    double topP = 0.95,
+  }) async {
+    if (_loadedModelId == null || _loadState != ModelLoadState.loaded) {
+      throw StateError('No local model loaded for benchmark.');
+    }
+    final response = await _inferenceMethodChannel.invokeMethod<Map>(
+      'runBenchmark',
+      {
+        'maxTokens': maxTokens,
+        'temperature': temperature,
+        'topP': topP,
+      },
+    );
+    if (response == null) throw Exception('Null benchmark response');
+    return Map<String, dynamic>.from(response);
   }
 
   void _updateLoadState(ModelLoadState state) {

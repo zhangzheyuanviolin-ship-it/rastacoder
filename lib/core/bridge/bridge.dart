@@ -180,6 +180,13 @@ class PythonBridge {
     final maxIterations = await StorageService.instance.getMaxIterations();
     final maxToolCalls = await StorageService.instance.getMaxToolCalls();
     final maxTokens = await StorageService.instance.getMaxTokens();
+    // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+    final localDefaultSkills = await StorageService.instance.getLocalEnabledSkills();
+    final localTemperature = await StorageService.instance.getLocalTemperature();
+    final localTopP = await StorageService.instance.getLocalTopP();
+    final localContextTokens = await StorageService.instance.getLocalContextTokens();
+    final localMaxOutputTokens = await StorageService.instance.getLocalMaxOutputTokens();
+    final localThinkingMode = await StorageService.instance.getLocalThinkingMode();
 
     // Get writable output directory for tools that create files
     // Use external storage so files are visible in file managers
@@ -204,6 +211,14 @@ class PythonBridge {
       'max_iterations': maxIterations,
       'max_tool_calls': maxToolCalls,
       'max_tokens': maxTokens,
+      if (isOfflineModel) 'enabled_skills':
+          (context?['enabled_skills'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+              localDefaultSkills.toList(),
+      if (isOfflineModel) 'local_temperature': localTemperature,
+      if (isOfflineModel) 'local_top_p': localTopP,
+      if (isOfflineModel) 'local_context_tokens': localContextTokens,
+      if (isOfflineModel) 'local_max_output_tokens': localMaxOutputTokens,
+      if (isOfflineModel) 'local_thinking_mode': localThinkingMode,
       'output_dir': outputDir,
       if (googleToken != null) 'google_access_token': googleToken,
       if (customSystemPrompt != null && !isOfflineModel) 'system_prompt': customSystemPrompt,

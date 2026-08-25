@@ -663,6 +663,96 @@ OFFLINE_TOOLS_SCHEMA.extend(
 )
 
 
+# RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+# 21 manually controlled skills cover every tool in OFFLINE_TOOLS_SCHEMA.
+# A low-level function may intentionally appear in more than one skill.
+LOCAL_SKILLS = {
+    "text_files": {"tools": ("read_file", "write_file", "file_info"), "prompt": "TEXT FILES: read_file, write_file, file_info. Use file basenames; created files need an output filename."},
+    "zip_archive": {"tools": ("create_zip", "file_info"), "prompt": "ZIP: create_zip(output_path, file_paths, compression?)."},
+    "pdf_read": {"tools": ("read_pdf", "file_info"), "prompt": "PDF READ: read_pdf(pdf_path, pages?) extracts text; file_info inspects metadata."},
+    "pdf_create": {"tools": ("create_pdf",), "prompt": "PDF CREATE: create_pdf(output_path, content?, title?, image_paths?)."},
+    "document_convert": {"tools": ("convert_document",), "prompt": "DOCUMENT CONVERT: convert_document(input_path, output_format, output_path?) where output_format is pdf/html/txt/docx."},
+    "word": {"tools": ("create_docx", "read_docx", "modify_docx"), "prompt": "WORD: create_docx creates DOCX; read_docx reads it; modify_docx edits existing DOCX."},
+    "powerpoint": {"tools": ("read_pptx", "modify_pptx"), "prompt": "POWERPOINT: read_pptx reads slides/notes; modify_pptx edits existing PPTX."},
+    "excel": {"tools": ("read_xlsx", "modify_xlsx"), "prompt": "EXCEL: read_xlsx reads workbook data; modify_xlsx edits cells/formulas/rows/sheets."},
+    "ocr": {"tools": ("ocr_image",), "prompt": "OCR: ocr_image(image_path) extracts text from an image."},
+    "image_processing": {"tools": ("smart_crop",), "prompt": "IMAGE PROCESSING: smart_crop(input_path, output_path, aspect_ratio?) performs face-aware crop."},
+    "video_processing": {"tools": ("ffmpeg_process",), "prompt": "VIDEO: ffmpeg_process supports trim/crop/resize/filter/extract_audio/extract_frame/convert. Keep A/V filters synchronized; never use percent-pattern output filenames."},
+    "audio_processing": {"tools": ("ffmpeg_process",), "prompt": "AUDIO: ffmpeg_process supports trim/filter/convert and extract_audio. Audio filters use params.af; common outputs include mp3/wav/m4a/aac/flac/ogg."},
+    "media_download": {"tools": ("download_media",), "prompt": "MEDIA DOWNLOAD: download_media(url, format?) returns downloadable video/audio for supported non-YouTube platforms; network required."},
+    "web_fetch": {"tools": ("web_fetch",), "prompt": "WEB: web_fetch(url, extract_mode?) reads normal web pages; network required."},
+    "dynamic_web": {"tools": ("headless_browser",), "prompt": "DYNAMIC WEB: headless_browser(url, wait_seconds?, extract_selector?) renders JavaScript-heavy pages; network required."},
+    "basic_calculation": {"tools": ("python_execute",), "prompt": "BASIC CALCULATION: python_execute for math/statistics/text/JSON/CSV logic. Use print(); os/sys/subprocess are forbidden."},
+    "scientific_calculation": {"tools": ("python_execute",), "prompt": "SCIENTIFIC CALCULATION: python_execute with numpy/math/statistics. Use print(); no network or subprocess."},
+    "data_analysis": {"tools": ("python_execute",), "prompt": "DATA ANALYSIS: python_execute with pandas/numpy for tabular analysis. Use print(); file access is limited to file_paths."},
+    "charts": {"tools": ("python_execute",), "prompt": "CHARTS: python_execute with matplotlib; generated figures are saved as PNG. Use print() for textual results."},
+    "gmail": {"tools": ("gmail",), "prompt": "GMAIL: gmail(action, query?, message_id?) supports list/read only and requires Google connection."},
+    "google_calendar": {"tools": ("google_calendar",), "prompt": "GOOGLE CALENDAR: google_calendar(action, date_range?, event?, event_id?) supports list/create/delete and requires Google connection."},
+}
+
+ALL_LOCAL_SKILL_IDS = tuple(LOCAL_SKILLS.keys())
+
+
+def _offline_tool_names():
+    return {tool["name"] for tool in OFFLINE_TOOLS_SCHEMA}
+
+
+def get_enabled_tool_names(skill_ids=None):
+    if skill_ids is None:
+        skill_ids = ALL_LOCAL_SKILL_IDS
+    enabled = set()
+    for skill_id in skill_ids:
+        skill = LOCAL_SKILLS.get(str(skill_id))
+        if skill:
+            enabled.update(skill["tools"])
+    return enabled
+
+
+def get_offline_tools_for_skills(skill_ids=None):
+    enabled = get_enabled_tool_names(skill_ids)
+    return [tool for tool in OFFLINE_TOOLS_SCHEMA if tool["name"] in enabled]
+
+
+def build_offline_skill_prompt(skill_ids=None):
+    ids = ALL_LOCAL_SKILL_IDS if skill_ids is None else tuple(str(x) for x in skill_ids)
+    selected = [skill_id for skill_id in ids if skill_id in LOCAL_SKILLS]
+    base = (
+        "You are RastaCoder, an AI assistant on Android. "
+        "Tool availability is manually selected by the user. "
+    )
+    if not selected:
+        return base + "No tools are enabled for this conversation. Answer directly and do not emit tool calls."
+    lines = [
+        base,
+        "To use an enabled tool, respond ONLY with:",
+        "<tool_call>",
+        '{"name":"tool_name","arguments":{"param":"value"}}',
+        "</tool_call>",
+        "ENABLED SKILLS:",
+    ]
+    for skill_id in selected:
+        lines.append(f"- {skill_id}: {LOCAL_SKILLS[skill_id]['prompt']}")
+    lines.extend([
+        "RULES:",
+        "- Use only tools belonging to the enabled skills above.",
+        "- Use attached file basenames; paths are resolved automatically.",
+        "- Include created output file paths in the final response.",
+        "- If an enabled tool fails, try another enabled approach when appropriate.",
+    ])
+    return "\n".join(lines)
+
+
+# Import-time invariant: the 21-skill catalogue must cover exactly every local
+# tool exposed before classification. This intentionally fails fast in CI if a
+# future tool is added without assigning it to at least one skill.
+_skill_covered_tools = get_enabled_tool_names(ALL_LOCAL_SKILL_IDS)
+_offline_tools = _offline_tool_names()
+if _skill_covered_tools != _offline_tools:
+    missing = sorted(_offline_tools - _skill_covered_tools)
+    extra = sorted(_skill_covered_tools - _offline_tools)
+    raise RuntimeError(f"Local skill coverage mismatch; missing={missing}, extra={extra}")
+
+
 def execute_tool(
     tool_name: str,
     args: Dict[str, Any],
@@ -744,6 +834,14 @@ def execute_tool(
                         f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name}.{key} received "
                         f"{args[key]!r}; allowed values: {spec['enum']}"
                     )
+
+    # Manual skill boundary: a hallucinated disabled tool is rejected even
+    # if the small model remembers its name from earlier conversation.
+    allowed_tools = context.get('_allowed_tools')
+    if allowed_tools is not None and tool_name not in set(allowed_tools):
+        raise ToolError(
+            f"[MODEL_TOOL_DISABLED] Tool '{tool_name}' is not enabled for this conversation."
+        )
 
     tool_func = tool_map[tool_name]
 

@@ -1151,6 +1151,9 @@ class NativeToolExecutor {
     final messagesJson = args['messages_json'] as String?;
     final toolsJson = args['tools_json'] as String?;
     final maxTokens = args['max_tokens'] as int? ?? 2048;
+    // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+    final temperature = (args['temperature'] as num?)?.toDouble() ?? 0.7;
+    final topP = (args['top_p'] as num?)?.toDouble() ?? 0.95;
     final modelId = args['model_id'] as String?;
 
     if (messagesJson == null) {
@@ -1173,6 +1176,8 @@ class NativeToolExecutor {
         messagesJson,
         toolsJson: toolsJson,
         maxTokens: maxTokens,
+        temperature: temperature,
+        topP: topP,
       );
       return {
         'success': true,
@@ -1186,6 +1191,8 @@ class NativeToolExecutor {
           messagesJson,
           toolsJson: toolsJson,
           maxTokens: maxTokens,
+          temperature: temperature,
+          topP: topP,
         );
         return {
           'success': true,

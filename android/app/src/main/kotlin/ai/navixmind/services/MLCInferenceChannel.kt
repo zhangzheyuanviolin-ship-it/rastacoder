@@ -2,10 +2,12 @@ package ai.navixmind.services
 
 import ai.mlc.mlcllm.MLCEngine
 import ai.mlc.mlcllm.OpenAIProtocol
+import android.os.Debug
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -35,11 +37,17 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
     companion object {
         private const val TAG = "MLCInference"
         private const val CHANNEL_NAME = "ai.navixmind/mlc_inference"
+        private const val EVENT_CHANNEL_NAME = "ai.navixmind/mlc_inference_events"
+        private const val V5_MARKER = "RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM"
     }
 
     private val methodChannel = MethodChannel(
         flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME
     )
+    private val eventChannel = EventChannel(
+        flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL_NAME
+    )
+    @Volatile private var eventSink: EventChannel.EventSink? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -54,6 +62,10 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
     private var loadedModelLib: String? = null
 
     init {
+        eventChannel.setStreamHandler(object : EventChannel.StreamHandler {
+            override fun onListen(arguments: Any?, events: EventChannel.EventSink?) { eventSink = events }
+            override fun onCancel(arguments: Any?) { eventSink = null }
+        })
         methodChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "loadModel" -> {
@@ -70,11 +82,13 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                     val messagesJson = call.argument<String>("messagesJson")
                     val toolsJson = call.argument<String>("toolsJson")
                     val maxTokens = call.argument<Int>("maxTokens") ?: 2048
+                    val temperature = (call.argument<Number>("temperature")?.toFloat() ?: 0.7f).coerceIn(0.0f, 2.0f)
+                    val topP = (call.argument<Number>("topP")?.toFloat() ?: 0.95f).coerceIn(0.01f, 1.0f)
                     if (messagesJson == null) {
                         result.error("INVALID_ARGS", "messagesJson required", null)
                         return@setMethodCallHandler
                     }
-                    generate(messagesJson, toolsJson, maxTokens, result)
+                    generate(messagesJson, toolsJson, maxTokens, temperature, topP, result)
                 }
                 "unloadModel" -> {
                     unloadModel(result)
@@ -84,6 +98,12 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                 }
                 "getGpuMemoryMB" -> {
                     getGpuMemoryMB(result)
+                }
+                "runBenchmark" -> {
+                    val maxTokens = (call.argument<Int>("maxTokens") ?: 128).coerceIn(16, 512)
+                    val temperature = (call.argument<Number>("temperature")?.toFloat() ?: 0.7f).coerceIn(0.0f, 2.0f)
+                    val topP = (call.argument<Number>("topP")?.toFloat() ?: 0.95f).coerceIn(0.01f, 1.0f)
+                    runBenchmark(maxTokens, temperature, topP, result)
                 }
                 else -> result.notImplemented()
             }
@@ -183,6 +203,8 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
         messagesJson: String,
         toolsJson: String?,
         maxTokens: Int,
+        temperature: Float,
+        topP: Float,
         result: MethodChannel.Result
     ) {
         if (engine == null || loadedModelId == null) {
@@ -192,8 +214,9 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
 
         inferenceExecutor.execute {
             try {
-                Log.d(TAG, "Generating response (maxTokens=$maxTokens)")
+                Log.d(TAG, "Generating response (maxTokens=$maxTokens, temperature=$temperature, topP=$topP)")
                 val startTime = System.currentTimeMillis()
+                emitEvent(mapOf("phase" to "generation_started", "elapsed_ms" to 0L))
 
                 val messages = parseMessages(messagesJson)
                 val tools = if (toolsJson != null) parseTools(toolsJson) else null
@@ -203,7 +226,8 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                     val channel = engine!!.chat.completions.create(
                         messages = messages,
                         max_tokens = maxTokens,
-                        temperature = 0.7f,
+                        temperature = temperature,
+                        top_p = topP,
                         stream_options = OpenAIProtocol.StreamOptions(include_usage = true),
                         tools = tools
                     )
@@ -214,15 +238,48 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                     var finishReason = "stop"
                     var promptTokens = 0
                     var completionTokens = 0
+                    var prefillTokensPerS: Float? = null
+                    var decodeTokensPerS: Float? = null
+                    var firstTokenEmitted = false
+                    var thinkingEmitted = false
+                    var toolCallEmitted = false
+                    val probe = StringBuilder()
 
                     for (response in channel) {
                         for (choice in response.choices) {
                             // Accumulate text deltas
                             choice.delta.content?.let { content ->
-                                fullText.append(content.asText())
+                                val delta = content.asText()
+                                if (delta.isNotEmpty()) {
+                                    fullText.append(delta)
+                                    probe.append(delta)
+                                    if (probe.length > 256) probe.delete(0, probe.length - 256)
+                                    if (!firstTokenEmitted) {
+                                        firstTokenEmitted = true
+                                        emitEvent(mapOf("phase" to "first_token", "elapsed_ms" to (System.currentTimeMillis() - startTime)))
+                                    }
+                                    if (!thinkingEmitted && probe.toString().contains("<think>", ignoreCase = true)) {
+                                        thinkingEmitted = true
+                                        emitEvent(mapOf("phase" to "thinking_started"))
+                                    }
+                                    if (!toolCallEmitted && probe.toString().contains("<tool_call", ignoreCase = true)) {
+                                        toolCallEmitted = true
+                                        emitEvent(mapOf("phase" to "tool_call_started"))
+                                    }
+                                }
                             }
 
                             // Accumulate tool call deltas (streamed incrementally by index)
+                            choice.delta.tool_calls?.let { calls ->
+                                if (calls.isNotEmpty() && !toolCallEmitted) {
+                                    toolCallEmitted = true
+                                    if (!firstTokenEmitted) {
+                                        firstTokenEmitted = true
+                                        emitEvent(mapOf("phase" to "first_token", "elapsed_ms" to (System.currentTimeMillis() - startTime)))
+                                    }
+                                    emitEvent(mapOf("phase" to "tool_call_started"))
+                                }
+                            }
                             choice.delta.tool_calls?.forEachIndexed { _, tc ->
                                 val acc = toolCallAccumulators.getOrPut(toolCallAccumulators.size) {
                                     ToolCallAccumulator()
@@ -243,6 +300,8 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                         response.usage?.let { usage ->
                             promptTokens = usage.prompt_tokens
                             completionTokens = usage.completion_tokens
+                            prefillTokensPerS = usage.extra?.prefill_tokens_per_s
+                            decodeTokensPerS = usage.extra?.decode_tokens_per_s
                         }
                     }
 
@@ -252,12 +311,15 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                         toolCallAccumulators.values.toList(),
                         finishReason,
                         promptTokens,
-                        completionTokens
+                        completionTokens,
+                        prefillTokensPerS,
+                        decodeTokensPerS
                     )
                 }
 
                 val elapsed = System.currentTimeMillis() - startTime
                 Log.d(TAG, "Generation completed in ${elapsed}ms")
+                emitEvent(mapOf("phase" to "generation_completed", "elapsed_ms" to elapsed))
 
                 // Convert OpenAI format → Claude format
                 val claudeResponse = buildClaudeCompatibleResponse(openaiResponseJson)
@@ -357,7 +419,9 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
         toolCalls: List<ToolCallAccumulator>,
         finishReason: String,
         promptTokens: Int,
-        completionTokens: Int
+        completionTokens: Int,
+        prefillTokensPerS: Float?,
+        decodeTokensPerS: Float?
     ): String {
         val message = JSONObject().apply {
             put("content", text)
@@ -388,6 +452,10 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
             put("usage", JSONObject().apply {
                 put("prompt_tokens", promptTokens)
                 put("completion_tokens", completionTokens)
+                put("extra", JSONObject().apply {
+                    prefillTokensPerS?.let { put("prefill_tokens_per_s", it) }
+                    decodeTokensPerS?.let { put("decode_tokens_per_s", it) }
+                })
             })
         }.toString()
     }
@@ -467,6 +535,7 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
         val claudeUsage = JSONObject().apply {
             put("input_tokens", openaiUsage.optInt("prompt_tokens", 0))
             put("output_tokens", openaiUsage.optInt("completion_tokens", 0))
+            if (openaiUsage.has("extra")) put("extra", openaiUsage.getJSONObject("extra"))
         }
 
         // Build final response
@@ -477,6 +546,109 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
         }
 
         return claudeResponse.toString()
+    }
+
+
+    // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+    private fun emitEvent(payload: Map<String, Any>) {
+        mainHandler.post { eventSink?.success(payload) }
+    }
+
+    private fun queryGpuMemoryMB(): Int {
+        return try {
+            val getDeviceAttr = org.apache.tvm.Function.getFunction("runtime.GetDeviceAttr") ?: return -1
+            val device = org.apache.tvm.Device.opencl()
+            val totalBytes = getDeviceAttr
+                .pushArg(device.deviceType)
+                .pushArg(device.deviceId)
+                .pushArg(14)
+                .invoke()
+                .asLong()
+            (totalBytes / (1024 * 1024)).toInt()
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
+    private fun runBenchmark(
+        maxTokens: Int,
+        temperature: Float,
+        topP: Float,
+        result: MethodChannel.Result
+    ) {
+        if (engine == null || loadedModelId == null) {
+            result.error("NO_MODEL", "No model loaded for benchmark", null)
+            return
+        }
+        inferenceExecutor.execute {
+            try {
+                val synthetic = buildString {
+                    append("This is a local inference benchmark. Read the following repeated calibration text and then ")
+                    append("produce a long sequence of short ordinary words until the generation limit is reached. ")
+                    repeat(96) { append("calibration token stream android local model performance measurement. ") }
+                }
+                val messages = listOf(
+                    OpenAIProtocol.ChatCompletionMessage(
+                        role = OpenAIProtocol.ChatCompletionRole.system,
+                        content = "You are running a deterministic performance benchmark. Follow the user request directly."
+                    ),
+                    OpenAIProtocol.ChatCompletionMessage(
+                        role = OpenAIProtocol.ChatCompletionRole.user,
+                        content = synthetic
+                    )
+                )
+                val startNs = System.nanoTime()
+                var firstNs: Long? = null
+                var promptTokens = 0
+                var completionTokens = 0
+                var prefill: Float? = null
+                var decode: Float? = null
+
+                runBlocking {
+                    val channel = engine!!.chat.completions.create(
+                        messages = messages,
+                        max_tokens = maxTokens,
+                        temperature = temperature,
+                        top_p = topP,
+                        stream_options = OpenAIProtocol.StreamOptions(include_usage = true),
+                        tools = null
+                    )
+                    for (response in channel) {
+                        for (choice in response.choices) {
+                            val delta = choice.delta.content?.asText() ?: ""
+                            if (firstNs == null && delta.isNotEmpty()) firstNs = System.nanoTime()
+                        }
+                        response.usage?.let { usage ->
+                            promptTokens = usage.prompt_tokens
+                            completionTokens = usage.completion_tokens
+                            prefill = usage.extra?.prefill_tokens_per_s
+                            decode = usage.extra?.decode_tokens_per_s
+                        }
+                    }
+                }
+                val endNs = System.nanoTime()
+                val runtime = Runtime.getRuntime()
+                val payload = hashMapOf<String, Any>(
+                    "prompt_tokens" to promptTokens,
+                    "completion_tokens" to completionTokens,
+                    "prefill_tokens_per_s" to (prefill ?: -1f),
+                    "decode_tokens_per_s" to (decode ?: -1f),
+                    "ttft_ms" to ((firstNs ?: endNs) - startNs) / 1_000_000.0,
+                    "end_to_end_ms" to (endNs - startNs) / 1_000_000.0,
+                    "process_pss_kb" to Debug.getPss(),
+                    "java_heap_bytes" to (runtime.totalMemory() - runtime.freeMemory()),
+                    "native_heap_bytes" to Debug.getNativeHeapAllocatedSize(),
+                    "gpu_total_mb" to queryGpuMemoryMB(),
+                    "temperature" to temperature,
+                    "top_p" to topP,
+                    "max_tokens" to maxTokens,
+                )
+                mainHandler.post { result.success(payload) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Benchmark failed", e)
+                mainHandler.post { result.error("BENCHMARK_FAILED", "Benchmark failed: ${e.message}", null) }
+            }
+        }
     }
 
     /**
@@ -511,27 +683,9 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
      */
     private fun getGpuMemoryMB(result: MethodChannel.Result) {
         inferenceExecutor.execute {
-            try {
-                // TVM kTotalGlobalMemory = 14, Device.opencl() = deviceType 4
-                val getDeviceAttr = org.apache.tvm.Function.getFunction("runtime.GetDeviceAttr")
-                if (getDeviceAttr == null) {
-                    mainHandler.post { result.success(-1) }
-                    return@execute
-                }
-                val device = org.apache.tvm.Device.opencl()
-                val totalBytes = getDeviceAttr
-                    .pushArg(device.deviceType)
-                    .pushArg(device.deviceId)
-                    .pushArg(14) // kTotalGlobalMemory
-                    .invoke()
-                    .asLong()
-                val totalMB = (totalBytes / (1024 * 1024)).toInt()
-                Log.i(TAG, "GPU memory: ${totalMB} MB")
-                mainHandler.post { result.success(totalMB) }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to query GPU memory: ${e.message}")
-                mainHandler.post { result.success(-1) }
-            }
+            val totalMB = queryGpuMemoryMB()
+            Log.i(TAG, "GPU memory: ${totalMB} MB")
+            mainHandler.post { result.success(totalMB) }
         }
     }
 

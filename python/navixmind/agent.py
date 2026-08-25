@@ -14,7 +14,11 @@ import requests
 from .bridge import get_bridge, ToolError
 from .session import get_session, apply_delta
 from .crash_logger import CrashLogger
-from .tools import execute_tool, TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA
+from .tools import (
+    execute_tool, TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA,
+    ALL_LOCAL_SKILL_IDS, build_offline_skill_prompt,
+    get_enabled_tool_names, get_offline_tools_for_skills,
+)
 from .tools.compat import normalize_tool_call, normalize_tool_name
 
 # RASTACODER_V4_TOOL_CONTRACT
@@ -309,64 +313,9 @@ OFFLINE_MAX_TOKENS = {
     'qwen3-4b': 2048,
 }
 
-# Compact system prompt for on-device models.
-# MLC engine's Hermes function calling injection does NOT work at runtime
-# (confirmed: 140 input tokens with use_function_calling=true, no tool defs
-# injected). We must include tool definitions and <tool_call> format directly.
-OFFLINE_SYSTEM_PROMPT = """You are NavixMind, an AI assistant on Android. To use a tool, respond ONLY with:
-<tool_call>
-{"name": "tool_name", "arguments": {"param": "value"}}
-</tool_call>
-
-TOOLS:
-- python_execute(code, file_paths?) — Run Python. Available: math, numpy, pandas, matplotlib, json, re, datetime, statistics, csv, base64, hashlib. Use print() for output. FORBIDDEN: os, sys, subprocess, shutil, socket, pathlib. Do NOT use for FFmpeg — use ffmpeg_process instead.
-- ffmpeg_process(input_path, output_path, operation, params?) — Process video/audio. Operations: trim {start,end/duration}, crop {width,height,x,y}, resize {width,height}, filter {vf,af}, extract_audio {format,bitrate}, extract_frame {timestamp}, convert {codec,quality}. Returns media_duration_seconds and processing_time_ms.
-- smart_crop(input_path, output_path, aspect_ratio?) — Smart crop video/image to focus on faces. Default 9:16.
-- ocr_image(image_path) — Extract text from image via OCR.
-- read_pdf(pdf_path, pages?) — Extract text from PDF.
-- create_pdf(output_path, content?, title?, image_paths?) — Create PDF from text/images.
-- read_file(file_path) — Read a text file.
-- write_file(output_path, content) — Write a text file.
-- file_info(file_path) — Get file size/metadata.
-- create_zip(output_path, file_paths, compression?) — Create ZIP archive.
-- convert_document(input_path, output_format, output_path?) — Text-oriented conversion among txt/docx/pdf/html.
-- create_docx(output_path, content, title?) — Create a Word DOCX from text.
-- read_docx(docx_path) — Extract text/tables from DOCX.
-- read_pptx(pptx_path) — Extract text/slides from PPTX.
-- read_xlsx(xlsx_path, sheet?, range?) — Extract data from XLSX.
-- web_fetch(url, extract_mode?) — Fetch web content; requires network.
-- headless_browser(url, wait_seconds?, extract_selector?) — Load JS-heavy page; requires network.
-- download_media(url, format?) — Extract a directly downloadable media URL; requires network.
-- modify_docx(input_path, output_path, operations) — Modify DOCX.
-- modify_pptx(input_path, output_path, operations) — Modify PPTX.
-- modify_xlsx(input_path, output_path, operations) — Modify XLSX.
-- google_calendar(action, date_range?, event?, event_id?) — List/create/delete Calendar events; requires Google connection.
-- gmail(action, query?, message_id?) — List/read Gmail; read-only and requires Google connection.
-
-FFMPEG PATTERNS:
-- Trim: operation="trim", params={"start":"00:00:05","duration":"10"} or {"start":"0","end":"30"}
-- Resize: operation="resize", params={"width":720,"height":1280}
-- Extract audio: operation="extract_audio", params={"format":"mp3"}
-- Brightness: operation="filter", params={"vf":"eq=brightness=0.06:contrast=1.2"}
-- Volume up: operation="filter", params={"af":"volume=2.0"}
-- B&W: operation="filter", params={"vf":"hue=s=0"}
-- Speed 2x: operation="filter", params={"vf":"setpts=0.5*PTS","af":"atempo=2.0"}
-- Combine video+audio filters: params={"vf":"eq=brightness=0.06","af":"volume=2.0"}
-- NEVER use % patterns in output filenames. NEVER use operation="custom" for filtering.
-
-RULES:
-- Always call a tool to fulfill requests. Never just describe what you would do.
-- Use file basenames (e.g. "video.mp4") — paths resolve automatically.
-- ALWAYS include the output file path in your response when creating files.
-- If a tool fails, try an alternative approach before giving up.
-- For simple math, python_execute is fine. For video/audio, use ffmpeg_process.
-
-Example:
-User: what is 2+2?
-Assistant:
-<tool_call>
-{"name": "python_execute", "arguments": {"code": "print(2+2)"}}
-</tool_call>"""
+# RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+# Per-request local prompt is built from manually enabled skills.
+OFFLINE_SYSTEM_PROMPT = build_offline_skill_prompt(ALL_LOCAL_SKILL_IDS)
 
 
 def _parse_mapping(text: str) -> Optional[dict]:
@@ -529,9 +478,15 @@ class LocalLLMClient:
     the response to Claude-compatible format.
     """
 
-    def __init__(self, model_id: str):
+    def __init__(
+        self, model_id: str, temperature: float = 0.7, top_p: float = 0.95,
+        thinking_mode: str = 'model_default'
+    ):
         self.model_id = model_id
         self.model = model_id  # For usage tracking compatibility
+        self.temperature = max(0.0, min(float(temperature), 2.0))
+        self.top_p = max(0.01, min(float(top_p), 1.0))
+        self.thinking_mode = thinking_mode if thinking_mode in {'model_default', 'enabled', 'disabled'} else 'model_default'
 
     def create_message(
         self,
@@ -551,21 +506,30 @@ class LocalLLMClient:
 
         # Convert messages: ensure all content is string (OpenAI format)
         openai_messages = self._convert_messages(messages, system)
+        # Thinking mode is controlled only by the user's saved setting.
+        # Never infer it from skills or task type. Qwen3 understands these switches.
+        if 'qwen3' in self.model_id.lower() and self.thinking_mode != 'model_default':
+            directive = '/think' if self.thinking_mode == 'enabled' else '/no_think'
+            for msg in reversed(openai_messages):
+                if msg.get('role') == 'user':
+                    msg['content'] = f"{msg.get('content', '')}\n{directive}"
+                    break
 
         # Convert tools from Claude format to OpenAI function calling format
         openai_tools = None
         if tools:
             openai_tools = self._convert_tools_to_openai(tools)
 
-        # Cap max_tokens by model size
-        model_max = OFFLINE_MAX_TOKENS.get(self.model_id, 2048)
-        max_tokens = min(max_tokens, model_max)
+        # Manual local output limit is honored; retain a hard safety ceiling.
+        max_tokens = max(1, min(int(max_tokens), 8192))
 
         # Build args for native call
         args = {
             'messages_json': json.dumps(openai_messages),
             'max_tokens': max_tokens,
             'model_id': self.model_id,
+            'temperature': self.temperature,
+            'top_p': self.top_p,
         }
         if openai_tools:
             args['tools_json'] = json.dumps(openai_tools)
@@ -946,18 +910,40 @@ def process_query(
     is_offline = 'offline_model_info' in context if context else False
 
     if is_offline:
-        # Use simplified system prompt for small models
-        system_prompt = OFFLINE_SYSTEM_PROMPT
-        client = LocalLLMClient(model_id=selected_model)
-        bridge.log("Using on-device inference", level="info")
+        # RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+        requested_skills = context.get('enabled_skills')
+        if not isinstance(requested_skills, list):
+            requested_skills = list(ALL_LOCAL_SKILL_IDS)
+        enabled_skills = [str(x) for x in requested_skills if str(x) in ALL_LOCAL_SKILL_IDS]
+        enabled_tools = get_enabled_tool_names(enabled_skills)
+        context['_allowed_tools'] = sorted(enabled_tools)
+        system_prompt = build_offline_skill_prompt(enabled_skills)
+        local_temperature = max(0.0, min(float(context.get('local_temperature', 0.7)), 2.0))
+        local_top_p = max(0.01, min(float(context.get('local_top_p', 0.95)), 1.0))
+        local_thinking_mode = str(context.get('local_thinking_mode', 'model_default'))
+        client = LocalLLMClient(
+            model_id=selected_model, temperature=local_temperature,
+            top_p=local_top_p, thinking_mode=local_thinking_mode
+        )
+        bridge.log(
+            f"Using on-device inference; skills={len(enabled_skills)}/21, tools={len(enabled_tools)}/23",
+            level="info"
+        )
     else:
         if system_prompt != SYSTEM_PROMPT:
             bridge.log("Using custom system prompt", level="info")
         # Create Claude client with selected model
         client = ClaudeClient(api_key, model=selected_model)
 
-    # Build initial messages from session context
-    messages = session.get_context_for_llm(MAX_CONTEXT_TOKENS)
+    # Build initial messages from session context. Local context budget is
+    # a user-entered exact token count; cloud keeps the existing global ceiling.
+    if is_offline:
+        configured_context = max(512, min(int(context.get('local_context_tokens', 32768)), 32768))
+        configured_output = max(1, min(int(context.get('local_max_output_tokens', 2048)), 8192))
+        context_budget = min(configured_context, max(512, 38912 - configured_output))
+    else:
+        context_budget = MAX_CONTEXT_TOKENS
+    messages = session.get_context_for_llm(context_budget)
     bridge.log(f"Context: {len(messages)} previous messages, {len(session.messages)} in session", level="info")
 
     # Add current user message with any attachments
@@ -984,9 +970,12 @@ def process_query(
     max_tool_calls = context.get('max_tool_calls', DEFAULT_MAX_TOOL_CALLS)
     max_tokens = context.get('max_tokens', DEFAULT_MAX_TOKENS)
 
-    # Cap tokens for offline models by model size
+    # On-device output length follows the dedicated manual setting.
     if is_offline:
-        max_tokens = OFFLINE_MAX_TOKENS.get(selected_model, 2048)
+        max_tokens = max(1, min(int(context.get('local_max_output_tokens', 2048)), 8192))
+        tools_schema = get_offline_tools_for_skills(enabled_skills)
+    else:
+        tools_schema = TOOLS_SCHEMA
     iteration = 0
     tool_call_count = 0
     final_response = None
@@ -1001,7 +990,6 @@ def process_query(
                 bridge.log("Running on device...", level="info")
             else:
                 bridge.log("Calling Claude API...", level="info")
-            tools_schema = OFFLINE_TOOLS_SCHEMA if is_offline else TOOLS_SCHEMA
             response = client.create_message(
                 messages=messages,
                 system=system_prompt,

@@ -15,6 +15,10 @@ class InputBar extends StatefulWidget {
   final bool isProcessing;
   final Function(List<String> paths)? onFilesSelected;
   final List<String> externalFiles;
+  // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+  final VoidCallback? onManageTools;
+  final int enabledSkillCount;
+  final int totalSkillCount;
 
   const InputBar({
     super.key,
@@ -24,6 +28,9 @@ class InputBar extends StatefulWidget {
     this.isProcessing = false,
     this.onFilesSelected,
     this.externalFiles = const [],
+    this.onManageTools,
+    this.enabledSkillCount = 0,
+    this.totalSkillCount = 21,
   });
 
   @override
@@ -257,6 +264,15 @@ class _InputBarState extends State<InputBar> {
 
               const SizedBox(width: 8),
 
+              // Manual skill manager, deliberately placed immediately before Send.
+              _IconButton(
+                icon: 'tools',
+                onPressed: widget.enabled ? widget.onManageTools : null,
+                tooltip: '工具管理，当前启用 ${widget.enabledSkillCount} 个，共 ${widget.totalSkillCount} 个技能',
+              ),
+
+              const SizedBox(width: 4),
+
               // Send button / processing indicator
               widget.isProcessing
                   ? const SizedBox(
@@ -324,7 +340,9 @@ class _IconButton extends StatelessWidget {
             child: Container(
               alignment: Alignment.center,
               child: Icon(
-                icon == '→' ? Icons.arrow_forward : Icons.add,
+                icon == '→'
+                    ? Icons.arrow_forward
+                    : (icon == 'tools' ? Icons.build_outlined : Icons.add),
                 size: 24,
                 color: color,
               ),

@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+
+import '../models/tool_skill.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
@@ -29,6 +32,14 @@ class StorageService {
   static const _keyLegalAccepted = 'legal_accepted';
   static const _keySelfImproveEnabled = 'self_improve_enabled';
   static const _keyOfflineModelStates = 'offline_model_states';
+  // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+  static const _keyLocalEnabledSkills = 'local_enabled_skills';
+  static const _keyLocalTemperature = 'local_temperature';
+  static const _keyLocalTopP = 'local_top_p';
+  static const _keyLocalContextTokens = 'local_context_tokens';
+  static const _keyLocalMaxOutputTokens = 'local_max_output_tokens';
+  static const _keyLocalThinkingMode = 'local_thinking_mode';
+  static const _keyLocalBenchmarkHistory = 'local_benchmark_history';
 
   /// Store Claude API key securely
   Future<void> setApiKey(String key) async {
@@ -226,6 +237,101 @@ class StorageService {
   /// Get stored offline model states JSON, or null if not set.
   Future<String?> getOfflineModelStates() async {
     return await _storage.read(key: _keyOfflineModelStates);
+  }
+
+
+  // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
+  // On-device agent skills and model parameters.
+
+  Future<void> setLocalEnabledSkills(Set<String> skillIds) async {
+    final known = LocalToolSkillCatalog.allIds;
+    final clean = skillIds.where(known.contains).toList()..sort();
+    await _storage.write(key: _keyLocalEnabledSkills, value: jsonEncode(clean));
+  }
+
+  Future<Set<String>> getLocalEnabledSkills() async {
+    final raw = await _storage.read(key: _keyLocalEnabledSkills);
+    if (raw == null || raw.isEmpty) return Set<String>.from(LocalToolSkillCatalog.allIds);
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        final known = LocalToolSkillCatalog.allIds;
+        return decoded.map((e) => e.toString()).where(known.contains).toSet();
+      }
+    } catch (_) {}
+    return Set<String>.from(LocalToolSkillCatalog.allIds);
+  }
+
+  Future<void> setLocalTemperature(double value) async =>
+      _storage.write(key: _keyLocalTemperature, value: value.toString());
+
+  Future<double> getLocalTemperature() async {
+    final raw = await _storage.read(key: _keyLocalTemperature);
+    final value = double.tryParse(raw ?? '');
+    return value != null && value >= 0 && value <= 2 ? value : 0.7;
+  }
+
+  Future<void> setLocalTopP(double value) async =>
+      _storage.write(key: _keyLocalTopP, value: value.toString());
+
+  Future<double> getLocalTopP() async {
+    final raw = await _storage.read(key: _keyLocalTopP);
+    final value = double.tryParse(raw ?? '');
+    return value != null && value > 0 && value <= 1 ? value : 0.95;
+  }
+
+  Future<void> setLocalContextTokens(int value) async =>
+      _storage.write(key: _keyLocalContextTokens, value: value.toString());
+
+  Future<int> getLocalContextTokens() async {
+    final raw = await _storage.read(key: _keyLocalContextTokens);
+    final value = int.tryParse(raw ?? '');
+    return value != null && value >= 512 && value <= 32768 ? value : 32768;
+  }
+
+  Future<void> setLocalMaxOutputTokens(int value) async =>
+      _storage.write(key: _keyLocalMaxOutputTokens, value: value.toString());
+
+  Future<int> getLocalMaxOutputTokens() async {
+    final raw = await _storage.read(key: _keyLocalMaxOutputTokens);
+    final value = int.tryParse(raw ?? '');
+    return value != null && value >= 1 && value <= 8192 ? value : 2048;
+  }
+
+  Future<void> setLocalThinkingMode(String value) async {
+    const allowed = {'model_default', 'enabled', 'disabled'};
+    await _storage.write(
+      key: _keyLocalThinkingMode,
+      value: allowed.contains(value) ? value : 'model_default',
+    );
+  }
+
+  Future<String> getLocalThinkingMode() async {
+    final raw = await _storage.read(key: _keyLocalThinkingMode);
+    const allowed = {'model_default', 'enabled', 'disabled'};
+    return raw != null && allowed.contains(raw) ? raw : 'model_default';
+  }
+
+  Future<List<Map<String, dynamic>>> getLocalBenchmarkHistory() async {
+    final raw = await _storage.read(key: _keyLocalBenchmarkHistory);
+    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+      }
+    } catch (_) {}
+    return <Map<String, dynamic>>[];
+  }
+
+  Future<void> appendLocalBenchmarkResult(Map<String, dynamic> result) async {
+    final history = await getLocalBenchmarkHistory();
+    history.insert(0, Map<String, dynamic>.from(result));
+    if (history.length > 20) history.removeRange(20, history.length);
+    await _storage.write(key: _keyLocalBenchmarkHistory, value: jsonEncode(history));
   }
 
   // System prompt methods (file-based — prompts can be large)
