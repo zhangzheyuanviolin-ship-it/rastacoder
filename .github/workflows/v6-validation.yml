@@ -1,0 +1,181 @@
+name: Validate RastaCoder Tool Reliability v6
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-tool-reliability-v6
+    paths:
+      - '.github/workflows/v6-validation.yml'
+      - 'scripts/apply_iteration_v6.py'
+      - 'scripts/apply_iteration_v6_ui.py'
+      - 'scripts/validate_iteration_v6.py'
+      - 'docs/HANDOFF_QWEN3_TOOL_RELIABILITY_V6.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-v6:
+    name: Rebuild v5 baseline, apply v6, run full reliability/native gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASELINE_COMMIT: e165c311eb464722c5db0883426e82af69468330
+      SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+      EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+
+    steps:
+      - name: Checkout v6 reliability branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Restore known-good application baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout "$BASELINE_COMMIT" -- lib android/app/build.gradle
+          grep -F 'applicationId "ai.navixmind"' android/app/build.gradle
+
+      - name: Rebuild exact v5 source from deterministic patch chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v2.py
+          python3 scripts/apply_iteration_v2_stage2.py
+          python3 scripts/apply_iteration_v2_stage3.py
+          python3 scripts/apply_iteration_v4_tools.py
+          python3 scripts/apply_iteration_v4_android.py
+          python3 scripts/apply_iteration_v5.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          text = text.replace('    id "com.google.gms.google-services"\n', '')
+          text = text.replace('    id "com.firebase.crashlytics"\n', '')
+          text = text.replace('    id "com.google.firebase.crashlytics"\n', '')
+          p.write_text(text)
+          PY
+
+      - name: Prove v5 input baseline before v6 changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v5.py
+          grep -F 'RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM' python/navixmind/agent.py
+          grep -F '[MODEL_TOOL_DISABLED]' python/navixmind/tools/__init__.py
+
+      - name: Apply v6 core reliability and observability patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v6.py
+          python3 scripts/apply_iteration_v6_ui.py
+
+      - name: Run full 21-Skill 23-tool regression matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v6.py
+
+      - name: Compile Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/session.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/documents.py \
+            python/navixmind/tools/google_api.py \
+            python/navixmind/tools/compat.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Restore exact known-good MLC runtime for native compile gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Full Flutter Android native compile gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name=0.0.5 --build-number=19
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          echo 'Android/Kotlin/Java/Chaquopy/MLC compile gate passed; APK remains CI-only.'
+
+      - name: Re-run v6 reliability matrix after native build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v6.py
+
+      - name: Validation summary
+        shell: bash
+        run: |
+          echo 'RastaCoder v6 validation passed.'
+          echo '21 manually managed Skills cover all 23 canonical local tools.'
+          echo 'Skill IDs are UI-only; model prompt contains canonical callable names/signatures only.'
+          echo 'User audio/Word regressions and cross-Skill malformed-call cases passed the regression matrix.'
+          echo 'Thinking metadata and copy/share diagnostic surfaces passed source/static/native gates.'
+          echo 'No release asset was published by this validation workflow.'
