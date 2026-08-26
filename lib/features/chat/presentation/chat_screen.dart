@@ -57,6 +57,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   StreamSubscription<Map<String, dynamic>>? _mlcEventSubscription;
   Set<String> _enabledSkills = Set<String>.from(LocalToolSkillCatalog.allIds);
   final Set<String> _announcedNativeToolIds = <String>{};
+  // RASTACODER_V8_TURN_LAYOUT
+  final List<String> _currentToolEvents = <String>[];
+  int? _toolProgressIndex;
+  bool _toolProgressPersisted = false;
   int? _conversationId;
   String _conversationTitle = '新对话';
   bool _conversationLoaded = false;
@@ -65,7 +69,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkApiKey();
+    if (!widget.initializing) {
+      _syncModelRouteState();
+    }
     _loadSelfImproveSetting();
     _loadSkillDefaults();
     _listenToPythonStatus();
@@ -83,9 +89,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initializing && !widget.initializing && !_conversationLoaded) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _initializeConversationHistory();
+    if (oldWidget.initializing && !widget.initializing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _syncModelRouteState();
+        if (mounted && !_conversationLoaded) {
+          await _initializeConversationHistory();
+        }
       });
     }
   }
@@ -192,7 +202,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final role = switch (row['role']?.toString()) {
         'user' => MessageRole.user,
         'assistant' => MessageRole.assistant,
-        'toolResult' => MessageRole.system,
+        'toolResult' => MessageRole.toolProgress,
         _ => MessageRole.system,
       };
       final attachments = (row['attachments'] as List?)?.map((e) => e.toString()).toList();
@@ -268,6 +278,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       MessageRole.assistant => 'assistant',
       MessageRole.error => 'system',
       MessageRole.system => 'system',
+      MessageRole.toolProgress => 'toolResult',
     };
     await ConversationManager.instance.storeVisibleMessage(
       conversationId: id,
@@ -297,43 +308,107 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _checkApiKey() async {
-    final hasKey = await StorageService.instance.hasApiKey();
-
-    // Check if an offline model is selected and downloaded
+  Future<void> _syncModelRouteState() async {
     final preferredModel = await StorageService.instance.getPreferredModel();
     final modelInfo = ModelRegistry.getById(preferredModel);
-    final isOfflineSelected = modelInfo != null && modelInfo.isOffline;
-    final offlineReady = isOfflineSelected &&
-        LocalLLMService.instance.modelStates[preferredModel]?.downloadState ==
-            ModelDownloadState.downloaded;
+    final hasKey = await StorageService.instance.hasApiKey();
+    final isOffline = modelInfo?.isOffline ?? false;
 
+    if (isOffline) {
+      // Offline routing never enters Claude-key input mode. The displayed model
+      // and the actual MLC runtime are synchronized to the same stored id.
+      final downloaded = LocalLLMService.instance.modelStates[preferredModel]?.downloadState ==
+          ModelDownloadState.downloaded;
+      if (downloaded &&
+          (LocalLLMService.instance.loadedModelId != preferredModel ||
+              LocalLLMService.instance.loadState != ModelLoadState.loaded)) {
+        try {
+          await LocalLLMService.instance.loadModel(preferredModel);
+        } catch (e) {
+          debugPrint('[V8 route restore] $e');
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _hasApiKey = hasKey;
+        _awaitingApiKey = false;
+      });
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
       _hasApiKey = hasKey;
-      if (!hasKey && !offlineReady) {
-        _awaitingApiKey = true;
-        _messages.add(ChatMessage(
-          role: MessageRole.system,
-          content: '欢迎使用 RastaCoder！您可以在设置中配置 Claude API Key，或者直接选择并下载本地模型，在设备端离线运行。',
-          timestamp: DateTime.now(),
-        ));
-      }
+      _awaitingApiKey = !hasKey;
     });
+    if (hasKey) _sendStoredApiKeyToPython();
+  }
 
-    // If we have an API key, send it to Python when bridge is ready
-    if (hasKey) {
-      _sendStoredApiKeyToPython();
+  Future<bool> _ensureSelectedRouteReadyForSend() async {
+    final preferredModel = await StorageService.instance.getPreferredModel();
+    final modelInfo = ModelRegistry.getById(preferredModel);
+    final isOffline = modelInfo?.isOffline ?? false;
+
+    if (isOffline) {
+      if (mounted && _awaitingApiKey) {
+        setState(() => _awaitingApiKey = false);
+      }
+      final state = LocalLLMService.instance.modelStates[preferredModel];
+      if (state?.downloadState != ModelDownloadState.downloaded) {
+        _addRoutingError('已选择本地模型 ${modelInfo?.displayName ?? preferredModel}，但模型文件尚未下载完成。请在模型页面完成下载后再发送。');
+        return false;
+      }
+      try {
+        if (LocalLLMService.instance.loadedModelId != preferredModel ||
+            LocalLLMService.instance.loadState != ModelLoadState.loaded) {
+          if (mounted) setState(() => _statusMessage = '正在加载已选择的本地模型…');
+          await LocalLLMService.instance.loadModel(preferredModel);
+        }
+      } catch (e) {
+        _addRoutingError('本地模型加载失败：$e');
+        return false;
+      }
+      if (LocalLLMService.instance.loadedModelId != preferredModel ||
+          LocalLLMService.instance.loadState != ModelLoadState.loaded) {
+        _addRoutingError('本地模型尚未进入可推理状态，请重新加载模型后再试。');
+        return false;
+      }
+      return true;
     }
+
+    final hasKey = await StorageService.instance.hasApiKey();
+    if (mounted) {
+      setState(() {
+        _hasApiKey = hasKey;
+        _awaitingApiKey = !hasKey;
+      });
+    }
+    if (!hasKey) {
+      _addRoutingError('当前选择的是云端模型，但尚未配置 Claude API Key。请到设置中配置 API Key，您的聊天文本不会再被当作 API Key 输入。');
+      return false;
+    }
+    await _doSendApiKey();
+    return true;
+  }
+
+  void _addRoutingError(String message) {
+    if (!mounted) return;
+    setState(() {
+      _messages.add(ChatMessage(
+        role: MessageRole.error,
+        content: message,
+        timestamp: DateTime.now(),
+      ));
+      _statusMessage = null;
+    });
+    _scrollToBottom();
   }
 
   void _sendStoredApiKeyToPython() {
-    // Try immediately if ready
     if (PythonBridge.instance.status == PythonStatus.ready) {
       _doSendApiKey();
       return;
     }
-
-    // Otherwise, listen for ready status
     StreamSubscription<PythonStatus>? subscription;
     subscription = PythonBridge.instance.statusStream.listen((status) {
       if (status == PythonStatus.ready) {
@@ -341,11 +416,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         subscription?.cancel();
       }
     });
-
-    // Clean up after a reasonable timeout
-    Future.delayed(const Duration(seconds: 30), () {
-      subscription?.cancel();
-    });
+    Future.delayed(const Duration(seconds: 30), () => subscription?.cancel());
   }
 
   Future<void> _doSendApiKey() async {
@@ -357,41 +428,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         debugPrint('Failed to send API key to Python: $e');
       }
     }
-  }
-
-  Future<void> _handleApiKeyInput(String input) async {
-    final key = input.trim();
-    _inputController.clear();
-
-    // Basic validation - Claude API keys start with "sk-"
-    if (!key.startsWith('sk-')) {
-      setState(() {
-        _messages.add(ChatMessage(
-          role: MessageRole.system,
-          content: '这个 Claude API Key 格式看起来不正确，应当以 "sk-" 开头，请重新输入。',
-          timestamp: DateTime.now(),
-        ));
-      });
-      _scrollToBottom();
-      return;
-    }
-
-    // Save the API key
-    await StorageService.instance.setApiKey(key);
-
-    setState(() {
-      _awaitingApiKey = false;
-      _hasApiKey = true;
-      _messages.add(ChatMessage(
-        role: MessageRole.system,
-        content: 'API Key 已保存，现在可以开始对话。',
-        timestamp: DateTime.now(),
-      ));
-    });
-    _scrollToBottom();
-
-    // Send the API key to Python bridge
-    await PythonBridge.instance.setApiKey(key);
   }
 
   void _listenToConnectivity() {
@@ -506,78 +542,75 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
+  void _appendToolProgress(String event) {
+    final clean = event.trim();
+    if (!mounted || clean.isEmpty) return;
+    if (_currentToolEvents.isNotEmpty && _currentToolEvents.last == clean) return;
+    _currentToolEvents.add(clean);
+    if (_currentToolEvents.length > 60) {
+      _currentToolEvents.removeAt(0);
+    }
+    final content = _currentToolEvents.join('\n');
+    setState(() {
+      final index = _toolProgressIndex;
+      if (index != null && index >= 0 && index < _messages.length &&
+          _messages[index].role == MessageRole.toolProgress) {
+        final previous = _messages[index];
+        _messages[index] = ChatMessage(
+          role: MessageRole.toolProgress,
+          content: content,
+          timestamp: previous.timestamp,
+        );
+      } else {
+        _messages.add(ChatMessage(
+          role: MessageRole.toolProgress,
+          content: content,
+          timestamp: DateTime.now(),
+        ));
+        _toolProgressIndex = _messages.length - 1;
+      }
+      _statusMessage = clean;
+    });
+    _scrollToBottom();
+  }
+
+  Future<void> _persistCurrentToolProgress(int conversationId) async {
+    if (_toolProgressPersisted || _currentToolEvents.isEmpty) return;
+    _toolProgressPersisted = true;
+    await ConversationManager.instance.storeVisibleMessage(
+      conversationId: conversationId,
+      role: 'toolResult',
+      content: _currentToolEvents.join('\n'),
+    );
+  }
+
   void _listenToLogs() {
     PythonBridge.instance.logStream.listen((log) {
-      if (!mounted) return;
-
-      // Only process logs while we're actively processing a query
-      if (!_isProcessing) {
-        return;
-      }
-
-      // Show important messages as chat messages (thinking, tool use, results)
+      if (!mounted || !_isProcessing) return;
       final msg = log.message;
-      // Keep model reasoning content private/collapsed by default.
-      // Live chat messages focus on observable tool activity and results.
-      final shouldShowInChat = msg.startsWith('Tool:') ||
-          msg.startsWith('Result:') ||
-          msg.startsWith('Executing') ||
-          msg.startsWith('Code:') ||
-          msg.startsWith('File:') ||
-          log.isError ||
-          log.isWarning;
 
-      if (shouldShowInChat) {
-        // Choose icon based on message type
-        String icon;
-        if (log.isError) {
-          icon = '⚠️';
-        } else if (log.isWarning) {
-          icon = '⚡';
-        } else if (msg.startsWith('Thinking:')) {
-          icon = '💭';
-        } else if (msg.startsWith('Tool:')) {
-          icon = '🔧';
-        } else if (msg.startsWith('Executing')) {
-          icon = '⚙️';
-        } else if (msg.startsWith('Result:')) {
-          icon = '📋';
-        } else if (msg.startsWith('Code:')) {
-          icon = '💻';
-        } else if (msg.startsWith('File:')) {
-          icon = '📎';
-        } else {
-          icon = '💭';
-        }
-        setState(() {
-          _messages.add(ChatMessage(
-            role: MessageRole.system,
-            content: '$icon ${_localizeAgentLog(msg)}',
-            timestamp: DateTime.now(),
-          ));
-        });
-        _scrollToBottom();
+      if (msg.startsWith('Tool:')) {
+        _appendToolProgress('准备调用工具：${msg.substring('Tool:'.length).trim()}');
+      } else if (msg.startsWith('Executing')) {
+        _appendToolProgress('正在执行${msg.substring('Executing'.length)}');
+      } else if (msg.startsWith('Result:')) {
+        _appendToolProgress('工具调用成功：${msg.substring('Result:'.length).trim()}');
+      } else if (msg.startsWith('File:')) {
+        _appendToolProgress('已生成文件：${msg.substring('File:'.length).trim()}');
+      } else if (msg.startsWith('Tool error:')) {
+        _appendToolProgress('工具调用失败：${msg.substring('Tool error:'.length).trim()}');
+      } else if (msg.startsWith('Tool exception:')) {
+        _appendToolProgress('工具调用失败：${msg.substring('Tool exception:'.length).trim()}');
       }
 
-      // Also update status bar for progress and simple status
       if (log.hasProgress) {
-        // If progress is 100%, we're done - don't show status
-        if (log.progress! >= 1.0) {
-          return;
+        if (log.progress! < 1.0) {
+          setState(() => _statusMessage = '${log.message} (${(log.progress! * 100).toInt()}%)');
         }
-        setState(() {
-          _statusMessage = '${log.message} (${(log.progress! * 100).toInt()}%)';
-        });
-      } else {
-        setState(() {
-          // A Thinking: log may contain a preview of the model's hidden
-          // reasoning. Expose only a generic progress state here; the full
-          // <think> block remains available through the collapsed control
-          // attached to the final assistant message.
-          _statusMessage = msg.startsWith('Thinking:')
-              ? '正在思考…'
-              : _localizeAgentLog(msg);
-        });
+      } else if (!msg.startsWith('Thinking:') &&
+          !msg.startsWith('Code:') &&
+          !msg.startsWith('Tool compatibility:')) {
+        setState(() => _statusMessage = _localizeAgentLog(msg));
       }
     });
   }
@@ -586,16 +619,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _nativeToolSubscription = PythonBridge.instance.nativeToolStream.listen((request) {
       if (!mounted || !_isProcessing) return;
       if (!_announcedNativeToolIds.add(request.id)) return;
-
-      setState(() {
-        _messages.add(ChatMessage(
-          role: MessageRole.system,
-          content: '⚙️ 正在调用工具：${request.tool}',
-          timestamp: DateTime.now(),
-        ));
-        _statusMessage = '正在调用工具：${request.tool}';
-      });
-      _scrollToBottom();
+      _appendToolProgress('正在调用工具：${request.tool}');
     });
   }
 
@@ -626,11 +650,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final text = _inputController.text.trim();
     if (text.isEmpty && _attachedFiles.isEmpty) return;
 
-    // Handle API key input
-    if (_awaitingApiKey) {
-      await _handleApiKeyInput(text);
-      return;
-    }
+    // V8: synchronize displayed selection with the actual inference route.
+    if (!await _ensureSelectedRouteReadyForSend()) return;
+
+    _currentToolEvents.clear();
+    _toolProgressIndex = null;
+    _toolProgressPersisted = false;
+    _announcedNativeToolIds.clear();
 
     final conversationId = await _ensureConversation();
     final originalAttachments = _attachedFiles.isNotEmpty ? List<String>.from(_attachedFiles) : null;
@@ -726,18 +752,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             thinking: thinking,
             thinkingMode: thinkingMode,
             diagnostics: diagnostics,
+            attachments: !hasError && createdFiles != null
+                ? createdFiles.map((e) => e.toString()).toList()
+                : null,
           ));
-          // Add tappable file links for every created file
-          if (createdFiles != null && !hasError) {
-            for (final filePath in createdFiles) {
-              _messages.add(ChatMessage(
-                role: MessageRole.system,
-                content: '\u{1F4CE} File: $filePath',
-                timestamp: DateTime.now(),
-              ));
-            }
-          }
         });
+        await _persistCurrentToolProgress(conversationId);
         await ConversationManager.instance.storeVisibleMessage(
           conversationId: conversationId,
           role: hasError ? 'system' : 'assistant',
@@ -746,16 +766,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ? createdFiles.map((e) => e.toString()).toList()
               : null,
         );
-        if (createdFiles != null && !hasError) {
-          for (final filePath in createdFiles) {
-            await ConversationManager.instance.storeVisibleMessage(
-              conversationId: conversationId,
-              role: 'system',
-              content: '\u{1F4CE} File: $filePath',
-            );
-          }
-        }
       } else if (response.isError) {
+        await _persistCurrentToolProgress(conversationId);
         final errorText = response.error?.message ?? '未知错误';
         setState(() {
           _messages.add(ChatMessage(
@@ -913,53 +925,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _openMenu() async {
-    final wasAwaitingApiKey = _awaitingApiKey;
     await Navigator.pushNamed(context, '/settings');
-
-    // Reload self-improve setting (may have changed in Settings)
-    _loadSelfImproveSetting();
-
-    // Check if API key was saved or offline model selected while in Settings
-    if (wasAwaitingApiKey && mounted) {
-      final hasKey = await StorageService.instance.hasApiKey();
-      if (hasKey) {
-        final apiKey = await StorageService.instance.getApiKey();
-        if (apiKey != null) {
-          setState(() {
-            _awaitingApiKey = false;
-            _hasApiKey = true;
-            _messages.add(ChatMessage(
-              role: MessageRole.system,
-              content: 'API Key 已保存，现在可以开始对话。',
-              timestamp: DateTime.now(),
-            ));
-          });
-          _scrollToBottom();
-
-          // Send the API key to Python bridge
-          await PythonBridge.instance.setApiKey(apiKey);
-        }
-      } else {
-        // Check if an offline model was selected and downloaded
-        final preferredModel = await StorageService.instance.getPreferredModel();
-        final modelInfo = ModelRegistry.getById(preferredModel);
-        final isOfflineSelected = modelInfo != null && modelInfo.isOffline;
-        final offlineReady = isOfflineSelected &&
-            LocalLLMService.instance.modelStates[preferredModel]?.downloadState ==
-                ModelDownloadState.downloaded;
-        if (offlineReady) {
-          setState(() {
-            _awaitingApiKey = false;
-            _messages.add(ChatMessage(
-              role: MessageRole.system,
-              content: '本地模型已选择，现在可以开始对话。',
-              timestamp: DateTime.now(),
-            ));
-          });
-          _scrollToBottom();
-        }
-      }
-    }
+    await _loadSelfImproveSetting();
+    await _loadSkillDefaults();
+    await _syncModelRouteState();
   }
 
   void _connectGoogle() {
@@ -1082,7 +1051,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             InputBar(
               controller: _inputController,
               onSend: _sendMessage,
-              enabled: (isPythonReady || _awaitingApiKey) && !_isProcessing,
+              enabled: isPythonReady && !_isProcessing,
               isProcessing: _isProcessing,
               onManageTools: _manageTools,
               enabledSkillCount: _enabledSkills.length,
@@ -1139,6 +1108,7 @@ class ChatMessage {
 enum MessageRole {
   user,
   assistant,
+  toolProgress,
   system,
   error,
 }

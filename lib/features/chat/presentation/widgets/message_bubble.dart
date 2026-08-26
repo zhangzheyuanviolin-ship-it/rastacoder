@@ -23,8 +23,6 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: _accessibilityLabel,
-      hint: '长按可打开消息操作',
       container: true,
       explicitChildNodes: true,
       child: GestureDetector(
@@ -34,7 +32,7 @@ class MessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (message.role == MessageRole.assistant)
-              _RoleIndicator(role: message.role),
+              ExcludeSemantics(child: _RoleIndicator(role: message.role)),
             Flexible(
               child: Container(
                 constraints: BoxConstraints(
@@ -57,35 +55,20 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
             if (message.role == MessageRole.user)
-              _RoleIndicator(role: message.role),
+              ExcludeSemantics(child: _RoleIndicator(role: message.role)),
           ],
         ),
       ),
     );
   }
 
-  String get _accessibilityLabel {
-    final roleLabel = switch (message.role) {
-      MessageRole.user => '您的消息',
-      MessageRole.assistant => 'RastaCoder 回复',
-      MessageRole.system => '系统消息',
-      MessageRole.error => '错误消息',
-    };
-    final hasThinking = (message.thinking?.trim().isNotEmpty ?? false) ||
-        (message.role == MessageRole.assistant && _splitThinking(message.content)[0].isNotEmpty);
-    final hasDiagnostics = message.diagnostics?.trim().isNotEmpty ?? false;
-    final extras = <String>[
-      if (hasThinking) '下方有独立的思考过程展开按钮',
-      if (hasDiagnostics) '下方有独立的工具调用诊断展开按钮',
-    ];
-    return '$roleLabel${extras.isEmpty ? '' : '，${extras.join('，')}'}';
-  }
 
   MainAxisAlignment get _alignment {
     switch (message.role) {
       case MessageRole.user:
         return MainAxisAlignment.end;
       case MessageRole.assistant:
+      case MessageRole.toolProgress:
       case MessageRole.system:
       case MessageRole.error:
         return MainAxisAlignment.start;
@@ -98,6 +81,8 @@ class MessageBubble extends StatelessWidget {
         return NavixTheme.primary.withOpacity(0.15);
       case MessageRole.assistant:
         return NavixTheme.surface;
+      case MessageRole.toolProgress:
+        return NavixTheme.surfaceVariant;
       case MessageRole.system:
         return NavixTheme.surfaceVariant;
       case MessageRole.error:
@@ -115,6 +100,17 @@ class MessageBubble extends StatelessWidget {
   Widget _buildContent(BuildContext context) {
     if (message.role == MessageRole.assistant) {
       return _buildAssistantContent(context);
+    }
+
+    if (message.role == MessageRole.toolProgress) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('工具调用过程', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: NavixTheme.textSecondary)),
+          const SizedBox(height: 6),
+          SelectableText(message.content, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: NavixTheme.textPrimary)),
+        ],
+      );
     }
 
     if (message.role == MessageRole.error) {
@@ -242,14 +238,17 @@ class MessageBubble extends StatelessWidget {
     final answer = parts[1];
     final widgets = <Widget>[];
 
-    if (thinking.isNotEmpty) {
+    // A local-model turn always has one predictable thinking control. When
+    // thinking was disabled or the model emitted none, expanding says so.
+    final showThinkingControl = message.thinkingMode != null || thinking.isNotEmpty;
+    if (showThinkingControl) {
       widgets.add(
         _AccessibleExpansionSection(
           semanticTitle: '思考过程',
           child: Align(
             alignment: Alignment.centerLeft,
             child: SelectableText(
-              thinking,
+              thinking.isEmpty ? '本轮AI未输出思考内容。' : thinking,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: NavixTheme.textTertiary,
                   ),
@@ -257,46 +256,14 @@ class MessageBubble extends StatelessWidget {
           ),
         ),
       );
-    }
-
-    if (message.thinkingMode != null) {
-      final modeLabel = switch (message.thinkingMode) {
-        'enabled' => '手动开启',
-        'disabled' => '手动关闭',
-        _ => '模型默认',
-      };
-      final detail = switch (message.thinkingMode) {
-        'enabled' => thinking.isNotEmpty
-            ? '本轮已向 Qwen3 发送 /think，并收到可展开的思考内容。'
-            : '本轮已向 Qwen3 发送 /think，但模型没有返回可显示的 <think> 内容。',
-        'disabled' => thinking.isNotEmpty
-            ? '本轮已向 Qwen3 发送 /no_think，但模型仍返回了可显示的思考内容。'
-            : '本轮已向 Qwen3 发送 /no_think，且没有返回可显示的思考内容。',
-        _ => thinking.isNotEmpty
-            ? '本轮未强制附加 /think 或 /no_think，模型返回了可展开的思考内容。'
-            : '本轮未强制附加 /think 或 /no_think，模型没有返回可显示的思考内容。',
-      };
-      widgets.add(
-        Semantics(
-          label: '思考模式：$modeLabel。$detail',
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              '思考模式：$modeLabel；$detail',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: NavixTheme.textTertiary,
-                  ),
-            ),
-          ),
-        ),
-      );
+      widgets.add(const SizedBox(height: 8));
     }
 
     if (answer.isNotEmpty) {
       widgets.add(_buildTextContent(context, answer));
-    } else if (thinking.isNotEmpty) {
+    } else {
       widgets.add(Text(
-        '正在整理最终回复…',
+        'AI本轮未返回文本回复。',
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: NavixTheme.textSecondary,
             ),
@@ -327,6 +294,16 @@ class MessageBubble extends StatelessWidget {
         icon: const Icon(Icons.account_circle, size: 18),
         label: const Text('连接 Google 账号'),
       ));
+    }
+
+    if (message.attachments?.isNotEmpty ?? false) {
+      widgets.add(const SizedBox(height: 10));
+      for (final path in message.attachments!) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: _buildFileLinkForPath(context, path),
+        ));
+      }
     }
 
     if (message.diagnostics?.trim().isNotEmpty ?? false) {
@@ -445,6 +422,10 @@ class MessageBubble extends StatelessWidget {
 
   Widget _buildFileLink(BuildContext context) {
     final filePath = message.content.replaceFirst('📎 File: ', '').trim();
+    return _buildFileLinkForPath(context, filePath);
+  }
+
+  Widget _buildFileLinkForPath(BuildContext context, String filePath) {
     final fileName = filePath.split('/').last;
 
     return Row(
@@ -635,37 +616,53 @@ class _AccessibleExpansionSectionState
     extends State<_AccessibleExpansionSection> {
   bool _expanded = false;
 
+  void _toggle() => setState(() => _expanded = !_expanded);
+
   @override
   Widget build(BuildContext context) {
     final stateLabel = _expanded ? '已展开' : '已折叠';
     final actionLabel = _expanded ? '双击收起' : '双击展开';
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 10),
-        initiallyExpanded: false,
-        maintainState: true,
-        onExpansionChanged: (value) {
-          if (mounted) setState(() => _expanded = value);
-        },
-        title: Semantics(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
           container: true,
           button: true,
           label: '${widget.semanticTitle}，当前$stateLabel，$actionLabel',
+          onTap: _toggle,
           child: ExcludeSemantics(
-            child: Text(
-              _expanded
-                  ? '${widget.semanticTitle}（点击收起）'
-                  : '${widget.semanticTitle}（点击展开）',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: NavixTheme.textSecondary,
-                  ),
+            child: InkWell(
+              onTap: _toggle,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _expanded ? '${widget.semanticTitle}（收起）' : '${widget.semanticTitle}（展开）',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: NavixTheme.textSecondary,
+                          ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 20,
+                      color: NavixTheme.textSecondary,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
-        children: [widget.child],
-      ),
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: widget.child,
+          ),
+      ],
     );
   }
 }
@@ -705,6 +702,8 @@ class _RoleIndicator extends StatelessWidget {
         return '●';
       case MessageRole.assistant:
         return '◆';
+      case MessageRole.toolProgress:
+        return '↻';
       case MessageRole.system:
         return '◉';
       case MessageRole.error:
@@ -718,6 +717,8 @@ class _RoleIndicator extends StatelessWidget {
         return NavixTheme.primary;
       case MessageRole.assistant:
         return NavixTheme.accentCyan;
+      case MessageRole.toolProgress:
+        return NavixTheme.textSecondary;
       case MessageRole.system:
         return NavixTheme.textTertiary;
       case MessageRole.error:

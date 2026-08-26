@@ -39,10 +39,17 @@ class LocalToolSkillCatalog {
     'create_pptx', 'create_xlsx',
   };
 
+  // RASTACODER_V8_SEARCH_SKILLS
+  static const v8SearchToolNames = <String>{
+    'anysearch_search', 'anysearch_extract', 'anysearch_get_sub_domains',
+    'exa_search', 'langsearch_search', 'tavily_search',
+  };
+
   static const allCanonicalToolNames = <String>{
     ...legacyCoreToolNames,
     ...upstreamExtendedToolNames,
     ...v7AddedToolNames,
+    ...v8SearchToolNames,
   };
 
   static const all = <LocalToolSkill>[
@@ -135,6 +142,30 @@ class LocalToolSkillCatalog {
       description: '加载 JavaScript 页面并按 CSS 选择器提取内容。',
       toolNames: ['headless_browser', 'web_fetch', 'write_file', 'file_info'],
       capabilities: ['JavaScript 渲染', '等待页面稳定', 'CSS 选择器提取', '普通抓取回退', '保存提取结果'],
+    ),
+    LocalToolSkill(
+      id: 'anysearch_search', category: '网络搜索', title: 'AnySearch 搜索',
+      description: '独立使用 AnySearch 搜索、网页抽取和子域能力；API Key 由用户手动配置。',
+      toolNames: ['anysearch_search', 'anysearch_extract', 'anysearch_get_sub_domains'],
+      capabilities: ['通用网络搜索', '指定域/子域搜索', '网页正文抽取', '查询站点支持的子域', '手动配置 AnySearch API Key'],
+    ),
+    LocalToolSkill(
+      id: 'exa_search', category: '网络搜索', title: 'Exa 搜索',
+      description: '独立使用 Exa 神经/自动搜索；API Key 由用户手动配置。',
+      toolNames: ['exa_search'],
+      capabilities: ['网页搜索', '日期过滤', '域名包含/排除', '正文/摘要/高亮', '手动配置 Exa API Key'],
+    ),
+    LocalToolSkill(
+      id: 'langsearch_search', category: '网络搜索', title: 'LangSearch 搜索',
+      description: '独立使用 LangSearch 网络搜索；API Key 由用户手动配置。',
+      toolNames: ['langsearch_search'],
+      capabilities: ['网页搜索', '时间新鲜度过滤', '结果摘要', '手动配置 LangSearch API Key'],
+    ),
+    LocalToolSkill(
+      id: 'tavily_search', category: '网络搜索', title: 'Tavily 搜索',
+      description: '独立使用 Tavily 搜索；API Key 由用户手动配置。',
+      toolNames: ['tavily_search'],
+      capabilities: ['网页搜索', 'basic/advanced 深度', 'general/news 主题', '时间过滤', '域名过滤', '答案摘要', '手动配置 Tavily API Key'],
     ),
     LocalToolSkill(
       id: 'basic_calculation', category: '计算与数据', title: '基础计算与 Python',

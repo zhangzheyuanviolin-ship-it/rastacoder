@@ -187,6 +187,9 @@ class PythonBridge {
     final localContextTokens = await StorageService.instance.getLocalContextTokens();
     final localMaxOutputTokens = await StorageService.instance.getLocalMaxOutputTokens();
     final localThinkingMode = await StorageService.instance.getLocalThinkingMode();
+    // Search credentials stay in secure storage and are injected only into
+    // execution context; they are never model-visible tool arguments.
+    final searchApiKeys = await StorageService.instance.getConfiguredSearchApiKeys();
 
     // Get writable output directory for tools that create files
     // Use external storage so files are visible in file managers
@@ -221,6 +224,7 @@ class PythonBridge {
       if (isOfflineModel) 'local_thinking_mode': localThinkingMode,
       'output_dir': outputDir,
       if (googleToken != null) 'google_access_token': googleToken,
+      if (searchApiKeys.isNotEmpty) 'search_api_keys': searchApiKeys,
       if (customSystemPrompt != null && !isOfflineModel) 'system_prompt': customSystemPrompt,
       if (isOfflineModel && modelInfo != null) 'offline_model_info': {
         'display_name': modelInfo.displayName,

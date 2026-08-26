@@ -12,6 +12,10 @@ from .documents import (
     read_docx, modify_docx, read_pptx, modify_pptx, read_xlsx, modify_xlsx,
 )
 from .media import download_media
+from .search_tools import (
+    anysearch_search, anysearch_extract, anysearch_get_sub_domains,
+    exa_search, langsearch_search, tavily_search,
+)
 from .google_api import google_calendar, gmail
 from .code_executor import python_execute
 from .extended_tools import (
@@ -767,6 +771,67 @@ OFFLINE_TOOLS_SCHEMA = [
 ]
 
 
+# RASTACODER_V8_SEARCH_SKILLS
+_V8_SEARCH_TOOL_SCHEMAS = [
+    {
+        "name": "anysearch_search",
+        "description": "Search the web with AnySearch. API credential is configured by the user in Tool Management.",
+        "input_schema": {"type": "object", "properties": {
+            "query": {"type": "string"}, "max_results": {"type": "integer"},
+            "domain": {"type": "string"}, "sub_domain": {"type": "string"},
+            "sub_domain_params": {"type": "object"}}, "required": ["query"]},
+    },
+    {
+        "name": "anysearch_extract",
+        "description": "Extract readable content from one web URL with AnySearch.",
+        "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
+    },
+    {
+        "name": "anysearch_get_sub_domains",
+        "description": "List supported AnySearch sub-domains for one or more domains.",
+        "input_schema": {"type": "object", "properties": {
+            "domain": {"type": "string"}, "domains": {"type": "array", "items": {"type": "string"}}}},
+    },
+    {
+        "name": "exa_search",
+        "description": "Search the web with Exa and optionally return text, summaries, or highlights.",
+        "input_schema": {"type": "object", "properties": {
+            "query": {"type": "string"}, "num_results": {"type": "integer"},
+            "topic": {"type": "string", "enum": ["general", "news"]},
+            "search_type": {"type": "string", "enum": ["auto", "neural", "fast", "deep"]},
+            "start_published_date": {"type": "string"},
+            "include_domains": {"type": "array", "items": {"type": "string"}},
+            "exclude_domains": {"type": "array", "items": {"type": "string"}},
+            "include_text": {"type": "boolean"}, "include_summary": {"type": "boolean"},
+            "include_highlights": {"type": "boolean"}}, "required": ["query"]},
+    },
+    {
+        "name": "langsearch_search",
+        "description": "Search the web with LangSearch.",
+        "input_schema": {"type": "object", "properties": {
+            "query": {"type": "string"}, "count": {"type": "integer"},
+            "freshness": {"type": "string", "enum": ["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"]},
+            "summary": {"type": "boolean"}}, "required": ["query"]},
+    },
+    {
+        "name": "tavily_search",
+        "description": "Search the web with Tavily.",
+        "input_schema": {"type": "object", "properties": {
+            "query": {"type": "string"}, "max_results": {"type": "integer"},
+            "topic": {"type": "string", "enum": ["general", "news"]},
+            "search_depth": {"type": "string", "enum": ["basic", "advanced"]},
+            "include_answer": {"type": "boolean"}, "time_range": {"type": "string", "enum": ["", "day", "week", "month", "year"]},
+            "include_domains": {"type": "array", "items": {"type": "string"}},
+            "exclude_domains": {"type": "array", "items": {"type": "string"}},
+            "include_raw_content": {"type": "boolean"}}, "required": ["query"]},
+    },
+]
+_existing_tool_names = {t["name"] for t in TOOLS_SCHEMA}
+TOOLS_SCHEMA.extend(t for t in _V8_SEARCH_TOOL_SCHEMAS if t["name"] not in _existing_tool_names)
+_existing_offline_names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
+OFFLINE_TOOLS_SCHEMA.extend(t for t in _V8_SEARCH_TOOL_SCHEMAS if t["name"] not in _existing_offline_names)
+
+
 # RASTACODER_V7_COMPLETE_SKILLS
 # Every structured v7 utility is available to the local model when its Skill is
 # enabled. Keep the schema gated by Skills rather than dumping all tools into
@@ -856,6 +921,10 @@ LOCAL_SKILLS = {
     "charts": {"tools": ("python_execute", "write_file", "image_compose", "file_info", "list_files")},
     "gmail": {"tools": ("gmail",)},
     "google_calendar": {"tools": ("google_calendar",)},
+    "anysearch_search": {"tools": ("anysearch_search", "anysearch_extract", "anysearch_get_sub_domains")},
+    "exa_search": {"tools": ("exa_search",)},
+    "langsearch_search": {"tools": ("langsearch_search",)},
+    "tavily_search": {"tools": ("tavily_search",)},
 }
 
 ALL_LOCAL_SKILL_IDS = tuple(LOCAL_SKILLS.keys())
@@ -892,6 +961,12 @@ LOCAL_TOOL_PROMPT_HINTS = {
     "python_execute": "python_execute(code, file_paths?)",
     "gmail": "gmail(action, query?, message_id?) ; action=list|read",
     "google_calendar": "google_calendar(action, date_range?, event?, event_id?) ; action=list|create|delete|update",
+    "anysearch_search": "anysearch_search(query, max_results?, domain?, sub_domain?, sub_domain_params?)",
+    "anysearch_extract": "anysearch_extract(url)",
+    "anysearch_get_sub_domains": "anysearch_get_sub_domains(domain? or domains?)",
+    "exa_search": "exa_search(query, num_results?, topic?, search_type?, start_published_date?, include_domains?, exclude_domains?, include_text?, include_summary?, include_highlights?)",
+    "langsearch_search": "langsearch_search(query, count?, freshness?, summary?)",
+    "tavily_search": "tavily_search(query, max_results?, topic?, search_depth?, include_answer?, time_range?, include_domains?, exclude_domains?, include_raw_content?)",
 }
 
 
@@ -1052,6 +1127,12 @@ def execute_tool(
         "create_pptx": create_pptx,
         "create_xlsx": create_xlsx,
         "image_compose": image_compose,
+        "anysearch_search": anysearch_search,
+        "anysearch_extract": anysearch_extract,
+        "anysearch_get_sub_domains": anysearch_get_sub_domains,
+        "exa_search": exa_search,
+        "langsearch_search": langsearch_search,
+        "tavily_search": tavily_search,
     }
 
     if tool_name not in tool_map:
@@ -1115,7 +1196,10 @@ def execute_tool(
     _record_tool_diag(context, "paths_resolved", tool=tool_name, args=_safe_diag_value(args))
 
     # Add context to args for tools that need it
-    if tool_name in ["google_calendar", "gmail"]:
+    if tool_name in [
+        "google_calendar", "gmail", "anysearch_search", "anysearch_extract",
+        "anysearch_get_sub_domains", "exa_search", "langsearch_search", "tavily_search",
+    ]:
         args["_context"] = context
 
     # Pass output_dir to Python tools which need a stable workspace root.

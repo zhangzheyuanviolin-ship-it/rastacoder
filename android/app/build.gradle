@@ -112,6 +112,7 @@ android {
         debug {
             buildConfigField "boolean", "NAVIXMIND_DEBUG", "true"
             signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug
+            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug
         }
         release {
             minifyEnabled true

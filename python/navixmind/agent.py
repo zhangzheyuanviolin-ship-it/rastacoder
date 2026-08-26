@@ -482,6 +482,48 @@ def _try_parse_function_syntax(text: str, index: int) -> Optional[dict]:
     return None
 
 
+def _sanitize_reasoning(text: str) -> str:
+    """Keep human-readable reasoning while excluding tool-call payloads."""
+    import re
+    value = str(text or '').strip()
+    if not value:
+        return ''
+    value = re.sub(
+        r'<(?:tool_call|function_call|tool_result|tool_use)>[\s\S]*?</(?:tool_call|function_call|tool_result|tool_use)>',
+        '', value, flags=re.IGNORECASE,
+    )
+    value = re.sub(r'</?(?:tool_call|function_call|tool_result|tool_use)[^>]*>', '', value, flags=re.IGNORECASE)
+    for obj in list(_extract_json_objects(value)):
+        try:
+            if _try_parse_tool_json(obj, 0) is not None:
+                value = value.replace(obj, '')
+        except Exception:
+            pass
+    known = {str(t.get('name', '')) for t in TOOLS_SCHEMA}
+    kept = []
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        lower = line.lower()
+        if not line:
+            if kept and kept[-1] != '':
+                kept.append('')
+            continue
+        if lower.startswith(('tool:', 'result:', 'executing ', 'code:', 'file:', '[tool result]', '[tool error]')):
+            continue
+        if any(lower.startswith(name.lower() + '(') for name in known if name):
+            continue
+        kept.append(raw_line.rstrip())
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return '\n'.join(kept).strip()
+
+
+def _thinking_for_ui(parts: List[str], mode: str) -> str:
+    if str(mode) == 'disabled':
+        return ''
+    return _sanitize_reasoning('\n\n'.join(str(x) for x in parts if str(x).strip()))
+
+
 def _extract_reasoning_blocks(content_blocks: List[Dict[str, Any]]) -> str:
     import re
     parts = []
@@ -499,7 +541,7 @@ def _extract_reasoning_blocks(content_blocks: List[Dict[str, Any]]) -> str:
             value = open_match.group(1).strip()
             if value:
                 parts.append(value)
-    return '\n\n'.join(parts)
+    return _sanitize_reasoning('\n\n'.join(parts))
 
 
 def _strip_reasoning_from_blocks(content_blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -1033,7 +1075,7 @@ def process_query(
             top_p=local_top_p, thinking_mode=local_thinking_mode
         )
         bridge.log(
-            f"Using on-device inference; skills={len(enabled_skills)}/21, tools={len(enabled_tools)}/23",
+            f"Using on-device inference; skills={len(enabled_skills)}/{len(ALL_LOCAL_SKILL_IDS)}, tools={len(enabled_tools)}/{len(get_enabled_tool_names(ALL_LOCAL_SKILL_IDS))}",
             level="info"
         )
         context['_diagnostics'].append({
@@ -1123,7 +1165,7 @@ def process_query(
             result = {"content": error_msg, "error": True}
             if is_offline:
                 context['_diagnostics'].append({'stage': 'model_error', 'error': str(e)[:2000]})
-                result['thinking'] = "\n\n".join(reasoning_parts)
+                result['thinking'] = _thinking_for_ui(reasoning_parts, local_thinking_mode)
                 result['thinking_mode'] = local_thinking_mode
                 result['diagnostics'] = _format_diagnostics(context)
             return result
@@ -1135,7 +1177,7 @@ def process_query(
             result = {"content": error_msg, "error": True}
             if is_offline:
                 context['_diagnostics'].append({'stage': 'unexpected_error', 'error': str(e)[:2000]})
-                result['thinking'] = "\n\n".join(reasoning_parts)
+                result['thinking'] = _thinking_for_ui(reasoning_parts, local_thinking_mode)
                 result['thinking_mode'] = local_thinking_mode
                 result['diagnostics'] = _format_diagnostics(context)
             return result
@@ -1144,8 +1186,8 @@ def process_query(
         stop_reason = response.get('stop_reason')
         content_blocks = response.get('content', [])
         if is_offline:
-            reasoning = str(response.get('_reasoning') or '').strip()
-            if reasoning:
+            reasoning = _sanitize_reasoning(str(response.get('_reasoning') or ''))
+            if reasoning and local_thinking_mode != 'disabled':
                 reasoning_parts.append(reasoning)
             context['_diagnostics'].append({
                 'stage': 'model_response',
@@ -1220,7 +1262,7 @@ def process_query(
             if created_files:
                 result["created_files"] = created_files
             if is_offline:
-                result["thinking"] = "\n\n".join(reasoning_parts)
+                result["thinking"] = _thinking_for_ui(reasoning_parts, local_thinking_mode)
                 result["thinking_mode"] = local_thinking_mode
                 result["diagnostics"] = _format_diagnostics(context)
             return result
@@ -1362,7 +1404,7 @@ def process_query(
             session.add_message("assistant", partial)
             result = {"content": partial}
             if is_offline:
-                result['thinking'] = "\n\n".join(reasoning_parts)
+                result['thinking'] = _thinking_for_ui(reasoning_parts, local_thinking_mode)
                 result['thinking_mode'] = local_thinking_mode
                 result['diagnostics'] = _format_diagnostics(context)
             return result
@@ -1375,7 +1417,7 @@ def process_query(
     result = {"content": max_iter_msg}
     if is_offline:
         context['_diagnostics'].append({'stage': 'max_iterations', 'iterations': iteration, 'tool_calls': tool_call_count})
-        result['thinking'] = "\n\n".join(reasoning_parts)
+        result['thinking'] = _thinking_for_ui(reasoning_parts, local_thinking_mode)
         result['thinking_mode'] = local_thinking_mode
         result['diagnostics'] = _format_diagnostics(context)
     return result

@@ -40,6 +40,8 @@ class StorageService {
   static const _keyLocalMaxOutputTokens = 'local_max_output_tokens';
   static const _keyLocalThinkingMode = 'local_thinking_mode';
   static const _keyLocalBenchmarkHistory = 'local_benchmark_history';
+  // RASTACODER_V8_SEARCH_KEYS
+  static const _searchApiProviders = <String>{'anysearch', 'exa', 'langsearch', 'tavily'};
 
   /// Store Claude API key securely
   Future<void> setApiKey(String key) async {
@@ -59,6 +61,45 @@ class StorageService {
   /// Delete API key
   Future<void> deleteApiKey() async {
     await _storage.delete(key: _keyApiKey);
+  }
+
+  // RASTACODER_V8_SEARCH_KEYS
+  String _searchApiStorageKey(String provider) {
+    final normalized = provider.trim().toLowerCase();
+    if (!_searchApiProviders.contains(normalized)) {
+      throw ArgumentError('Unsupported search provider: $provider');
+    }
+    return 'search_api_key_$normalized';
+  }
+
+  Future<void> setSearchApiKey(String provider, String key) async {
+    final value = key.trim();
+    if (value.isEmpty) {
+      await deleteSearchApiKey(provider);
+      return;
+    }
+    await _storage.write(key: _searchApiStorageKey(provider), value: value);
+  }
+
+  Future<String?> getSearchApiKey(String provider) async {
+    final value = await _storage.read(key: _searchApiStorageKey(provider));
+    return value == null || value.trim().isEmpty ? null : value.trim();
+  }
+
+  Future<bool> hasSearchApiKey(String provider) async =>
+      (await getSearchApiKey(provider)) != null;
+
+  Future<void> deleteSearchApiKey(String provider) async {
+    await _storage.delete(key: _searchApiStorageKey(provider));
+  }
+
+  Future<Map<String, String>> getConfiguredSearchApiKeys() async {
+    final result = <String, String>{};
+    for (final provider in _searchApiProviders) {
+      final value = await getSearchApiKey(provider);
+      if (value != null) result[provider] = value;
+    }
+    return result;
   }
 
   /// Store Google refresh token (if needed for manual refresh)

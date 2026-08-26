@@ -20,7 +20,21 @@ class ToolSkillsScreen extends StatefulWidget {
 }
 
 class _ToolSkillsScreenState extends State<ToolSkillsScreen> {
+  static const _searchProviderBySkill = <String, String>{
+    'anysearch_search': 'anysearch',
+    'exa_search': 'exa',
+    'langsearch_search': 'langsearch',
+    'tavily_search': 'tavily',
+  };
+  static const _searchProviderLabels = <String, String>{
+    'anysearch': 'AnySearch',
+    'exa': 'Exa',
+    'langsearch': 'LangSearch',
+    'tavily': 'Tavily',
+  };
+
   Set<String> _enabled = <String>{};
+  Set<String> _configuredSearchProviders = <String>{};
   bool _loading = true;
 
   @override
@@ -33,11 +47,145 @@ class _ToolSkillsScreenState extends State<ToolSkillsScreen> {
     final initial = widget.initialEnabled ??
         await StorageService.instance.getLocalEnabledSkills();
     final known = LocalToolSkillCatalog.allIds;
+    final configured = <String>{};
+    for (final provider in _searchProviderLabels.keys) {
+      if (await StorageService.instance.hasSearchApiKey(provider)) {
+        configured.add(provider);
+      }
+    }
     if (!mounted) return;
     setState(() {
       _enabled = initial.where(known.contains).toSet();
+      _configuredSearchProviders = configured;
       _loading = false;
     });
+  }
+
+  Future<void> _configureSearchApiKey(String provider) async {
+    final label = _searchProviderLabels[provider] ?? provider;
+    final controller = TextEditingController();
+    final configured = _configuredSearchProviders.contains(provider);
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$label API Key'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(configured
+                ? '已配置。输入新密钥可以替换；现有密钥不会显示在屏幕上。'
+                : '请输入 $label API Key。密钥将保存在 Android 安全存储中。'),
+            const SizedBox(height: 12),
+            Semantics(
+              textField: true,
+              label: '$label API Key 输入框',
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                obscureText: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: '$label API Key',
+                  hintText: configured ? '输入新密钥以替换' : '输入 API Key',
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'cancel'),
+            child: const Text('取消'),
+          ),
+          if (configured)
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'clear'),
+              child: const Text('清除密钥'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'save'),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null || action == 'cancel') {
+      controller.dispose();
+      return;
+    }
+    if (action == 'clear') {
+      await StorageService.instance.deleteSearchApiKey(provider);
+      if (mounted) {
+        setState(() => _configuredSearchProviders.remove(provider));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label API Key 已清除')),
+        );
+      }
+      controller.dispose();
+      return;
+    }
+    final value = controller.text.trim();
+    controller.dispose();
+    if (value.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('API Key 不能为空')),
+        );
+      }
+      return;
+    }
+    await StorageService.instance.setSearchApiKey(provider, value);
+    if (mounted) {
+      setState(() => _configuredSearchProviders.add(provider));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$label API Key 已安全保存')),
+      );
+    }
+  }
+
+  Widget _buildSkillTile(BuildContext context, LocalToolSkill skill) {
+    final provider = _searchProviderBySkill[skill.id];
+    final providerLabel = provider == null ? null : _searchProviderLabels[provider];
+    final configured = provider != null && _configuredSearchProviders.contains(provider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          container: true,
+          label: '${skill.title}，${_enabled.contains(skill.id) ? '已开启' : '已关闭'}。${skill.description}。支持：${skill.capabilities.join('、')}',
+          child: SwitchListTile(
+            value: _enabled.contains(skill.id),
+            title: Text(skill.title),
+            subtitle: Text('${skill.description}\n支持动作：${skill.capabilities.join('、')}\n底层工具：${skill.toolNames.join(', ')}'),
+            onChanged: (value) {
+              setState(() {
+                if (value) {
+                  _enabled.add(skill.id);
+                } else {
+                  _enabled.remove(skill.id);
+                }
+              });
+            },
+            activeColor: NavixTheme.primary,
+          ),
+        ),
+        if (provider != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+            child: Semantics(
+              button: true,
+              label: '$providerLabel API Key，${configured ? '已配置，双击更新或清除' : '未配置，双击配置'}',
+              child: OutlinedButton.icon(
+                onPressed: () => _configureSearchApiKey(provider),
+                icon: const Icon(Icons.key, size: 18),
+                label: Text(configured ? '$providerLabel API Key：已配置' : '配置 $providerLabel API Key'),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   Future<void> _restoreSavedDefaults() async {
@@ -116,25 +264,7 @@ class _ToolSkillsScreenState extends State<ToolSkillsScreen> {
                     ),
                   ),
                   for (final skill in LocalToolSkillCatalog.inCategory(category))
-                    Semantics(
-                      container: true,
-                      label: '${skill.title}，${_enabled.contains(skill.id) ? '已开启' : '已关闭'}。${skill.description}。支持：${skill.capabilities.join('、')}',
-                      child: SwitchListTile(
-                        value: _enabled.contains(skill.id),
-                        title: Text(skill.title),
-                        subtitle: Text('${skill.description}\n支持动作：${skill.capabilities.join('、')}\n底层工具：${skill.toolNames.join(', ')}'),
-                        onChanged: (value) {
-                          setState(() {
-                            if (value) {
-                              _enabled.add(skill.id);
-                            } else {
-                              _enabled.remove(skill.id);
-                            }
-                          });
-                        },
-                        activeColor: NavixTheme.primary,
-                      ),
-                    ),
+                    _buildSkillTile(context, skill),
                 ],
                 const SizedBox(height: 24),
               ],

@@ -26,6 +26,22 @@ def _default_output_dir(_output_dir: Optional[str]) -> str:
     return os.getcwd()
 
 
+def _resolve_workspace_path(value: str, _output_dir: Optional[str]) -> str:
+    """Resolve model-facing relative paths against the real app output root."""
+    raw = os.path.expanduser(str(value or '').strip())
+    if not raw:
+        return raw
+    if os.path.isabs(raw):
+        return os.path.normpath(raw)
+    normalized = raw.replace('\\', '/').lstrip('./')
+    root = _default_output_dir(_output_dir)
+    if normalized == 'output':
+        return os.path.normpath(root)
+    if normalized.startswith('output/'):
+        normalized = normalized[len('output/'): ]
+    return os.path.normpath(os.path.join(root, normalized))
+
+
 def _resolve_named_directory(directory: str, _output_dir: Optional[str]) -> str:
     key = (directory or "output").strip().lower()
     mapping = {
@@ -103,89 +119,107 @@ def file_manage(
     overwrite: bool = False,
     _output_dir: Optional[str] = None,
 ) -> dict:
-    """Common file operations: mkdir/copy/move/rename/delete/touch/exists/list."""
+    """Manage files relative to the real app output root and verify mutations."""
     action = (action or "").strip().lower()
-    source = source_path or path
+    source_raw = source_path or path
 
     try:
         if action == "list":
-            return list_files(path=path, directory="output", recursive=recursive, _output_dir=_output_dir)
+            resolved = _resolve_workspace_path(path, _output_dir) if path else _default_output_dir(_output_dir)
+            return list_files(path=resolved, directory="output", recursive=recursive, _output_dir=_output_dir)
 
         if action == "mkdir":
-            target = path or destination_path
-            if not target:
+            target_raw = path or destination_path
+            if not target_raw:
                 raise ToolError("mkdir requires path")
-            if not os.path.isabs(target):
-                target = os.path.join(_default_output_dir(_output_dir), target)
+            target = _resolve_workspace_path(target_raw, _output_dir)
             os.makedirs(target, exist_ok=True)
-            return {"success": True, "action": action, "path": target}
+            if not os.path.isdir(target):
+                raise ToolError(f"mkdir verification failed: {target}")
+            return {"success": True, "action": action, "path": target, "exists_after": True}
 
         if action == "exists":
-            if not source:
+            if not source_raw:
                 raise ToolError("exists requires path")
+            source = _resolve_workspace_path(source_raw, _output_dir)
+            exists = os.path.lexists(source)
             return {
                 "success": True,
                 "action": action,
                 "path": source,
-                "exists": os.path.exists(source),
+                "exists": exists,
                 "is_file": os.path.isfile(source),
                 "is_directory": os.path.isdir(source),
             }
 
         if action == "touch":
-            target = source or destination_path
-            if not target:
+            target_raw = source_raw or destination_path
+            if not target_raw:
                 raise ToolError("touch requires path")
-            if not os.path.isabs(target):
-                target = os.path.join(_default_output_dir(_output_dir), target)
+            target = _resolve_workspace_path(target_raw, _output_dir)
             _ensure_parent(target)
             with open(target, "a", encoding="utf-8"):
                 os.utime(target, None)
-            return {"success": True, "action": action, "path": target}
+            if not os.path.isfile(target):
+                raise ToolError(f"touch verification failed: {target}")
+            return {"success": True, "action": action, "path": target, "exists_after": True}
 
         if action in {"copy", "move", "rename"}:
-            if not source or not destination_path:
+            if not source_raw or not destination_path:
                 raise ToolError(f"{action} requires source_path and destination_path")
-            destination = destination_path
-            if not os.path.isabs(destination):
-                destination = os.path.join(_default_output_dir(_output_dir), destination)
-            if not os.path.exists(source):
+            source = _resolve_workspace_path(source_raw, _output_dir)
+            destination = _resolve_workspace_path(destination_path, _output_dir)
+            if not os.path.lexists(source):
                 raise ToolError(f"Source not found: {source}")
-            if os.path.exists(destination):
+            if os.path.lexists(destination):
                 if not overwrite:
                     raise ToolError(f"Destination already exists: {destination}")
-                if os.path.isdir(destination):
+                if os.path.isdir(destination) and not os.path.islink(destination):
                     shutil.rmtree(destination)
                 else:
                     os.remove(destination)
             _ensure_parent(destination)
             if action == "copy":
-                if os.path.isdir(source):
+                if os.path.isdir(source) and not os.path.islink(source):
                     shutil.copytree(source, destination)
                 else:
                     shutil.copy2(source, destination)
+                if not os.path.lexists(source) or not os.path.lexists(destination):
+                    raise ToolError(f"Copy verification failed: {source} -> {destination}")
             else:
                 shutil.move(source, destination)
+                if os.path.lexists(source) or not os.path.lexists(destination):
+                    raise ToolError(f"{action} verification failed: {source} -> {destination}")
             return {
                 "success": True,
                 "action": action,
                 "source_path": source,
                 "destination_path": destination,
+                "destination_exists_after": True,
             }
 
         if action == "delete":
-            if not source:
+            if not source_raw:
                 raise ToolError("delete requires path")
-            if not os.path.exists(source):
-                return {"success": True, "action": action, "path": source, "already_missing": True}
-            if os.path.isdir(source):
+            source = _resolve_workspace_path(source_raw, _output_dir)
+            if not os.path.lexists(source):
+                raise ToolError(f"Delete target not found: {source}")
+            if os.path.isdir(source) and not os.path.islink(source):
                 if recursive:
                     shutil.rmtree(source)
                 else:
                     os.rmdir(source)
             else:
                 os.remove(source)
-            return {"success": True, "action": action, "path": source, "deleted": True}
+            if os.path.lexists(source):
+                raise ToolError(f"Delete verification failed; target still exists: {source}")
+            return {
+                "success": True,
+                "action": action,
+                "path": source,
+                "deleted": True,
+                "exists_after": False,
+            }
 
         raise ToolError(
             "Unknown file_manage action. Use list, mkdir, copy, move, rename, delete, touch, or exists."
