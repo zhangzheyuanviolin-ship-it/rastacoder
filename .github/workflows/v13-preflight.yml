@@ -1,0 +1,132 @@
+name: Preflight RastaCoder Systemic Tool ABI v13
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-systemic-tool-abi-v13
+    paths:
+      - 'V13_PREFLIGHT_TRIGGER.md'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-v13:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout v13 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile reviewed V13 patch scripts and validators before touching source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v13_tools_abi.py \
+            scripts/apply_iteration_v13_compat.py \
+            scripts/apply_iteration_v13_document_ingestion.py \
+            scripts/apply_iteration_v13_provider_routing.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py
+
+      - name: Apply reviewed V13 systemic Tool ABI patches
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v13_tools_abi.py
+          python3 scripts/apply_iteration_v13_compat.py
+          python3 scripts/apply_iteration_v13_document_ingestion.py
+          python3 scripts/apply_iteration_v13_provider_routing.py
+
+      - name: Compile generated Python source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/path_contract.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py
+
+      - name: Install validation dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+
+      - name: Preserve V9 systemic tool regression gates
+        run: python3 scripts/run_validate_iteration_v9.py
+
+      - name: Preserve V10 context-safe and history gates
+        run: python3 scripts/validate_iteration_v10.py
+
+      - name: Preserve V11 provider and history gates
+        run: python3 scripts/validate_iteration_v11.py
+
+      - name: Preserve V12 workspace alias gates
+        run: python3 scripts/validate_iteration_v12.py
+
+      - name: Run V13 systemic Tool ABI and long-document gates
+        run: python3 scripts/validate_iteration_v13.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Preflight summary
+        run: |
+          echo 'V13 no-APK preflight passed.'
+          echo 'All 37 canonical local functions have complete generated argument classification.'
+          echo 'DOCX/PPTX/XLSX/web model-facing schemas hide deterministic executor selectors while strict schemas remain intact.'
+          echo 'Schema-aware enum/primitive coercion and generated surface fuzz passed.'
+          echo 'Synthetic long-document ingestion covered every source chunk without generic head/tail truncation.'
+          echo 'Local, Anthropic, and OpenAI-compatible readiness are separated; OpenAI-compatible no longer depends on Claude API key.'
+          echo 'All V9/V10/V11/V12 inherited regression gates and Flutter static analysis remain green.'
