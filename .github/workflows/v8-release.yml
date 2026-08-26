@@ -1,0 +1,297 @@
+name: Release RastaCoder Chat Routing Search v8
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+  SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+  EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+  EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+  EXPECTED_PACKAGE: ai.navixmind
+  BUILD_NAME: 0.0.7
+  BUILD_NUMBER: '21'
+  OUTPUT_APK: RastaCoder-Qwen3-4B-chat-routing-search-v8-update.apk
+  RELEASE_TAG: qwen3-chat-routing-search-v8
+
+jobs:
+  release-v8:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout v8 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Apply reviewed v8 patch chain to verified v7 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/run_iteration_v8_backend.py
+          python3 scripts/run_iteration_v8_chat.py
+          python3 scripts/run_iteration_v8_search_ui.py
+
+      - name: Compile and run final v8 functional gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/run_iteration_v8_backend.py \
+            scripts/run_iteration_v8_chat.py \
+            scripts/run_iteration_v8_search_ui.py \
+            scripts/run_validate_iteration_v8.py \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/search_tools.py
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+          python3 scripts/run_validate_iteration_v8.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate before APK build
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Restore exact known-good MLC runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Restore stable RastaCoder signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 | base64 -d > android/app/rastacoder-dev.p12
+          test "$(sha256sum android/app/rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+          cat > android/key.properties <<'EOF'
+          storeFile=rastacoder-dev.p12
+          storePassword=RastaCoderDev2026!
+          keyAlias=rastacoder-dev
+          keyPassword=RastaCoderDev2026!
+          EOF
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          pattern = re.compile(
+              r'(\bdebug\s*\{\s*\n\s*buildConfigField\s+"boolean",\s*"NAVIXMIND_DEBUG",\s*"true"\s*\n)',
+              re.MULTILINE,
+          )
+          debug_slice = text[text.find('debug {'):text.find('release {')]
+          if 'signingConfig keystoreProperties.containsKey' not in debug_slice:
+              text, count = pattern.subn(
+                  r"\1            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug\n",
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f'Expected one debug buildType anchor, found {count}')
+          text = text.replace('abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"', 'abiFilters "arm64-v8a"')
+          p.write_text(text)
+          PY
+
+      - name: Build one final stable-signed ARM64 v8 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
+          test -s "$OUTPUT_APK"
+
+      - name: Verify final v8 APK package signature ABI runtime and regression gates
+        id: verify_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          test -x "$AAPT"
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
+          CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+              abis = sorted({n.split('/')[1] for n in names if n.startswith('lib/') and len(n.split('/')) >= 3})
+              print('Native ABIs packaged:', abis)
+              assert abis == ['arm64-v8a'], f'APK is not ARM64-only: {abis}'
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              assert runtime in names, 'arm64 MLC runtime missing'
+              data = z.read(runtime)
+              assert len(data) == 38786520, len(data)
+              digest = hashlib.sha256(data).hexdigest()
+              assert digest == os.environ['EXPECTED_RUNTIME_SHA256'], digest
+              assert any('flutter_assets' in n for n in names), 'Flutter assets missing'
+              print('Verified MLC runtime:', digest)
+          PY
+          python3 scripts/run_validate_iteration_v8.py
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Final APK SHA-256: $OUT_SHA"
+          echo "Final APK size: $OUT_SIZE"
+
+      - name: Persist verified v8 source and handoff
+        env:
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
+          cat > docs/HANDOFF_QWEN3_CHAT_ROUTING_SEARCH_V8.md <<EOF
+          # RastaCoder Qwen3 Chat Routing + Search v8 — verified release handoff
+
+          Current branch: \`iteration/qwen3-chat-routing-search-v8\`
+          Release tag: \`$RELEASE_TAG\`
+          Version: \`$BUILD_NAME\` / code \`$BUILD_NUMBER\`
+
+          ## V8 real-device regressions addressed
+          - Cold-start inference routing now synchronizes the persisted selected model with the actual MLC runtime before every send. Normal chat text can no longer be consumed as a Claude API key.
+          - Tool activity is aggregated into one dedicated per-turn tool-progress region instead of many system-message rows.
+          - The assistant region contains the final answer, optional created-file links, one real Thinking expand/collapse control, and one independently collapsible Tool Diagnostics control.
+          - Thinking content is sanitized so structured tool calls/results are excluded; /no_think mode exposes no model reasoning and the UI explicitly says when the turn has no thinking content.
+          - Decorative role glyphs are excluded from the accessibility tree and repeated long-press/system semantic chatter is removed.
+          - File operations now resolve model-facing relative paths against the real output workspace. Recursive delete is post-verified; a still-existing or missing target cannot report false success.
+          - Four separate web-search Skills are added from local-agent-plaza: AnySearch, Exa, LangSearch, and Tavily. Each has independent manual enablement and secure per-provider API-key configuration.
+
+          ## Capability invariant
+          - 25 manually controlled Skills.
+          - 37 canonical local functions with exact schema/Skill coverage equality.
+          - Search credentials are stored through Android secure storage and injected only into private execution context, never model-visible tool arguments.
+
+          ## Verification
+          - Preflight and release gates reproduce output/subfolder/TXT recursive deletion against a real temporary filesystem and verify physical absence afterward.
+          - Search adapters are exercised with mocked HTTP requests for all four providers and missing-key failure gates.
+          - Flutter Analyze passes before the single formal APK build.
+          - Final package: \`$EXPECTED_PACKAGE\`
+          - Final ABI: \`arm64-v8a\` only
+          - Stable signing certificate SHA-256: \`$EXPECTED_CERT_SHA256\`
+          - MLC runtime SHA-256: \`$EXPECTED_RUNTIME_SHA256\`
+          - APK SHA-256: \`$OUT_SHA\`
+          - APK size: \`$OUT_SIZE\` bytes
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib python/navixmind android/app/build.gradle docs/HANDOFF_QWEN3_CHAT_ROUTING_SEARCH_V8.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: persist verified chat-routing-search v8 source and handoff [skip ci]'
+            git push origin HEAD:iteration/qwen3-chat-routing-search-v8
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify_release.outputs.cert_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          RastaCoder Qwen3 4B Chat Routing + Search v8 — stable-signed ARM64 in-place update.
+
+          This release is focused on the real-device regressions found after v7: cold-start local-model routing, screen-reader chat clutter, real Thinking/Diagnostics expansion behavior, and false-success recursive deletion. It also adds four independent network-search Skills.
+
+          Major changes:
+          - persisted local-model selection is synchronized with the actual MLC runtime before every send;
+          - chat text is never reinterpreted as a Claude API key;
+          - one user region, one aggregated tool-progress region, and one final assistant region per turn;
+          - real collapsible Thinking and Tool Diagnostics controls;
+          - tool-call payloads are excluded from Thinking content;
+          - verified workspace-relative recursive file/directory deletion;
+          - separate AnySearch, Exa, LangSearch, and Tavily Skills with secure user-configured API keys;
+          - 25 manually selected Skills covering 37 canonical local functions.
+
+          Verified final APK:
+          - package: $EXPECTED_PACKAGE
+          - versionName/versionCode: $BUILD_NAME / $BUILD_NUMBER
+          - signing certificate SHA-256: $CERT_SHA
+          - ABI: arm64-v8a only
+          - MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+          - APK SHA-256: $OUT_SHA
+          - APK size: $OUT_SIZE bytes
+          EOF
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target iteration/qwen3-chat-routing-search-v8 \
+            --title 'RastaCoder Qwen3 4B Chat Routing + Search v8' \
+            --notes-file release-notes.md
