@@ -1,0 +1,314 @@
+name: Release RastaCoder Systemic Tool ABI v13
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-systemic-tool-abi-v13
+    paths:
+      - 'V13_RELEASE_TRIGGER.md'
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+  SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+  EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+  EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+  EXPECTED_PACKAGE: ai.navixmind
+  BUILD_NAME: 0.0.12
+  BUILD_NUMBER: '26'
+  OUTPUT_APK: RastaCoder-Qwen3-4B-systemic-tool-abi-v13-update.apk
+  RELEASE_TAG: qwen3-systemic-tool-abi-v13
+
+jobs:
+  release-v13:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout v13 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Apply reviewed V13 systemic Tool ABI patches
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v13_tools_abi.py \
+            scripts/apply_iteration_v13_compat.py \
+            scripts/apply_iteration_v13_document_ingestion.py \
+            scripts/apply_iteration_v13_provider_routing.py \
+            scripts/validate_iteration_v13.py
+          python3 scripts/apply_iteration_v13_tools_abi.py
+          python3 scripts/apply_iteration_v13_compat.py
+          python3 scripts/apply_iteration_v13_document_ingestion.py
+          python3 scripts/apply_iteration_v13_provider_routing.py
+
+      - name: Compile and run inherited plus V13 functional gates
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/path_contract.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+          python3 scripts/run_validate_iteration_v9.py
+          python3 scripts/validate_iteration_v10.py
+          python3 scripts/validate_iteration_v11.py
+          python3 scripts/validate_iteration_v12.py
+          python3 scripts/validate_iteration_v13.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate before APK build
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Restore exact known-good MLC runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Restore stable RastaCoder signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 | base64 -d > android/app/rastacoder-dev.p12
+          test "$(sha256sum android/app/rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+          cat > android/key.properties <<'EOF'
+          storeFile=rastacoder-dev.p12
+          storePassword=RastaCoderDev2026!
+          keyAlias=rastacoder-dev
+          keyPassword=RastaCoderDev2026!
+          EOF
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          pattern = re.compile(r'(\bdebug\s*\{\s*\n\s*buildConfigField\s+"boolean",\s*"NAVIXMIND_DEBUG",\s*"true"\s*\n)', re.MULTILINE)
+          debug_slice = text[text.find('debug {'):text.find('release {')]
+          if 'signingConfig keystoreProperties.containsKey' not in debug_slice:
+              text, count = pattern.subn(r"\1            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug\n", text, count=1)
+              if count != 1:
+                  raise SystemExit(f'Expected one debug buildType anchor, found {count}')
+          text = text.replace('abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"', 'abiFilters "arm64-v8a"')
+          p.write_text(text)
+          PY
+
+      - name: Build one final stable-signed ARM64 V13 APK
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
+          test -s "$OUTPUT_APK"
+
+      - name: Verify final V13 APK package signature ABI runtime and all regression gates
+        id: verify_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
+          CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+              abis = sorted({n.split('/')[1] for n in names if n.startswith('lib/') and len(n.split('/')) >= 3})
+              assert abis == ['arm64-v8a'], abis
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              data = z.read(runtime)
+              assert len(data) == 38786520, len(data)
+              digest = hashlib.sha256(data).hexdigest()
+              assert digest == os.environ['EXPECTED_RUNTIME_SHA256'], digest
+          PY
+          python3 scripts/run_validate_iteration_v9.py
+          python3 scripts/validate_iteration_v10.py
+          python3 scripts/validate_iteration_v11.py
+          python3 scripts/validate_iteration_v12.py
+          python3 scripts/validate_iteration_v13.py
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Final APK SHA-256: $OUT_SHA"
+          echo "Final APK size: $OUT_SIZE"
+
+      - name: Persist verified V13 generated source and final handoff
+        env:
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          PREFLIGHT_RUN: '32977996370'
+        run: |
+          set -euo pipefail
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
+          cat > docs/HANDOFF_QWEN3_SYSTEMIC_TOOL_ABI_V13.md <<EOF
+          # RastaCoder Qwen3 Systemic Tool ABI v13 — verified release handoff
+
+          Branch: \`iteration/qwen3-systemic-tool-abi-v13\`
+          Release tag: \`$RELEASE_TAG\`
+          Version: \`$BUILD_NAME\` / code \`$BUILD_NUMBER\`
+          Package: \`$EXPECTED_PACKAGE\`
+          Preflight run: \`$PREFLIGHT_RUN\`
+
+          ## V13 verified architecture
+          - Preserves exactly 25 manually controlled Skills / 37 canonical local functions.
+          - Separates strict executor schemas from a smaller model-facing Tool ABI projection for Qwen3-class local models.
+          - Hides deterministic DOCX/PPTX/XLSX/web extraction selectors from the local model while retaining strict executor/cloud compatibility.
+          - Adds schema-aware argument coercion for common small-model enum, boolean, scalar, wrapper, alias and punctuation mistakes before strict validation.
+          - Adds complete-partition long-document ingestion: oversized document text is split across bounded chunks, processed tool-free with the same local model, and reduced to a bounded query-relevant evidence digest.
+          - Separates local, Anthropic and OpenAI-compatible provider readiness. OpenAI-compatible routing requires Base URL + Model ID and allows provider API Key to remain optional.
+          - Preserves V9 transactional Office/media/search postconditions, V10 context-safe continuation, V11 history/provider work and V12 logical workspace path hardening.
+
+          ## Validation
+          - No-APK V13 preflight run \`$PREFLIGHT_RUN\`: SUCCESS, including V9/V10/V11/V12/V13 gates and Flutter static analysis.
+          - Formal release repeated V9/V10/V11/V12/V13 gates before and after APK build.
+          - Package/version, stable signing certificate, ARM64-only ABI and exact known-good MLC runtime were verified after build.
+
+          ## Final verified artifact
+          - ABI: \`arm64-v8a\` only
+          - Stable signing certificate SHA-256: \`$EXPECTED_CERT_SHA256\`
+          - MLC runtime SHA-256: \`$EXPECTED_RUNTIME_SHA256\`
+          - APK SHA-256: \`$OUT_SHA\`
+          - APK size: \`$OUT_SIZE\` bytes
+          EOF
+
+          cat > docs/V13_LIVE_PROGRESS_AND_HANDOFF.md <<EOF
+          # RastaCoder V13 live progress and handoff
+
+          - V13 systemic Tool ABI preflight \`$PREFLIGHT_RUN\`: SUCCESS.
+          - All 37 canonical local functions are covered by the 25-Skill catalogue and generated argument classification.
+          - Local model-facing schemas, schema-aware compatibility coercion, complete-partition long-document ingestion and provider route separation passed V13 gates.
+          - V9/V10/V11/V12 inherited regression gates remained green before and after the APK build.
+          - Verified APK SHA-256: \`$OUT_SHA\`.
+          - Verified APK size: \`$OUT_SIZE\` bytes.
+          - Final generated source is persisted on this branch before GitHub Release publication.
+          EOF
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            lib/core/models/model_registry.dart \
+            lib/features/chat/presentation/chat_screen.dart \
+            docs/V13_LIVE_PROGRESS_AND_HANDOFF.md \
+            docs/HANDOFF_QWEN3_SYSTEMIC_TOOL_ABI_V13.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: persist verified systemic Tool ABI v13 source and handoff [skip ci]'
+            git push origin HEAD:iteration/qwen3-systemic-tool-abi-v13
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify_release.outputs.cert_sha }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          RastaCoder Qwen3 4B Systemic Tool ABI v13
+
+          Version: $BUILD_NAME ($BUILD_NUMBER)
+          Package: $EXPECTED_PACKAGE
+          ABI: arm64-v8a only
+          APK SHA-256: $OUT_SHA
+          APK size: $OUT_SIZE bytes
+          Signing certificate SHA-256: $CERT_SHA
+          MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+
+          V13 hardens the full local-model tool boundary instead of patching one prompt failure at a time: model-facing schemas now project away deterministic executor selectors; schema-aware compatibility coercion handles common 3B-4B surface mistakes; oversized document reads use complete-partition local ingestion; and OpenAI-compatible routing no longer depends on a Claude API key. The 25-Skill / 37-function catalogue and V9-V12 regression safeguards remain intact.
+
+          Preflight: https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32977996370
+          EOF
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target iteration/qwen3-systemic-tool-abi-v13 \
+            --title 'RastaCoder Qwen3 4B Systemic Tool ABI v13' \
+            --notes-file release-notes.md
+
+      - name: Cleanup local signing material
+        if: always()
+        run: rm -f android/app/rastacoder-dev.p12 android/key.properties
