@@ -35,10 +35,13 @@ chat = (ROOT / 'lib/features/chat/presentation/chat_screen.dart').read_text()
 require("label: '聊天记录'" in chat and "label: '新建对话'" in chat, 'chat app-bar semantic labels missing')
 
 bubble = (ROOT / 'lib/features/chat/presentation/widgets/message_bubble.dart').read_text()
-require('explicitChildNodes: true' in bubble, 'nested Thinking/diagnostics semantics not preserved')
+require('explicitChildNodes: true' in bubble, 'outer message does not preserve explicit child semantic nodes')
 require('excludeSemantics: true' not in bubble, 'message bubble still swallows interactive semantics')
-require('思考过程，当前已折叠，双击展开' in bubble, 'Thinking control label missing')
-require('工具调用诊断，当前已折叠，双击展开' in bubble, 'diagnostics control label missing')
+require('class _AccessibleExpansionSection extends StatefulWidget' in bubble, 'stateful accessible expansion helper missing')
+require('onExpansionChanged:' in bubble, 'expansion state is not tracked')
+require("semanticTitle: '思考过程'" in bubble, 'Thinking is not an independent accessible control')
+require("semanticTitle: '工具调用诊断'" in bubble, 'diagnostics is not an independent accessible control')
+require("label: '${widget.semanticTitle}，当前$stateLabel，$actionLabel'" in bubble, 'expanded/collapsed semantic state is not dynamic')
 
 storage = (ROOT / 'lib/core/services/storage_service.dart').read_text()
 require("return value ?? 'qwen3-4b';" in storage, 'fresh-install model default is not local Qwen3')
@@ -50,6 +53,14 @@ native = (ROOT / 'lib/core/services/native_tool_executor.dart').read_text()
 for op in ("case 'concat':", "case 'mix_audio':", "case 'merge_av':", "case 'custom':"):
     require(op in native, f'FFmpeg operation missing: {op}')
 require("args['input_paths']" in native, 'native multi-input FFmpeg paths missing')
+
+registry_source = (ROOT / 'python/navixmind/tools/__init__.py').read_text()
+require("'source_path', 'zip_path'" in registry_source, 'file/ZIP attachment path resolution missing')
+require("operations = args.get('operations')" in registry_source, 'nested Office attachment path resolution missing')
+media_source = (ROOT / 'python/navixmind/tools/media.py').read_text()
+require('Actually save the resolved media file' in media_source, 'media_download still returns only a URL')
+archive_source = (ROOT / 'python/navixmind/tools/documents.py').read_text()
+require('if os.path.isdir(fpath)' in archive_source, 'create_zip still rejects/directly mishandles directories')
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +91,9 @@ for op in ('custom', 'concat', 'mix_audio', 'merge_av'):
     require(op in ops, f'local FFmpeg schema hides operation: {op}')
 require('input_paths' in ffmpeg['input_schema']['properties'], 'local FFmpeg multi-input schema missing')
 
+download = next(item for item in OFFLINE_TOOLS_SCHEMA if item['name'] == 'download_media')
+require('output_path' in download['input_schema']['properties'], 'media_download output path schema missing')
+
 text_skill = {x['name'] for x in get_offline_tools_for_skills(['text_files'])}
 require({'read_file', 'write_file', 'file_info', 'list_files', 'file_manage'} <= text_skill, 'text/file Skill is still incomplete')
 zip_skill = {x['name'] for x in get_offline_tools_for_skills(['zip_archive'])}
@@ -99,6 +113,7 @@ from PIL import Image  # noqa: E402
 from pypdf import PdfWriter, PdfReader  # noqa: E402
 from openpyxl import load_workbook  # noqa: E402
 from pptx import Presentation  # noqa: E402
+from navixmind.tools.documents import create_zip  # noqa: E402
 
 with tempfile.TemporaryDirectory() as td:
     root = Path(td)
@@ -117,13 +132,14 @@ with tempfile.TemporaryDirectory() as td:
     file_manage('delete', path=moved)
     require(not Path(moved).exists(), 'delete failed')
 
-    # ZIP list/extract.
+    # ZIP create from directory + list/extract.
     zip_path = output / 'sample.zip'
-    with zipfile.ZipFile(zip_path, 'w') as zf:
-        zf.writestr('inside.txt', 'zip works')
-    require(list_zip(str(zip_path))['count'] == 1, 'list_zip failed')
+    created_zip = create_zip(str(zip_path), [folder])
+    require(created_zip['success'] is True, 'create_zip directory input failed')
+    listed = list_zip(str(zip_path))
+    require(any(e['name'].endswith('a.txt') for e in listed['entries']), 'ZIP did not include directory contents')
     extracted = extract_zip(str(zip_path), _output_dir=str(output))
-    require(Path(extracted['output_paths'][0]).read_text() == 'zip works', 'extract_zip failed')
+    require(any(Path(p).name == 'a.txt' for p in extracted['output_paths']), 'extract_zip did not restore directory file')
 
     # Image resize + format output.
     img1 = output / 'one.png'
@@ -160,4 +176,4 @@ with tempfile.TemporaryDirectory() as td:
     require(wb['Data']['B2'].value == 4, 'create_xlsx failed')
     wb.close()
 
-print('RastaCoder v7 complete-skill validation passed: 21 Skills / 31 canonical tools / new functional smoke tests green.')
+print('RastaCoder v7 complete-skill validation passed: 21 Skills / 31 canonical tools / final functional smoke tests green.')
