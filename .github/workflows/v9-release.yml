@@ -1,0 +1,303 @@
+name: Release RastaCoder Systemic Tool Hardening v9
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-systemic-tool-hardening-v9
+    paths:
+      - 'V9_RELEASE_TRIGGER.md'
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+  SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+  EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+  EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+  EXPECTED_PACKAGE: ai.navixmind
+  BUILD_NAME: 0.0.8
+  BUILD_NUMBER: '22'
+  OUTPUT_APK: RastaCoder-Qwen3-4B-systemic-tool-hardening-v9-update.apk
+  RELEASE_TAG: qwen3-systemic-tool-hardening-v9
+
+jobs:
+  release-v9:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout v9 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Apply complete reviewed v9 patch chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v9_backend.py
+          python3 scripts/apply_iteration_v9_office.py
+          python3 scripts/apply_iteration_v9_flutter_native.py
+          python3 scripts/apply_iteration_v9_fixups.py
+
+      - name: Compile and run v9 systemic functional gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v9_backend.py \
+            scripts/apply_iteration_v9_office.py \
+            scripts/apply_iteration_v9_flutter_native.py \
+            scripts/apply_iteration_v9_fixups.py \
+            scripts/run_validate_iteration_v9.py \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/documents.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/media.py \
+            python/navixmind/tools/search_tools.py
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+          python3 scripts/run_validate_iteration_v9.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate before APK build
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Restore exact known-good MLC runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Restore stable RastaCoder signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 | base64 -d > android/app/rastacoder-dev.p12
+          test "$(sha256sum android/app/rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+          cat > android/key.properties <<'EOF'
+          storeFile=rastacoder-dev.p12
+          storePassword=RastaCoderDev2026!
+          keyAlias=rastacoder-dev
+          keyPassword=RastaCoderDev2026!
+          EOF
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          pattern = re.compile(
+              r'(\bdebug\s*\{\s*\n\s*buildConfigField\s+"boolean",\s*"NAVIXMIND_DEBUG",\s*"true"\s*\n)',
+              re.MULTILINE,
+          )
+          debug_slice = text[text.find('debug {'):text.find('release {')]
+          if 'signingConfig keystoreProperties.containsKey' not in debug_slice:
+              text, count = pattern.subn(
+                  r"\1            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug\n",
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f'Expected one debug buildType anchor, found {count}')
+          text = text.replace('abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"', 'abiFilters "arm64-v8a"')
+          p.write_text(text)
+          PY
+
+      - name: Build one final stable-signed ARM64 v9 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
+          test -s "$OUTPUT_APK"
+
+      - name: Verify final v9 APK package signature ABI runtime and regression gates
+        id: verify_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          test -x "$AAPT"
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
+          CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+              abis = sorted({n.split('/')[1] for n in names if n.startswith('lib/') and len(n.split('/')) >= 3})
+              print('Native ABIs packaged:', abis)
+              assert abis == ['arm64-v8a'], f'APK is not ARM64-only: {abis}'
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              assert runtime in names, 'arm64 MLC runtime missing'
+              data = z.read(runtime)
+              assert len(data) == 38786520, len(data)
+              digest = hashlib.sha256(data).hexdigest()
+              assert digest == os.environ['EXPECTED_RUNTIME_SHA256'], digest
+              print('Verified MLC runtime:', digest)
+          PY
+          python3 scripts/run_validate_iteration_v9.py
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Final APK SHA-256: $OUT_SHA"
+          echo "Final APK size: $OUT_SIZE"
+
+      - name: Persist verified v9 source and handoff
+        env:
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
+          cat > docs/HANDOFF_QWEN3_SYSTEMIC_TOOL_HARDENING_V9.md <<EOF
+          # RastaCoder Qwen3 Systemic Tool Hardening v9 — verified release handoff
+
+          Current branch: \`iteration/qwen3-systemic-tool-hardening-v9\`
+          Release tag: \`$RELEASE_TAG\`
+          Version: \`$BUILD_NAME\` / code \`$BUILD_NUMBER\`
+
+          ## V9 real-device feedback generalized into systemic fixes
+          - FFmpeg now has a canonical structured \`speed\` operation. Common aliases such as tempo/playback_speed/speed_up normalize to speed, and scalar params such as \`"1.5"\` normalize to \`params.factor=1.5\`.
+          - Native audio/video speed processing verifies a real non-empty output and compares output duration against the requested speed factor when probe metadata is available.
+          - AnySearch, Exa, LangSearch and Tavily search functions expose only \`query\` to the local model. Result count, provider search type/topic, freshness/depth, date/domain filters and content options are user-configured per Skill and privately merged at execution.
+          - Compatibility recovery preserves correct \`query\` and repairs common Qwen3-4B variants such as q/keyword/search_query and the observed Exa \`topic=<actual keywords>\` failure.
+          - DOCX/PPTX/XLSX edits default to the existing file when no explicit destination is requested. They save transactionally through a temp sibling, reopen the saved artifact, and reject zero-effect/invalid operations instead of reporting success.
+          - A central postcondition layer verifies every file-producing tool result: output must physically exist, be non-empty, and structured files (ZIP/PDF/DOCX/PPTX/XLSX/images) must reopen successfully. Text writes are read back byte-for-text equivalence at UTF-8 string level.
+          - Media download no longer references an undefined fallback headers variable and rejects empty downloads.
+
+          ## Capability invariant
+          - 25 manually controlled Skills.
+          - 37 canonical local functions with exact schema/Skill coverage equality.
+          - Search credentials and provider tuning remain execution-context data and are absent from model-visible arguments.
+
+          ## Verification
+          - Exact user cases are automated: MP3 1.5x speed call normalization; Exa topic-as-query recovery; DOCX physical end-paragraph append.
+          - Generalized gates cover PPTX missing-shape no-op rejection, XLSX missing-sheet no-op rejection, in-place Office persistence, search-parameter isolation, empty/mismatched output rejection, media header fallback, and Flutter Analyze.
+          - Final package: \`$EXPECTED_PACKAGE\`
+          - Final ABI: \`arm64-v8a\` only
+          - Stable signing certificate SHA-256: \`$EXPECTED_CERT_SHA256\`
+          - MLC runtime SHA-256: \`$EXPECTED_RUNTIME_SHA256\`
+          - APK SHA-256: \`$OUT_SHA\`
+          - APK size: \`$OUT_SIZE\` bytes
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib python/navixmind android/app/build.gradle docs/HANDOFF_QWEN3_SYSTEMIC_TOOL_HARDENING_V9.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: persist verified systemic-tool-hardening v9 source and handoff [skip ci]'
+            git push origin HEAD:iteration/qwen3-systemic-tool-hardening-v9
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify_release.outputs.cert_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          RastaCoder Qwen3 4B Systemic Tool Hardening v9 — stable-signed ARM64 in-place update.
+
+          This release turns three real-device reports into a broader tool-contract hardening pass across all Skills: structured FFmpeg speed, query-only search with user-owned provider settings, truthful transactional Office edits, and universal artifact postcondition verification.
+
+          Major changes:
+          - structured 0-16x FFmpeg speed path with 1.5x scalar-call recovery and duration verification;
+          - AnySearch/Exa/LangSearch/Tavily model calls reduced to query only;
+          - accessible per-provider search settings for result count/type/topic/freshness/depth/date/domain/content options;
+          - in-place transactional DOCX/PPTX/XLSX modifications with no-op rejection;
+          - universal generated-file existence/non-empty/reopen verification;
+          - media-download fallback-header bug fixed;
+          - 25 manually selected Skills still cover exactly 37 canonical local functions.
+
+          Verified final APK:
+          - package: $EXPECTED_PACKAGE
+          - versionName/versionCode: $BUILD_NAME / $BUILD_NUMBER
+          - signing certificate SHA-256: $CERT_SHA
+          - ABI: arm64-v8a only
+          - MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+          - APK SHA-256: $OUT_SHA
+          - APK size: $OUT_SIZE bytes
+          EOF
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target iteration/qwen3-systemic-tool-hardening-v9 \
+            --title 'RastaCoder Qwen3 4B Systemic Tool Hardening v9' \
+            --notes-file release-notes.md
