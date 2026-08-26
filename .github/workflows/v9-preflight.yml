@@ -1,4 +1,4 @@
-name: RastaCoder v9 Systemic Tool Hardening Preflight
+name: Preflight RastaCoder Systemic Tool Hardening v9
 
 on:
   push:
@@ -6,10 +6,12 @@ on:
       - iteration/qwen3-systemic-tool-hardening-v9
     paths:
       - 'V9_PREFLIGHT_TRIGGER.md'
-  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  preflight:
+  preflight-v9:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -21,53 +23,41 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Apply reviewed v9 systemic patch chain to verified v8 source
-        shell: bash
+      - name: Compile patch scripts before touching source
         run: |
-          set -euo pipefail
-          python3 scripts/apply_iteration_v9_core.py
-          python3 scripts/apply_iteration_v9_search_ui.py
-
-      - name: Compile all touched Python sources and patch scripts
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 -m py_compile \
-            scripts/apply_iteration_v9_core.py \
-            scripts/apply_iteration_v9_search_ui.py \
-            scripts/validate_iteration_v9.py \
+            scripts/apply_iteration_v9_backend.py \
+            scripts/apply_iteration_v9_office.py \
+            scripts/apply_iteration_v9_flutter_native.py \
+            scripts/apply_iteration_v9_fixups.py \
+            scripts/run_validate_iteration_v9.py
+
+      - name: Apply complete reviewed v9 patch chain
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v9_backend.py
+          python3 scripts/apply_iteration_v9_office.py
+          python3 scripts/apply_iteration_v9_flutter_native.py
+          python3 scripts/apply_iteration_v9_fixups.py
+
+      - name: Compile generated Python source
+        run: |
+          python3 -m py_compile \
             python/navixmind/agent.py \
             python/navixmind/tools/__init__.py \
             python/navixmind/tools/compat.py \
             python/navixmind/tools/documents.py \
             python/navixmind/tools/extended_tools.py \
-            python/navixmind/tools/search_tools.py \
             python/navixmind/tools/media.py \
-            python/navixmind/tools/google_api.py
+            python/navixmind/tools/search_tools.py
 
-      - name: Install systemic validation dependencies
-        shell: bash
+      - name: Install validation dependencies
         run: |
-          set -euo pipefail
           python3 -m pip install --upgrade pip
           python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
-          command -v ffmpeg
-          command -v ffprobe
 
-      - name: Run v9 systemic and real-mutation regression validation
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/validate_iteration_v9.py
-          grep -F "case 'speed':" lib/core/services/native_tool_executor.dart
-          grep -F 'duration_verified' lib/core/services/native_tool_executor.dart
-          grep -F 'anysearch_search(query)' python/navixmind/tools/__init__.py
-          grep -F 'exa_search(query)' python/navixmind/tools/__init__.py
-          grep -F 'langsearch_search(query)' python/navixmind/tools/__init__.py
-          grep -F 'tavily_search(query)' python/navixmind/tools/__init__.py
-          grep -F 'DOCX post-verification failed' python/navixmind/tools/documents.py
-          grep -F 'TOOL_POST_VERIFY_ERROR' python/navixmind/tools/__init__.py
-          grep -F "'search_settings': searchSettings" lib/core/bridge/bridge.dart
+      - name: Run systemic v9 functional regression gate
+        run: python3 scripts/run_validate_iteration_v9.py
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -82,7 +72,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Flutter dependencies
+      - name: Install Flutter dependencies
         run: flutter pub get
 
       - name: Align inappwebview Android library compile SDK
@@ -114,5 +104,5 @@ jobs:
       - name: Preflight summary
         run: |
           echo 'V9 no-APK preflight passed.'
-          echo 'Validated reported speed/search/DOCX cases plus generalized Office/PDF/file/media/result-truth gates.'
+          echo 'Reported speed/search/DOCX cases and generalized mutation/postcondition gates passed.'
           echo '25 manual Skills still cover exactly 37 canonical local functions.'
