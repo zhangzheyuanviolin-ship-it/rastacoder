@@ -23,17 +23,25 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile v10 patch before touching source
-        run: python3 -m py_compile scripts/apply_iteration_v10_context_safe.py scripts/validate_iteration_v10.py
+      - name: Compile patch scripts before touching source
+        run: |
+          python3 -m py_compile \
+            scripts/apply_iteration_v9_fixups.py \
+            scripts/apply_iteration_v10_context_safe.py \
+            scripts/validate_iteration_v10.py
 
       - name: Apply reviewed v10 patch
         run: python3 scripts/apply_iteration_v10_context_safe.py
+
+      - name: Prepare inherited v9 validator for persisted v9 source
+        run: python3 scripts/apply_iteration_v9_fixups.py
 
       - name: Compile generated Python source
         run: |
           python3 -m py_compile \
             python/navixmind/agent.py \
             python/navixmind/tools/search_tools.py \
+            scripts/run_validate_iteration_v9.py \
             scripts/validate_iteration_v10.py
 
       - name: Install validation dependencies
