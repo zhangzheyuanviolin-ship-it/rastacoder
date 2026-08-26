@@ -97,15 +97,27 @@ class _ConversationHistoryScreenState extends State<ConversationHistoryScreen> {
                     final title = item['title']?.toString() ?? '未命名对话';
                     final updated = item['updatedAt'];
                     final selected = id == widget.currentConversationId;
-                    return Semantics(
-                      selected: selected,
-                      label: '$title${selected ? '，当前对话' : ''}',
-                      child: ListTile(
-                        title: Text(title),
-                        subtitle: Text(updated is DateTime ? updated.toLocal().toString() : ''),
-                        leading: Icon(selected ? Icons.chat_bubble : Icons.chat_bubble_outline),
-                        onTap: () => Navigator.pop(context, id),
-                        trailing: PopupMenuButton<String>(
+                    // RASTACODER_V10_ACCESSIBLE_HISTORY_OPEN
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Semantics(
+                            button: true,
+                            selected: selected,
+                            label: '打开对话：$title${selected ? '，当前对话' : ''}',
+                            hint: '双击打开这条聊天记录',
+                            onTap: () => Navigator.pop(context, id),
+                            child: ExcludeSemantics(
+                              child: ListTile(
+                                title: Text(title),
+                                subtitle: Text(updated is DateTime ? updated.toLocal().toString() : ''),
+                                leading: Icon(selected ? Icons.chat_bubble : Icons.chat_bubble_outline),
+                                onTap: () => Navigator.pop(context, id),
+                              ),
+                            ),
+                          ),
+                        ),
+                        PopupMenuButton<String>(
                           tooltip: '管理对话：$title',
                           onSelected: (value) {
                             if (value == 'rename') _rename(item);
@@ -116,7 +128,7 @@ class _ConversationHistoryScreenState extends State<ConversationHistoryScreen> {
                             PopupMenuItem(value: 'delete', child: Text('删除')),
                           ],
                         ),
-                      ),
+                      ],
                     );
                   },
                 ),

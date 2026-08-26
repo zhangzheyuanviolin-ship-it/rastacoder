@@ -561,6 +561,148 @@ def _strip_reasoning_from_blocks(content_blocks: List[Dict[str, Any]]) -> List[D
     return cleaned
 
 
+# RASTACODER_V10_CONTEXT_SAFE_TOOL_RESULTS
+_SEARCH_RESULT_TOOLS = {
+    'anysearch_search', 'anysearch_extract', 'anysearch_get_sub_domains',
+    'exa_search', 'langsearch_search', 'tavily_search',
+}
+
+
+def _tool_result_char_budget(context: Dict[str, Any], max_output_tokens: int = 2048) -> int:
+    """Bound tool payloads before they are re-prefilled into a local model."""
+    if not isinstance(context, dict) or 'offline_model_info' not in context:
+        return 10000
+    try:
+        ctx = max(2048, min(int(context.get('local_context_tokens', 32768)), 32768))
+    except (TypeError, ValueError):
+        ctx = 32768
+    try:
+        out = max(256, min(int(max_output_tokens), 8192))
+    except (TypeError, ValueError):
+        out = 2048
+    available_tokens = max(900, ctx - out - 2400)
+    return max(1200, min(int(available_tokens * 1.25), 12000))
+
+
+def _trim_model_text(value: Any, limit: int) -> Tuple[str, bool]:
+    value = str(value or '').strip()
+    if len(value) <= limit:
+        return value, False
+    if limit < 300:
+        return value[:limit], True
+    head = max(180, int(limit * 0.78))
+    tail = max(80, limit - head - 55)
+    return value[:head] + '\n...[context-safe truncation]...\n' + value[-tail:], True
+
+
+def _search_result_payload_for_model(tool_name: str, result: Any, max_chars: int) -> str:
+    if not isinstance(result, dict):
+        return _trim_model_text(result, max_chars)[0]
+    provider = str(result.get('provider') or tool_name.replace('_search', ''))
+    query = str(result.get('query') or '').strip()
+    answer = str(result.get('answer') or '').strip()
+    rows = result.get('results')
+    out = [f'provider: {provider}']
+    if query:
+        out.append(f'query: {query}')
+    if answer:
+        answer_text, _ = _trim_model_text(answer, min(1400, max(350, max_chars // 4)))
+        out += ['provider_answer:', answer_text]
+    if isinstance(rows, list) and rows:
+        out.append(f'result_count: {len(rows)}')
+        remaining = max(600, max_chars - sum(len(x) for x in out) - 120)
+        per = max(320, remaining // max(1, len(rows)))
+        for index, item in enumerate(rows, 1):
+            if not isinstance(item, dict):
+                snippet, _ = _trim_model_text(item, per)
+                out += [f'[{index}]', snippet]
+                continue
+            title = item.get('title') or item.get('name') or item.get('id') or f'Result {index}'
+            url = item.get('url') or item.get('link') or item.get('id') or ''
+            published = item.get('publishedDate') or item.get('published_date') or item.get('datePublished') or item.get('date') or ''
+            summary = item.get('summary') or item.get('snippet') or item.get('description')
+            if not summary:
+                highlights = item.get('highlights')
+                if isinstance(highlights, list):
+                    summary = '\n'.join(str(x) for x in highlights if str(x).strip())
+            if not summary:
+                summary = item.get('text') or item.get('content') or item.get('raw_content') or ''
+            summary_text, _ = _trim_model_text(summary, max(180, per - 180))
+            out.append(f'[{index}] {title}')
+            if url:
+                out.append(f'URL: {url}')
+            if published:
+                out.append(f'published: {published}')
+            if summary_text:
+                out += ['summary:', summary_text]
+    elif result.get('content'):
+        payload, _ = _trim_model_text(result.get('content'), max(300, max_chars - 220))
+        out += ['content:', payload]
+    else:
+        raw, _ = _trim_model_text(json.dumps(result, ensure_ascii=False, default=str), max_chars)
+        out.append(raw)
+    final, truncated = _trim_model_text('\n'.join(out), max_chars)
+    if truncated:
+        final += '\ncontext_safety_note: Search output was truncated before local-model prefill.'
+    return final
+
+
+def _prepare_tool_result_for_model(tool_name: str, result: Any, context: Dict[str, Any], max_output_tokens: int) -> str:
+    max_chars = _tool_result_char_budget(context, max_output_tokens)
+    if tool_name in _SEARCH_RESULT_TOOLS:
+        payload = _search_result_payload_for_model(tool_name, result, max_chars)
+    elif isinstance(result, dict):
+        large_key = next((k for k in ('content', 'text', 'result', 'output', 'summary') if str(result.get(k) or '').strip()), None)
+        if large_key:
+            meta = {k: v for k, v in result.items() if k != large_key and isinstance(v, (str, int, float, bool, type(None)))}
+            meta_text = json.dumps(meta, ensure_ascii=False, default=str)
+            body_limit = max(300, max_chars - len(meta_text) - 120)
+            body, truncated = _trim_model_text(result.get(large_key), body_limit)
+            payload = f'metadata: {meta_text}\n{large_key}:\n{body}'
+            if truncated:
+                payload += '\ncontext_safety_note: Tool output was truncated before local-model prefill.'
+        else:
+            payload, truncated = _trim_model_text(json.dumps(result, ensure_ascii=False, default=str), max_chars)
+            if truncated:
+                payload += '\ncontext_safety_note: Tool output was truncated before local-model prefill.'
+    else:
+        payload, truncated = _trim_model_text(result, max_chars)
+        if truncated:
+            payload += '\ncontext_safety_note: Tool output was truncated before local-model prefill.'
+    return (
+        f'TOOL_RESULT\ntool: {tool_name}\nstatus: succeeded\npayload:\n{payload}\n\n'
+        'NEXT_ACTION: Use this result to continue the original user request. If it is sufficient, answer the user directly in the user\'s language and stop. '
+        'Do not repeat raw JSON or the tool result. Call another enabled tool only when genuinely necessary.'
+    )
+
+
+def _tool_error_for_model(tool_name: str, error: Any) -> str:
+    msg = str(error or '').strip()
+    low = msg.lower()
+    if 'api key' in low and ('未配置' in msg or 'not configured' in low):
+        recovery = 'NON_RETRYABLE: Do not call this provider again. Tell the user to configure its API Key in Tool Management.'
+    elif 'http 401' in low or 'http 403' in low or 'unauthorized' in low or 'forbidden' in low:
+        recovery = 'NON_RETRYABLE: Credentials or permission are invalid. Do not loop; report the configuration problem.'
+    elif 'http 429' in low or 'rate limit' in low:
+        recovery = 'Do not retry the same provider repeatedly. If another enabled search provider is available, use it once; otherwise report the rate limit.'
+    elif '[model_tool_argument_error]' in low or '[model_tool_name_error]' in low:
+        recovery = 'RECOVERABLE: Retry once with one enabled canonical tool name and the exact documented argument keys.'
+    elif 'timeout' in low or 'request failed' in low or 'network' in low:
+        recovery = 'RECOVERABLE_ONCE: Retry once or use one different enabled provider. Do not loop on the same failure.'
+    else:
+        recovery = 'Do not repeat the identical failed call. Correct the cause if clear; otherwise explain the failure to the user.'
+    return f'TOOL_FAILURE\ntool: {tool_name}\nerror: {msg[:1800]}\nrecovery: {recovery}'
+
+
+def _merge_continuation_text(parts: List[str], current: str) -> str:
+    pieces = [str(x).strip() for x in parts if str(x).strip()]
+    current = str(current or '').strip()
+    if current:
+        if not pieces or current != pieces[-1]:
+            pieces.append(current)
+    return '\n'.join(pieces).strip()
+
+
 class LocalLLMClient:
     """Client for on-device LLM inference via native bridge.
 
@@ -1138,6 +1280,9 @@ def process_query(
     tool_call_count = 0
     final_response = None
     created_files = []  # Track output files for session context
+    offline_max_token_continuations = 0
+    partial_final_chunks: List[str] = []
+    force_no_tools_once = False
 
     while iteration < max_iterations:
         iteration += 1
@@ -1151,7 +1296,7 @@ def process_query(
             response = client.create_message(
                 messages=messages,
                 system=system_prompt,
-                tools=tools_schema,
+                tools=None if (is_offline and force_no_tools_once) else tools_schema,
                 max_tokens=max_tokens,
             )
             if is_offline:
@@ -1251,7 +1396,7 @@ def process_query(
         # Case 1: Agent finished (end_turn)
         if stop_reason == 'end_turn':
             visible_blocks = _strip_reasoning_from_blocks(content_blocks) if is_offline else content_blocks
-            final_response = _extract_text_content(visible_blocks)
+            final_response = _merge_continuation_text(partial_final_chunks, _extract_text_content(visible_blocks))
             bridge.log("Preparing response...", progress=0.95)
             # Store response in session. File paths are tracked in session._file_map
             # so follow-up queries can reference them. Do NOT append file list to the
@@ -1346,13 +1491,14 @@ def process_query(
                         result_summary = _summarize_tool_result(tool_name, result_str)
                         bridge.log(f"Result: {result_summary}", level="info")
 
-                        if len(result_str) > 10000:
-                            result_str = result_str[:5000] + "\n\n[Output truncated...]\n\n" + result_str[-2000:]
-
+                        model_result = (
+                            _prepare_tool_result_for_model(tool_name, result, context, max_tokens)
+                            if is_offline else result_str
+                        )
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_id,
-                            "content": result_str
+                            "content": model_result
                         })
                     except ToolError as e:
                         bridge.log(f"Tool error: {e}", level="warn")
@@ -1360,12 +1506,7 @@ def process_query(
                             context['_diagnostics'].append({
                                 'stage': 'tool_error', 'tool': tool_name, 'error': str(e)[:2000]
                             })
-                        error_content = str(e)
-                        if is_offline and ('[MODEL_TOOL_ARGUMENT_ERROR]' in error_content or '[MODEL_TOOL_NAME_ERROR]' in error_content):
-                            error_content += (
-                                '\n[RECOVERABLE] Retry the same task immediately with one enabled canonical tool and corrected exact arguments. '
-                                'Choose a safe output filename yourself when possible; only ask the user if a required INPUT file or genuinely ambiguous destructive choice is missing.'
-                            )
+                        error_content = _tool_error_for_model(tool_name, e) if is_offline else str(e)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_id,
@@ -1389,12 +1530,46 @@ def process_query(
             # Continue the loop to get next response
             continue
 
-        # Case 3: Max tokens reached — continue the loop so Claude can finish
+        # Case 3: Max tokens reached. Cloud keeps legacy continuation behavior.
+        # Local models get at most one tool-free continuation, preventing the 50-step max_tokens loop.
         if stop_reason == 'max_tokens':
-            bridge.log("Response hit token limit, continuing...", level="info")
-            # Add partial assistant content to conversation and ask to continue
+            visible_blocks = _strip_reasoning_from_blocks(content_blocks) if is_offline else content_blocks
+            partial = _extract_text_content(visible_blocks).strip()
+            if not is_offline:
+                bridge.log("Response hit token limit, continuing...", level="info")
+                messages.append({"role": "assistant", "content": content_blocks})
+                messages.append({"role": "user", "content": "Continue from where you left off."})
+                continue
+            if partial:
+                partial_final_chunks.append(partial)
+            context['_diagnostics'].append({
+                'stage': 'offline_max_tokens',
+                'continuation': offline_max_token_continuations,
+                'partial_chars': len(partial),
+                'tool_calls': tool_call_count,
+            })
+            if offline_max_token_continuations >= 1:
+                final_response = _merge_continuation_text(partial_final_chunks[:-1], partial_final_chunks[-1] if partial_final_chunks else '')
+                if not final_response:
+                    final_response = '本地模型连续达到单次输出上限，且没有产生可用正文。请调高“最大输出 Token”后重试。'
+                session.add_message("assistant", final_response)
+                result = {"content": final_response}
+                if created_files:
+                    result["created_files"] = created_files
+                result["thinking"] = _thinking_for_ui(reasoning_parts, local_thinking_mode)
+                result["thinking_mode"] = local_thinking_mode
+                result["diagnostics"] = _format_diagnostics(context)
+                return result
+            offline_max_token_continuations += 1
+            force_no_tools_once = True
             messages.append({"role": "assistant", "content": content_blocks})
-            messages.append({"role": "user", "content": "Continue from where you left off."})
+            messages.append({
+                "role": "user",
+                "content": (
+                    '[FINAL_ANSWER_CONTINUATION] Continue only the unfinished final answer. '
+                    'Do not call any tool, do not repeat earlier text, do not output raw JSON or hidden reasoning, and finish within this response.'
+                ),
+            })
             continue
 
         # Case 4: Unexpected stop reason
