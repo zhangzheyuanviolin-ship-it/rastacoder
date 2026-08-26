@@ -19,7 +19,7 @@ def replace_once(old: str, new: str, label: str) -> None:
 
 anchor = '''def _tool_error_for_model(tool_name: str, error: Any) -> str:
 '''
-block = '''# RASTACODER_V13_DOCUMENT_INGESTION
+block = r'''# RASTACODER_V13_DOCUMENT_INGESTION
 _DOCUMENT_READ_TOOLS = {"read_file", "read_pdf", "read_docx", "read_pptx", "read_xlsx"}
 
 
