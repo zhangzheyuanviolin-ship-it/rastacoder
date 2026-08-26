@@ -78,11 +78,12 @@ for tool in ('anysearch_search', 'exa_search', 'langsearch_search', 'tavily_sear
     require(args == {'query': '今天的人工智能新闻'}, f'{tool}: query lost or extra args leaked: {args}')
 
 # Reproduce the user's audio speed call exactly: scalar params must become factor=1.5.
+# context={} reproduces the execution-stage second normalization pass where safe output names are synthesized.
 name, args, notes = normalize_tool_call('ffmpeg_process', {
     'input_path': 'analysis_article.mp3',
     'operation': 'speed',
     'params': '1.5',
-})
+}, context={})
 require(name == 'ffmpeg_process', name)
 require(args.get('operation') == 'speed', f'speed op changed: {args}')
 require(args.get('params', {}).get('factor') == 1.5, f'scalar speed factor lost: {args}')
@@ -136,7 +137,7 @@ with tempfile.TemporaryDirectory() as td:
     _, norm, _ = normalize_tool_call('modify_docx', {
         'input_path': str(docx),
         'operations': [{'action': 'add_paragraph', 'params': {'text': '这是追加到结尾的新段落'}}],
-    })
+    }, context={})
     require(norm['output_path'] == str(docx), f'DOCX edit should default in-place: {norm}')
     result = modify_docx(**norm)
     require(result['success'] and result['verified'] and result['in_place'], result)
