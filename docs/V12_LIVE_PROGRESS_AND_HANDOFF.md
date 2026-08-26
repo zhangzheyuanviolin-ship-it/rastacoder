@@ -143,3 +143,10 @@ If this agent is interrupted, continue only from `iteration/qwen3-workspace-alia
 2. `scripts/apply_iteration_v12_list_boundary_fix.py`
 
 Then run inherited V9/V10/V11 validators and `scripts/validate_iteration_v12.py`. Do not trigger an APK build until the dedicated second no-APK preflight is completely green. Preserve V11 OpenAI-compatible support, package/signing identity, MLC runtime, 25-Skill/37-tool invariant, and all inherited gates.
+
+## Formal release verification checkpoint
+- Second no-APK preflight `32966400251`: SUCCESS.
+- Formal V12 build reached post-build verification and passed package/version/signature/ABI/runtime plus V9/V10/V11/V12 regression gates.
+- Verified APK SHA-256: `6e62ec683e575ddb5cb78b4ee6883e600cf9d2a38616f26c6c277e483ddd0626`.
+- Verified APK size: `517027536` bytes.
+- Final generated source and formal handoff are persisted in this branch by this release workflow before publishing the GitHub Release.

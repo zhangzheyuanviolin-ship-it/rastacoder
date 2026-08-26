@@ -20,6 +20,7 @@ from .tools import (
     get_enabled_tool_names, get_offline_tools_for_skills,
 )
 from .tools.compat import normalize_tool_call, normalize_tool_name
+from .tools.path_contract import logicalize_path
 
 # RASTACODER_V4_TOOL_CONTRACT
 
@@ -647,10 +648,46 @@ def _search_result_payload_for_model(tool_name: str, result: Any, max_chars: int
     return final
 
 
+# RASTACODER_V12_LOGICAL_LIST_RESULTS
+def _list_files_payload_for_model(result: Any, max_chars: int) -> str:
+    """Expose logical workspace paths to the model, never the physical app root."""
+    if not isinstance(result, dict):
+        return _trim_model_text(result, max_chars)[0]
+    root = str(result.get('workspace_root') or '')
+    requested = str(result.get('requested_path') or '.').strip() or '.'
+    lines = [
+        f'workspace_path: {requested}',
+        f'count: {int(result.get("count") or 0)}',
+        f'recursive: {bool(result.get("recursive"))}',
+    ]
+    pattern = result.get('pattern')
+    if pattern:
+        lines.append(f'pattern: {pattern}')
+    entries = result.get('entries') if isinstance(result.get('entries'), list) else []
+    lines.append('entries:')
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        logical = logicalize_path(str(item.get('path') or item.get('name') or ''), root) if root else str(item.get('name') or '')
+        kind = str(item.get('type') or 'file')
+        if kind == 'directory':
+            lines.append(f'- directory: {logical}')
+        else:
+            lines.append(f'- file: {logical} ({int(item.get("size_bytes") or 0)} bytes)')
+    if result.get('truncated'):
+        lines.append('truncated: true')
+    payload, truncated = _trim_model_text('\n'.join(lines), max_chars)
+    if truncated:
+        payload += '\ncontext_safety_note: File listing was truncated before local-model prefill.'
+    return payload
+
+
 def _prepare_tool_result_for_model(tool_name: str, result: Any, context: Dict[str, Any], max_output_tokens: int) -> str:
     max_chars = _tool_result_char_budget(context, max_output_tokens)
     if tool_name in _SEARCH_RESULT_TOOLS:
         payload = _search_result_payload_for_model(tool_name, result, max_chars)
+    elif tool_name == 'list_files':
+        payload = _list_files_payload_for_model(result, max_chars)
     elif isinstance(result, dict):
         large_key = next((k for k in ('content', 'text', 'result', 'output', 'summary') if str(result.get(k) or '').strip()), None)
         if large_key:
@@ -685,6 +722,11 @@ def _tool_error_for_model(tool_name: str, error: Any) -> str:
         recovery = 'NON_RETRYABLE: Credentials or permission are invalid. Do not loop; report the configuration problem.'
     elif 'http 429' in low or 'rate limit' in low:
         recovery = 'Do not retry the same provider repeatedly. If another enabled search provider is available, use it once; otherwise report the rate limit.'
+    elif tool_name == 'list_files' and ('directory not found' in low or 'workspace' in low or 'path' in low):
+        recovery = (
+            "RECOVERABLE: If the user asked for the workspace root, retry once with list_files(path='.', recursive as needed). "
+            "For an unknown nested path, first list path='.' and choose an existing logical path. Do not ask the user to re-attach a workspace directory."
+        )
     elif '[model_tool_argument_error]' in low or '[model_tool_name_error]' in low:
         recovery = 'RECOVERABLE: Retry once with one enabled canonical tool name and the exact documented argument keys.'
     elif 'timeout' in low or 'request failed' in low or 'network' in low:

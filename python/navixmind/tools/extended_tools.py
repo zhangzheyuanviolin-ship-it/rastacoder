@@ -11,6 +11,8 @@ import zipfile
 from typing import Any, Dict, List, Optional
 
 from ..bridge import ToolError
+# RASTACODER_V12_EXTENDED_PATH_CONTRACT
+from .path_contract import resolve_model_path, resolve_list_path
 
 
 def _ensure_parent(path: str) -> None:
@@ -27,32 +29,11 @@ def _default_output_dir(_output_dir: Optional[str]) -> str:
 
 
 # RASTACODER_V11_WORKSPACE_ROOT
+# RASTACODER_V12_EXTENDED_PATH_CONTRACT
 def _resolve_workspace_path(value: str, _output_dir: Optional[str]) -> str:
-    """Resolve a model-facing path against the real writable workspace."""
-    raw = os.path.expanduser(str(value or '').strip())
+    """Resolve through the same central model-facing path contract as execute_tool."""
     root = os.path.normpath(_default_output_dir(_output_dir))
-    if not raw:
-        return root
-    if os.path.isabs(raw):
-        return os.path.normpath(raw)
-    normalized = raw.replace('\\', '/').strip()
-    while normalized.startswith('./'):
-        normalized = normalized[2:]
-    if normalized in {'', '.', 'output', 'output/', 'workspace', 'workspace/'}:
-        return root
-    if normalized.startswith('output/'):
-        normalized = normalized[len('output/'):]
-    elif normalized.startswith('workspace/'):
-        normalized = normalized[len('workspace/'):]
-    if normalized == '..' or normalized.startswith('../'):
-        raise ToolError(f'Workspace path escapes output root: {value}')
-    candidate = os.path.normpath(os.path.join(root, normalized))
-    try:
-        if os.path.commonpath([root, candidate]) != root:
-            raise ToolError(f'Workspace path escapes output root: {value}')
-    except ValueError:
-        raise ToolError(f'Workspace path is invalid: {value}')
-    return candidate
+    return resolve_model_path(value, root, allow_android_roots=True)
 
 
 def _resolve_named_directory(directory: str, _output_dir: Optional[str]) -> str:
@@ -69,46 +50,9 @@ def _resolve_named_directory(directory: str, _output_dir: Optional[str]) -> str:
 
 
 def _resolve_list_target(directory: str, path: Optional[str], _output_dir: Optional[str]) -> str:
-    """Resolve one canonical list target. Relative paths are workspace-relative."""
-    named = {
-        "output": _default_output_dir(_output_dir),
-        "downloads": "/storage/emulated/0/Download",
-        "documents": "/storage/emulated/0/Documents",
-        "pictures": "/storage/emulated/0/Pictures",
-        "screenshots": "/storage/emulated/0/Pictures/Screenshots",
-        "camera": "/storage/emulated/0/DCIM/Camera",
-    }
-    raw = str(path or '').strip().replace('\\', '/')
-    directory_key = str(directory or 'output').strip().lower()
-    if not raw:
-        return os.path.normpath(named.get(directory_key, _resolve_named_directory(directory_key, _output_dir)))
-    if os.path.isabs(raw):
-        return os.path.normpath(raw)
-    while raw.startswith('./'):
-        raw = raw[2:]
-    if raw in {'', '.', 'output', 'output/', 'workspace', 'workspace/'}:
-        return os.path.normpath(named['output'])
-    first, _, remainder = raw.partition('/')
-    first_key = first.lower()
-    if first_key in named:
-        base = os.path.normpath(named[first_key])
-        if not remainder:
-            return base
-        if remainder == '..' or remainder.startswith('../'):
-            raise ToolError(f'Directory path escapes selected root: {path}')
-        target = os.path.normpath(os.path.join(base, remainder))
-        if os.path.commonpath([base, target]) != base:
-            raise ToolError(f'Directory path escapes selected root: {path}')
-        return target
-    if directory_key in named and directory_key != 'output':
-        base = os.path.normpath(named[directory_key])
-        if raw == '..' or raw.startswith('../'):
-            raise ToolError(f'Directory path escapes selected root: {path}')
-        target = os.path.normpath(os.path.join(base, raw))
-        if os.path.commonpath([base, target]) != base:
-            raise ToolError(f'Directory path escapes selected root: {path}')
-        return target
-    return _resolve_workspace_path(raw, _output_dir)
+    """Resolve list target through the central logical namespace."""
+    root = os.path.normpath(_default_output_dir(_output_dir))
+    return resolve_list_path(path, root, legacy_directory=directory)
 
 
 def list_files(

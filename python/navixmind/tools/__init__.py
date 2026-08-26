@@ -26,6 +26,8 @@ from .extended_tools import (
 
 from ..bridge import ToolError, get_bridge
 from .compat import normalize_tool_call
+# RASTACODER_V12_PATH_CONTRACT_IMPORT
+from .path_contract import resolve_model_path, resolve_output_path
 
 # RASTACODER_V4_TOOL_CONTRACT
 
@@ -854,7 +856,7 @@ for _schema_list in (TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA):
             _tool["input_schema"] = {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "default": ".", "description": "Workspace-relative folder path; '.' means workspace root"},
+                    "path": {"type": "string", "default": ".", "description": "Logical folder path. Use exactly '.' for workspace root; nested workspace paths are relative such as folder/sub"},
                     "recursive": {"type": "boolean", "default": False},
                     "pattern": {"type": "string", "description": "Optional glob such as *.pptx"},
                     "include_directories": {"type": "boolean", "default": True},
@@ -964,7 +966,7 @@ LOCAL_TOOL_PROMPT_HINTS = {
     "read_file": "read_file(file_path)",
     "write_file": "write_file(output_path, content)",
     "file_info": "file_info(file_path)",
-    "list_files": "list_files(path='.', recursive=false, pattern=null, include_directories=true) ; path is workspace-relative",
+    "list_files": "list_files(path='.', recursive=false, pattern=null, include_directories=true) ; use path='.' for workspace root",
     "file_manage": "file_manage(action, path, source_path, destination_path, recursive, overwrite) ; action=list|mkdir|copy|move|rename|delete|touch|exists",
     "create_zip": "create_zip(output_path, file_paths, compression)",
     "list_zip": "list_zip(zip_path)",
@@ -1049,6 +1051,7 @@ def build_offline_skill_prompt(skill_ids=None):
         "- arguments MUST use the exact parameter names shown in that function signature.",
         "- Never invent generic argument keys such as param, request, instruction, or command.",
         "- Use attached file basenames exactly as shown in the user message; the app resolves them to real paths.",
+        "- WORKSPACE PATH RULE: use path='.' for the workspace root and relative paths like folder/file.txt below it. Do not invent Linux roots such as /workspace or /output.",
         "- Choose a sensible output filename yourself. Do not ask the user for an output path when a filename can be chosen safely.",
         "- Do not place prose before or after a tool call. After the tool result, give the concise final answer.",
         "- Use only the callable functions listed above.",
@@ -1289,7 +1292,15 @@ def execute_tool(
     # Resolve every model-facing relative file path against the same workspace root.
     output_dir = context.get('output_dir')
     if output_dir:
-        _resolve_workspace_input_paths(args, output_dir)
+        # RASTACODER_V12_PRESERVE_LIST_LOGICAL_PATH
+        # list_files owns its logical-path -> physical-path translation via
+        # resolve_list_path(_output_dir). Keeping its path logical here is
+        # essential: requested_path is later returned to the model and must
+        # remain '.', 'folder/sub', 'downloads/...', etc., never the private
+        # Android/app filesystem root. All other tools keep the universal
+        # input resolver because their implementations consume physical paths.
+        if tool_name != 'list_files':
+            _resolve_workspace_input_paths(args, output_dir)
         _resolve_output_paths(args, output_dir)
 
     _record_tool_diag(context, "paths_resolved", tool=tool_name, args=_safe_diag_value(args))
@@ -1377,44 +1388,9 @@ def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:
 
 
 # RASTACODER_V11_GLOBAL_WORKSPACE_PATHS
+# RASTACODER_V12_CENTRAL_PATH_CONTRACT
 def _workspace_relative_path(value: str, output_dir: str) -> str:
-    import os
-    raw = str(value or '').strip().replace('\\', '/')
-    if not raw or raw in {'.', './', 'output', 'output/', 'workspace', 'workspace/'}:
-        return os.path.normpath(output_dir)
-    if os.path.isabs(raw):
-        return os.path.normpath(raw)
-    while raw.startswith('./'):
-        raw = raw[2:]
-    android_roots = {
-        'downloads': '/storage/emulated/0/Download',
-        'documents': '/storage/emulated/0/Documents',
-        'pictures': '/storage/emulated/0/Pictures',
-        'screenshots': '/storage/emulated/0/Pictures/Screenshots',
-        'camera': '/storage/emulated/0/DCIM/Camera',
-    }
-    first, _, remainder = raw.partition('/')
-    if first.lower() in android_roots:
-        base = os.path.normpath(android_roots[first.lower()])
-        if not remainder:
-            return base
-        if remainder == '..' or remainder.startswith('../'):
-            raise ToolError(f'Path escapes Android root: {value}')
-        target = os.path.normpath(os.path.join(base, remainder))
-        if os.path.commonpath([base, target]) != base:
-            raise ToolError(f'Path escapes Android root: {value}')
-        return target
-    if raw.startswith('output/'):
-        raw = raw[len('output/'):]
-    elif raw.startswith('workspace/'):
-        raw = raw[len('workspace/'):]
-    if raw == '..' or raw.startswith('../'):
-        raise ToolError(f'Path escapes workspace root: {value}')
-    root = os.path.normpath(output_dir)
-    target = os.path.normpath(os.path.join(root, raw))
-    if os.path.commonpath([root, target]) != root:
-        raise ToolError(f'Path escapes workspace root: {value}')
-    return target
+    return resolve_model_path(value, output_dir, allow_android_roots=True)
 
 
 def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str) -> None:
@@ -1445,25 +1421,12 @@ def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str) -> Non
 
 
 def _resolve_output_paths(args: Dict[str, Any], output_dir: str) -> None:
-    """Resolve relative outputs inside the writable workspace without output/output duplication."""
+    """Resolve generated outputs through the same virtual-workspace contract."""
     import os
     os.makedirs(output_dir, exist_ok=True)
     value = args.get('output_path')
-    if isinstance(value, str) and not os.path.isabs(value):
-        raw = value.strip().replace('\\', '/')
-        while raw.startswith('./'):
-            raw = raw[2:]
-        if raw.startswith('output/'):
-            raw = raw[len('output/'):]
-        elif raw.startswith('workspace/'):
-            raw = raw[len('workspace/'):]
-        if raw == '..' or raw.startswith('../'):
-            raise ToolError(f'Output path escapes workspace root: {value}')
-        root = os.path.normpath(output_dir)
-        target = os.path.normpath(os.path.join(root, raw))
-        if os.path.commonpath([root, target]) != root:
-            raise ToolError(f'Output path escapes workspace root: {value}')
-        args['output_path'] = target
+    if isinstance(value, str):
+        args['output_path'] = resolve_output_path(value, output_dir)
 
 
 def _file_info(file_path: str, **kwargs) -> dict:

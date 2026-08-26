@@ -812,7 +812,8 @@ def normalize_tool_call(
         roots = {"output", "downloads", "documents", "pictures", "screenshots", "camera"}
         directory_key = str(directory or "").strip().lower()
         path_text = str(args.get("path") or "").strip().replace("\\", "/")
-        workspace_aliases = {"", ".", "./", "output", "output/", "workspace", "workspace/"}
+        # RASTACODER_V12_VIRTUAL_WORKSPACE_ALIASES
+        workspace_aliases = {"", ".", "./", "output", "output/", "workspace", "workspace/", "/output", "/output/", "/workspace", "/workspace/"}
 
         if directory_key in roots:
             if directory_key == "output":
@@ -841,12 +842,33 @@ def normalize_tool_call(
             args.pop("directory", None)
 
         path_text = str(args.get("path") or ".").strip().replace("\\", "/")
-        if path_text.lower() in workspace_aliases:
+        path_lower = path_text.lower()
+        if path_lower in workspace_aliases:
+            if path_text != ".":
+                notes.append(f"list_files:virtual_workspace_alias:{path_text}->.")
             args["path"] = "."
-        elif path_text.lower().startswith("output/"):
+        elif path_lower.startswith("/output/"):
+            args["path"] = path_text[len("/output/"):] or "."
+            notes.append(f"list_files:virtual_workspace_prefix:{path_text}->{args['path']}")
+        elif path_lower.startswith("/workspace/"):
+            args["path"] = path_text[len("/workspace/"):] or "."
+            notes.append(f"list_files:virtual_workspace_prefix:{path_text}->{args['path']}")
+        elif path_lower.startswith("output/"):
             args["path"] = path_text[7:] or "."
-        elif path_text.lower().startswith("workspace/"):
+        elif path_lower.startswith("workspace/"):
             args["path"] = path_text[10:] or "."
+        else:
+            # Small models also invent leading slashes for documented logical
+            # Android roots. Canonicalize those without accepting arbitrary OS roots.
+            for _root in ("downloads", "documents", "pictures", "screenshots", "camera"):
+                if path_lower == f"/{_root}":
+                    args["path"] = _root
+                    notes.append(f"list_files:logical_root:{path_text}->{_root}")
+                    break
+                if path_lower.startswith(f"/{_root}/"):
+                    args["path"] = _root + "/" + path_text[len(_root) + 2:]
+                    notes.append(f"list_files:logical_root:{path_text}->{args['path']}")
+                    break
 
         for bool_key in ("recursive", "include_directories"):
             if isinstance(args.get(bool_key), str):
