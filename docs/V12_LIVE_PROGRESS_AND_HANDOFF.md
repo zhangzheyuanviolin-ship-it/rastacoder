@@ -6,7 +6,7 @@ Started: 2026-08-26
 
 ## User real-device failure that triggered V12
 
-The first V11 local-model task failed:
+The first V11 local-model task failed.
 
 User request: inspect the workspace directory and report files.
 
@@ -15,43 +15,87 @@ Model emitted:
 {"name":"list_files","arguments":{"path":"/workspace","recursive":false,"pattern":null,"include_directories":true}}
 ```
 
-Execution log reached `paths_resolved` with the path still exactly `/workspace`, then failed:
+Execution reached `paths_resolved` with the path still exactly `/workspace`, then failed:
 `Directory not found or inaccessible: /workspace`
 
-The model then ended the turn and told the user it could not access the workspace.
+The next model response ended the turn and told the user it could not access the workspace.
 
-## Immediate confirmed defect
+## Exact V11 audit completed
 
-V11 did not canonicalize the absolute workspace alias `/workspace` to the app's real workspace/output root. The V11 implementation primarily normalized relative aliases such as `.`, `output`, and `workspace`. Because `/workspace` remained an absolute filesystem path, the executor attempted to access a literal OS path that does not exist in the Android runtime.
+Audited from the exact V11 final source HEAD:
+- `python/navixmind/tools/compat.py`
+- `python/navixmind/tools/__init__.py`
+- `python/navixmind/tools/extended_tools.py`
+- `python/navixmind/agent.py`
+- `scripts/apply_iteration_v11_workspace_openai.py`
+- `scripts/validate_iteration_v11.py`
+- `.github/workflows/v11-preflight.yml`
+- `docs/HANDOFF_QWEN3_WORKSPACE_OPENAI_COMPAT_V11.md`
 
-This means the V11 workspace hardening was incomplete. The prior diagnosis covered several real bugs, but it did not close the complete model-facing path contract.
+### Root cause 1 — compatibility alias set was incomplete
 
-## V12 non-negotiable goals
+V11 `list_files` compatibility recognized relative workspace aliases:
+`.`, `./`, `output`, `output/`, `workspace`, `workspace/`.
 
-1. Audit the exact V11 final source before modifying behavior further.
-2. Define one canonical model-facing workspace namespace that accepts the forms small models naturally generate, including at minimum `.`, `workspace`, `output`, `/workspace`, `/output`, and safe workspace-relative nested paths.
-3. Ensure list/read/write/modify/delete/file-info/archive/Office/media follow-up operations resolve the same namespace consistently.
-4. Do not let a model-generated virtual workspace alias escape into literal Android/Linux absolute-path handling.
-5. Preserve legitimate explicitly supported Android common roots (downloads/documents/pictures/screenshots/camera) and uploaded-file resolution.
-6. Add exact regression coverage for the user's literal failing call `path="/workspace"`.
-7. Add systemic regression cases for other likely absolute virtual aliases and multi-step workspace workflows.
-8. Audit model prompt/schema guidance so Qwen3-4B is strongly biased toward the canonical workspace path and can recover from a path error without immediately ending the task.
-9. Preserve V11 OpenAI-compatible provider and all inherited V9/V10/V11 gates.
-10. Follow release discipline: one deterministic no-APK preflight; only after it is green, one formal stable-signed ARM64 APK build/release.
+It did not recognize `/workspace`, `/output`, or nested absolute virtual aliases such as `/workspace/folder`. Therefore the user's literal call passed normalization with `repairs: []`, exactly as shown in the device diagnostics.
+
+### Root cause 2 — global resolver explicitly bypassed every absolute path
+
+V11 `_workspace_relative_path()` contains this ordering:
+1. recognize relative aliases;
+2. `if os.path.isabs(raw): return os.path.normpath(raw)`;
+3. only later resolve relative workspace and Android prefixes.
+
+Thus `/workspace` is treated as a real Linux/Android filesystem absolute path before virtual workspace semantics have any chance to apply. This is the direct reason the device `paths_resolved` event still showed `/workspace`.
+
+### Root cause 3 — extended tool resolver repeated the same bypass
+
+V11 `extended_tools._resolve_workspace_path()` and `_resolve_list_target()` also return absolute paths unchanged. Even if one execution route bypasses the global resolver, the lower layer still interprets `/workspace` literally. V11 therefore had two independent escape points for this exact small-model path form.
+
+### Root cause 4 — tool failure recovery encouraged an early end-turn
+
+V10/V11 `_tool_error_for_model()` only gives a specific retry instruction for argument/name schema errors, network errors, auth, etc. A `Directory not found or inaccessible` failure falls into the generic branch: do not repeat the identical call; correct it if clear, otherwise explain failure.
+
+The general system prompt also says that if a file is not found, ask the user to re-attach it. That guidance is inappropriate for a workspace-root discovery request. After the first path failure, Qwen3-4B therefore had no strong instruction to retry `list_files(path='.')` and naturally ended the turn. The user log shows exactly this behavior.
+
+### Root cause 5 — model-facing list results still leak physical filesystem paths
+
+V11 `list_files()` returns physical absolute `directory`, `workspace_root`, and absolute `entries[*].path`. `_prepare_tool_result_for_model()` serializes that dictionary for the local model. This means that even when the first list succeeds, later multi-step calls can be conditioned on physical paths rather than the one logical workspace namespace. It undermines the intended V11 contract and can reintroduce path drift in longer tasks.
+
+## V12 design decided after audit
+
+V12 will implement a single explicit model-path contract and use it at all relevant layers:
+
+1. Canonical model workspace root is `.`.
+2. Compatibility aliases accepted defensively: `workspace`, `output`, `/workspace`, `/output`, plus nested forms such as `/workspace/folder/sub` and `/output/folder/sub`.
+3. Common Android logical roots accept `downloads`, `documents`, `pictures`, `screenshots`, `camera`, including defensive leading-slash variants generated by small models.
+4. Uploaded files resolved by `_file_map` keep their trusted real absolute path.
+5. Physical app workspace paths remain internal execution details. Model-facing `list_files` results are converted back to logical paths before re-prefill.
+6. `list_files` prompt/schema explicitly instruct the model to use `path='.'` for workspace root and to avoid inventing OS roots.
+7. Workspace/list path failures return specific recoverable guidance: retry the workspace root with `path='.'`; do not ask for a file re-attachment when the requested object is the workspace itself.
+8. Exact regression test will reproduce the user's literal call `path='/workspace'` and require success against a temporary workspace.
+9. Systemic tests will cover `/output`, nested virtual aliases, list -> read -> write -> relist chains, model-facing logical-path sanitization, traversal rejection, and recovery text.
+10. Preserve OpenAI-compatible provider and inherited V9/V10/V11 gates.
+
+## Release discipline
+
+- One deterministic no-APK V12 preflight after code + validator review.
+- Only if preflight is fully green, trigger one formal stable-signed ARM64 V12 APK build/release.
+- No random APK build/release trial-and-error.
 
 ## Work status
 
 - [x] Created V12 branch from exact V11 final HEAD.
-- [x] Recorded the user's exact failure and first confirmed defect in-repo before code changes.
-- [ ] Fetch/audit exact V11 workspace resolver, compatibility normalization, tool schema/prompt, executor error-recovery code, and V11 handoff.
-- [ ] Identify all root causes exposed by this failure, including any second-order recovery/prompt issue.
-- [ ] Patch V12.
-- [ ] Add exact and systemic validator coverage.
-- [ ] Commit progress checkpoints after each major phase.
+- [x] Recorded the user's exact failure before code changes.
+- [x] Audited exact V11 workspace resolver, compatibility normalization, tool schema/prompt, Agent recovery, model-facing result path behavior, V11 validator and preflight.
+- [x] Identified five root causes / structural weaknesses above.
+- [ ] Add centralized V12 path contract and patch all relevant execution/model-facing layers.
+- [ ] Add exact + systemic V12 validator.
+- [ ] Commit code/validator checkpoint.
 - [ ] Run no-APK preflight.
 - [ ] Run one formal release build only after preflight is green.
 - [ ] Persist verified source + final handoff with hashes/URLs.
 
 ## Handoff rule if this agent is interrupted
 
-Continue only from this branch and this document. Do not restart from main or from an earlier V11 patch script. Re-read the user's literal failure above, fetch the exact files listed in the audit section once populated, and continue from the latest commit on this branch. Do not trigger an APK build until the deterministic V12 validator and inherited gates are green in a no-APK preflight.
+Continue only from `iteration/qwen3-workspace-alias-hardening-v12` and read this document first. Do not restart from main or re-run an older V11 patch script manually. Fetch the latest commit on this branch. Complete the unchecked items in order. Do not trigger an APK build until the deterministic V12 validator and all inherited V9/V10/V11 gates pass in the dedicated no-APK preflight.
