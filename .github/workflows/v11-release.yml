@@ -1,0 +1,297 @@
+name: Release RastaCoder Workspace OpenAI Compat v11
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-workspace-openai-compat-v11
+    paths:
+      - 'V11_RELEASE_TRIGGER.md'
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+  SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+  EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+  EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+  EXPECTED_PACKAGE: ai.navixmind
+  BUILD_NAME: 0.0.10
+  BUILD_NUMBER: '24'
+  OUTPUT_APK: RastaCoder-Qwen3-4B-workspace-openai-compat-v11-update.apk
+  RELEASE_TAG: qwen3-workspace-openai-compat-v11
+
+jobs:
+  release-v11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - name: Checkout v11 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Apply reviewed v11 patch
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/apply_iteration_v11_workspace_openai.py scripts/validate_iteration_v11.py
+          python3 scripts/apply_iteration_v11_workspace_openai.py
+
+      - name: Compile and run inherited plus v11 functional gates
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+          python3 scripts/run_validate_iteration_v9.py
+          python3 scripts/validate_iteration_v10.py
+          python3 scripts/validate_iteration_v11.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate before APK build
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Restore exact known-good MLC runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Restore stable RastaCoder signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 | base64 -d > android/app/rastacoder-dev.p12
+          test "$(sha256sum android/app/rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+          cat > android/key.properties <<'EOF'
+          storeFile=rastacoder-dev.p12
+          storePassword=RastaCoderDev2026!
+          keyAlias=rastacoder-dev
+          keyPassword=RastaCoderDev2026!
+          EOF
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          pattern = re.compile(r'(\bdebug\s*\{\s*\n\s*buildConfigField\s+"boolean",\s*"NAVIXMIND_DEBUG",\s*"true"\s*\n)', re.MULTILINE)
+          debug_slice = text[text.find('debug {'):text.find('release {')]
+          if 'signingConfig keystoreProperties.containsKey' not in debug_slice:
+              text, count = pattern.subn(r"\1            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug\n", text, count=1)
+              if count != 1:
+                  raise SystemExit(f'Expected one debug buildType anchor, found {count}')
+          text = text.replace('abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"', 'abiFilters "arm64-v8a"')
+          p.write_text(text)
+          PY
+
+      - name: Build one final stable-signed ARM64 v11 APK
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
+          test -s "$OUTPUT_APK"
+
+      - name: Verify final v11 APK package signature ABI runtime and regression gates
+        id: verify_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
+          CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+              abis = sorted({n.split('/')[1] for n in names if n.startswith('lib/') and len(n.split('/')) >= 3})
+              assert abis == ['arm64-v8a'], abis
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              data = z.read(runtime)
+              assert len(data) == 38786520, len(data)
+              digest = hashlib.sha256(data).hexdigest()
+              assert digest == os.environ['EXPECTED_RUNTIME_SHA256'], digest
+          PY
+          python3 scripts/run_validate_iteration_v9.py
+          python3 scripts/validate_iteration_v10.py
+          python3 scripts/validate_iteration_v11.py
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Final APK SHA-256: $OUT_SHA"
+          echo "Final APK size: $OUT_SIZE"
+
+      - name: Persist verified v11 source and handoff
+        env:
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+        run: |
+          set -euo pipefail
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
+          cat > docs/HANDOFF_QWEN3_WORKSPACE_OPENAI_COMPAT_V11.md <<EOF
+          # RastaCoder Qwen3 Workspace + OpenAI-Compatible v11 — verified release handoff
+
+          Current branch: \`iteration/qwen3-workspace-openai-compat-v11\`
+          Release tag: \`$RELEASE_TAG\`
+          Version: \`$BUILD_NAME\` / code \`$BUILD_NUMBER\`
+
+          ## V11 workspace/tool reliability fixes
+          - Removed human-readable optional-argument question-mark suffixes from compact local tool hints so Qwen3 4B no longer learns literal keys such as directory?, path?, recursive? and pattern?.
+          - Added a generic argument-key sanitizer that repairs trailing optional punctuation before schema validation, preserves canonical keys on collision, and records the repair.
+          - list_files now exposes one canonical model-facing path concept instead of competing directory/path semantics. Its path defaults to the app workspace root; common Android roots use path prefixes such as downloads/ and documents/.
+          - Boolean optionality pollution such as directory=true is repaired safely to the workspace default.
+          - list_files, file_manage, read tools, Office/media input paths and output paths now share one workspace-relative resolver. '.', './', output, workspace and output/... aliases converge on the same real output root.
+          - Relative nested paths such as folder/sub/file.txt are reusable across successive tool calls. output/... output names no longer create an accidental output/output directory.
+          - Workspace traversal outside the writable root is rejected before file access.
+          - Exact real-device failure calls from the V10 report are permanent V11 regression gates, plus a nested list/read/write multi-step chain.
+
+          ## V11 OpenAI-compatible cloud provider
+          - Added an accessible settings screen for Base URL, API Key and Model ID using secure storage for credentials.
+          - Added an OpenAI Compatible model choice without changing the local-first default.
+          - Supports service root URLs, /v1 base URLs and complete /chat/completions endpoints.
+          - Converts the existing canonical tool schemas to OpenAI function tools and converts tool_calls, legacy function_call, finish_reason and token usage back into the existing Agent internal format.
+          - Assistant tool calls and tool results round-trip through native OpenAI assistant/tool roles while sharing the same compatibility normalization, tool executor, postconditions and bounded tool-result layer used by the rest of the app.
+          - API keys are injected privately from secure storage and are excluded from model-facing tool arguments.
+
+          ## Inherited capability invariant
+          - 25 manually controlled Skills / exactly 37 canonical local functions.
+          - All V9 systemic postcondition/search/Office/media gates remain green.
+          - All V10 context-safe result, bounded local continuation and accessible conversation-history gates remain green.
+
+          ## Final verification
+          - Package: \`$EXPECTED_PACKAGE\`
+          - ABI: \`arm64-v8a\` only
+          - Stable signing certificate SHA-256: \`$EXPECTED_CERT_SHA256\`
+          - MLC runtime SHA-256: \`$EXPECTED_RUNTIME_SHA256\`
+          - APK SHA-256: \`$OUT_SHA\`
+          - APK size: \`$OUT_SIZE\` bytes
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            lib/core/services/storage_service.dart \
+            lib/core/models/model_registry.dart \
+            lib/core/bridge/bridge.dart \
+            lib/features/settings/settings_screen.dart \
+            lib/features/settings/openai_compatible_settings_screen.dart \
+            docs/HANDOFF_QWEN3_WORKSPACE_OPENAI_COMPAT_V11.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: persist verified workspace-openai-compat v11 source and handoff [skip ci]'
+            git push origin HEAD:iteration/qwen3-workspace-openai-compat-v11
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify_release.outputs.cert_sha }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          RastaCoder Qwen3 4B Workspace + OpenAI-Compatible v11 — stable-signed ARM64 in-place update.
+
+          This release fixes the intermittent workspace behavior reproduced from real-device logs: literal keys such as directory?, boolean directory=true, and directory=output/path=output now converge to one canonical workspace path. Relative nested paths are reusable across list/read/modify operations, eliminating process-current-directory false successes and output-root ambiguity.
+
+          V11 also adds a generic OpenAI-compatible Chat Completions provider with configurable Base URL, secure API Key and Model ID. Cloud models use the same tool schemas, compatibility layer, executor and postcondition checks as the local Qwen3 4B model, enabling direct tool-reliability comparison.
+
+          Verified final APK:
+          - package: $EXPECTED_PACKAGE
+          - versionName/versionCode: $BUILD_NAME / $BUILD_NUMBER
+          - signing certificate SHA-256: $CERT_SHA
+          - ABI: arm64-v8a only
+          - MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+          - APK SHA-256: $OUT_SHA
+          - APK size: $OUT_SIZE bytes
+          EOF
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target iteration/qwen3-workspace-openai-compat-v11 \
+            --title 'RastaCoder Qwen3 4B Workspace + OpenAI-Compatible v11' \
+            --notes-file release-notes.md
+
+      - name: Cleanup local signing material
+        if: always()
+        run: rm -f android/app/rastacoder-dev.p12 android/key.properties
