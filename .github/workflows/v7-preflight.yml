@@ -33,6 +33,8 @@ jobs:
           python3 scripts/apply_iteration_v7_ui.py
           python3 scripts/apply_iteration_v7_preoffice.py
           python3 scripts/apply_iteration_v7_office.py
+          python3 scripts/apply_iteration_v7_archive.py
+          python3 scripts/apply_iteration_v7_media.py
 
       - name: Compile Python sources and patch scripts
         shell: bash
@@ -45,10 +47,13 @@ jobs:
             scripts/apply_iteration_v7_ui.py \
             scripts/apply_iteration_v7_preoffice.py \
             scripts/apply_iteration_v7_office.py \
+            scripts/apply_iteration_v7_archive.py \
+            scripts/apply_iteration_v7_media.py \
             scripts/validate_iteration_v7.py \
             python/navixmind/tools/extended_tools.py \
             python/navixmind/tools/__init__.py \
             python/navixmind/tools/documents.py \
+            python/navixmind/tools/media.py \
             python/navixmind/tools/google_api.py \
             python/navixmind/agent.py
 
@@ -58,7 +63,13 @@ jobs:
           python3 -m pip install requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
 
       - name: Run systemic 21-Skill complete-capability validation
-        run: python3 scripts/validate_iteration_v7.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v7.py
+          grep -F 'Actually save the resolved media file' python/navixmind/tools/media.py
+          grep -F 'if os.path.isdir(fpath)' python/navixmind/tools/documents.py
+          grep -F 'output_path' python/navixmind/tools/media.py
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -84,4 +95,4 @@ jobs:
         run: |
           echo 'v7 preflight passed without building an APK.'
           echo '21 manual Skills cover 31 canonical local tools.'
-          echo 'File lifecycle, ZIP extract/list, image compose, PDF page management, PPTX/XLSX creation, FFmpeg custom/multi-input schema, accessibility semantics, and local-model restore gates passed.'
+          echo 'File lifecycle, ZIP create/list/extract, actual media download, image compose, PDF page management, PPTX/XLSX creation, FFmpeg custom/multi-input schema, accessibility semantics, and local-model restore gates passed.'
