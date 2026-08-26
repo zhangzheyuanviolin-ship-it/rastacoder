@@ -9,6 +9,7 @@ on:
       - 'python/navixmind/tools/search_tools.py'
       - 'scripts/apply_iteration_v8_*.py'
       - 'scripts/run_iteration_v8_backend.py'
+      - 'scripts/run_iteration_v8_search_ui.py'
       - 'scripts/validate_iteration_v8.py'
       - 'V8_PREFLIGHT_TRIGGER.md'
   workflow_dispatch:
@@ -31,7 +32,7 @@ jobs:
           set -euo pipefail
           python3 scripts/run_iteration_v8_backend.py
           python3 scripts/apply_iteration_v8_chat.py
-          python3 scripts/apply_iteration_v8_search_ui.py
+          python3 scripts/run_iteration_v8_search_ui.py
 
       - name: Compile Python sources and v8 patch scripts
         shell: bash
@@ -42,6 +43,7 @@ jobs:
             scripts/run_iteration_v8_backend.py \
             scripts/apply_iteration_v8_chat.py \
             scripts/apply_iteration_v8_search_ui.py \
+            scripts/run_iteration_v8_search_ui.py \
             scripts/validate_iteration_v8.py \
             python/navixmind/tools/search_tools.py \
             python/navixmind/tools/extended_tools.py \
