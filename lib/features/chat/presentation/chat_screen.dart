@@ -309,14 +309,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _syncModelRouteState() async {
+    // RASTACODER_V13_PROVIDER_ROUTE_SYNC
     final preferredModel = await StorageService.instance.getPreferredModel();
     final modelInfo = ModelRegistry.getById(preferredModel);
-    final hasKey = await StorageService.instance.hasApiKey();
-    final isOffline = modelInfo?.isOffline ?? false;
+    final routeProvider = modelInfo?.routeProvider ?? ModelRouteProvider.anthropic;
 
-    if (isOffline) {
-      // Offline routing never enters Claude-key input mode. The displayed model
-      // and the actual MLC runtime are synchronized to the same stored id.
+    if (routeProvider == ModelRouteProvider.local) {
+      final hasKey = await StorageService.instance.hasApiKey();
       final downloaded = LocalLLMService.instance.modelStates[preferredModel]?.downloadState ==
           ModelDownloadState.downloaded;
       if (downloaded &&
@@ -325,7 +324,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         try {
           await LocalLLMService.instance.loadModel(preferredModel);
         } catch (e) {
-          debugPrint('[V8 route restore] $e');
+          debugPrint('[V13 route restore] $e');
         }
       }
       if (!mounted) return;
@@ -336,6 +335,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return;
     }
 
+    if (routeProvider == ModelRouteProvider.openAICompatible) {
+      // Base URL + Model ID define readiness. Provider API keys are optional
+      // because some OpenAI-compatible endpoints are local or unauthenticated.
+      final config = await StorageService.instance.getOpenAICompatibleConfig();
+      final configured = (config['base_url'] ?? '').trim().isNotEmpty &&
+          (config['model'] ?? '').trim().isNotEmpty;
+      if (!mounted) return;
+      setState(() {
+        _hasApiKey = configured;
+        _awaitingApiKey = false;
+      });
+      return;
+    }
+
+    final hasKey = await StorageService.instance.hasApiKey();
     if (!mounted) return;
     setState(() {
       _hasApiKey = hasKey;
@@ -345,11 +359,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _ensureSelectedRouteReadyForSend() async {
+    // RASTACODER_V13_PROVIDER_ROUTE_READY
     final preferredModel = await StorageService.instance.getPreferredModel();
     final modelInfo = ModelRegistry.getById(preferredModel);
-    final isOffline = modelInfo?.isOffline ?? false;
+    final routeProvider = modelInfo?.routeProvider ?? ModelRouteProvider.anthropic;
 
-    if (isOffline) {
+    if (routeProvider == ModelRouteProvider.local) {
       if (mounted && _awaitingApiKey) {
         setState(() => _awaitingApiKey = false);
       }
@@ -376,6 +391,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       return true;
     }
 
+    if (routeProvider == ModelRouteProvider.openAICompatible) {
+      final config = await StorageService.instance.getOpenAICompatibleConfig();
+      final baseUrl = (config['base_url'] ?? '').trim();
+      final model = (config['model'] ?? '').trim();
+      if (baseUrl.isEmpty || model.isEmpty) {
+        _addRoutingError('OpenAI 兼容接口尚未配置完整。请在设置中填写 Base URL 和 Model ID。API Key 可按服务商要求选填。');
+        return false;
+      }
+      if (mounted) {
+        setState(() {
+          _hasApiKey = true;
+          _awaitingApiKey = false;
+        });
+      }
+      return true;
+    }
+
     final hasKey = await StorageService.instance.hasApiKey();
     if (mounted) {
       setState(() {
@@ -384,7 +416,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
     }
     if (!hasKey) {
-      _addRoutingError('当前选择的是云端模型，但尚未配置 Claude API Key。请到设置中配置 API Key，您的聊天文本不会再被当作 API Key 输入。');
+      _addRoutingError('当前选择的是 Claude 云端模型，但尚未配置 Claude API Key。请到设置中配置 API Key。');
       return false;
     }
     await _doSendApiKey();

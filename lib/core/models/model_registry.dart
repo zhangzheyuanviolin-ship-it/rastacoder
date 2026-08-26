@@ -5,6 +5,9 @@
 
 enum ModelProvider { cloud, offline }
 
+// RASTACODER_V13_PROVIDER_IDENTITY
+enum ModelRouteProvider { local, anthropic, openAICompatible }
+
 enum ModelDownloadState { notDownloaded, downloading, downloaded, error }
 
 class ModelInfo {
@@ -34,6 +37,12 @@ class ModelInfo {
 
   bool get isOffline => provider == ModelProvider.offline;
   bool get isCloud => provider == ModelProvider.cloud;
+
+  ModelRouteProvider get routeProvider {
+    if (isOffline) return ModelRouteProvider.local;
+    if (id == 'openai-compatible') return ModelRouteProvider.openAICompatible;
+    return ModelRouteProvider.anthropic;
+  }
 
   /// Human-readable estimated size (e.g. "400 MB", "1.0 GB").
   String get estimatedSizeFormatted {

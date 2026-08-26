@@ -6,6 +6,7 @@ This module provides tool definitions and execution logic.
 
 from typing import Any, Dict
 from pathlib import Path
+import copy
 
 from .web import web_fetch, headless_browser
 from .documents import (
@@ -976,13 +977,13 @@ LOCAL_TOOL_PROMPT_HINTS = {
     "pdf_manage": "pdf_manage(action, input_path, input_paths, output_path, pages, rotation) ; action=merge|split|extract_pages|reorder|delete_pages|rotate",
     "convert_document": "convert_document(input_path, output_format, output_path) ; output_format=pdf|html|txt|docx",
     "create_docx": "create_docx(output_path, content, title)",
-    "read_docx": "read_docx(docx_path, extract)",
+    "read_docx": "read_docx(docx_path) ; ordinary reads need only the file path",
     "modify_docx": "modify_docx(input_path, output_path, operations)",
     "create_pptx": "create_pptx(output_path, title, slides)",
-    "read_pptx": "read_pptx(pptx_path, extract)",
+    "read_pptx": "read_pptx(pptx_path) ; ordinary reads need only the file path",
     "modify_pptx": "modify_pptx(input_path, output_path, operations)",
     "create_xlsx": "create_xlsx(output_path, sheets)",
-    "read_xlsx": "read_xlsx(xlsx_path, sheet, range, extract)",
+    "read_xlsx": "read_xlsx(xlsx_path, sheet, range) ; omit sheet/range for the whole workbook",
     "modify_xlsx": "modify_xlsx(input_path, output_path, operations)",
     "ocr_image": "ocr_image(image_path)",
     "image_compose": "image_compose(input_paths, output_path, operation, params) ; operation=concat_horizontal|concat_vertical|overlay|resize|adjust|crop|grayscale|blur|rotate|flip|convert",
@@ -1003,6 +1004,66 @@ LOCAL_TOOL_PROMPT_HINTS = {
 }
 
 
+# RASTACODER_V13_SMALL_MODEL_TOOL_ABI
+# Strict executor/cloud schemas remain unchanged. Local 3B-4B models receive a
+# deep-copied projection which hides deterministic app-defaultable selectors.
+_LOCAL_MODEL_HIDDEN_ARGS = {
+    "read_docx": {"extract"},
+    "read_pptx": {"extract"},
+    "read_xlsx": {"extract"},
+    "web_fetch": {"extract_mode"},
+}
+
+
+def get_local_tool_argument_classes():
+    # Classify every local schema property for audit/fuzz coverage.
+    result = {}
+    for tool in OFFLINE_TOOLS_SCHEMA:
+        schema = tool.get("input_schema") or {}
+        props = schema.get("properties") or {}
+        required = set(schema.get("required") or [])
+        hidden = set(_LOCAL_MODEL_HIDDEN_ARGS.get(tool.get("name"), set()))
+        classes = {}
+        for key, spec in props.items():
+            if key in required:
+                classes[key] = "model_essential"
+            elif key in hidden or (isinstance(spec, dict) and "default" in spec):
+                classes[key] = "app_defaultable"
+            else:
+                classes[key] = "advanced_optional"
+        result[str(tool.get("name"))] = classes
+    return result
+
+
+def _project_tool_for_local_model(tool):
+    projected = copy.deepcopy(tool)
+    name = str(projected.get("name") or "")
+    schema = projected.get("input_schema") or {}
+    props = schema.get("properties") or {}
+    for key in _LOCAL_MODEL_HIDDEN_ARGS.get(name, set()):
+        props.pop(key, None)
+        required = schema.get("required")
+        if isinstance(required, list) and key in required:
+            required.remove(key)
+    if name == "read_docx":
+        projected["description"] = (
+            "Read a DOCX file. Give only docx_path for an ordinary full read; "
+            "the app chooses safe extraction defaults."
+        )
+    elif name == "read_pptx":
+        projected["description"] = (
+            "Read a PPTX file. Give only pptx_path for an ordinary full read; "
+            "the app chooses safe extraction defaults."
+        )
+    elif name == "read_xlsx":
+        projected["description"] = (
+            "Read an XLSX workbook. Give xlsx_path; sheet/range are optional targeting controls."
+        )
+    elif name == "web_fetch":
+        projected["description"] = "Fetch the readable text of a webpage. Give the URL."
+    return projected
+
+
 def _offline_tool_names():
     return {tool["name"] for tool in OFFLINE_TOOLS_SCHEMA}
 
@@ -1020,7 +1081,11 @@ def get_enabled_tool_names(skill_ids=None):
 
 def get_offline_tools_for_skills(skill_ids=None):
     enabled = get_enabled_tool_names(skill_ids)
-    return [tool for tool in OFFLINE_TOOLS_SCHEMA if tool["name"] in enabled]
+    return [
+        _project_tool_for_local_model(tool)
+        for tool in OFFLINE_TOOLS_SCHEMA
+        if tool["name"] in enabled
+    ]
 
 
 def build_offline_skill_prompt(skill_ids=None):
