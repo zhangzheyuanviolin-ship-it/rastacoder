@@ -1,6 +1,11 @@
 name: Release RastaCoder Chat Routing Search v8
 
 on:
+  push:
+    branches:
+      - iteration/qwen3-chat-routing-search-v8
+    paths:
+      - 'V8_RELEASE_TRIGGER.md'
   workflow_dispatch:
 
 permissions:
@@ -270,7 +275,7 @@ jobs:
           cat > release-notes.md <<EOF
           RastaCoder Qwen3 4B Chat Routing + Search v8 — stable-signed ARM64 in-place update.
 
-          This release is focused on the real-device regressions found after v7: cold-start local-model routing, screen-reader chat clutter, real Thinking/Diagnostics expansion behavior, and false-success recursive deletion. It also adds four independent network-search Skills.
+          This release focuses on the real-device regressions found after v7: cold-start local-model routing, screen-reader chat clutter, real Thinking/Diagnostics expansion behavior, and false-success recursive deletion. It also adds four independent network-search Skills.
 
           Major changes:
           - persisted local-model selection is synchronized with the actual MLC runtime before every send;
