@@ -190,6 +190,8 @@ class PythonBridge {
     // Search credentials stay in secure storage and are injected only into
     // execution context; they are never model-visible tool arguments.
     final searchApiKeys = await StorageService.instance.getConfiguredSearchApiKeys();
+    final searchProviderSettings =
+        await StorageService.instance.getAllSearchProviderSettings();
 
     // Get writable output directory for tools that create files
     // Use external storage so files are visible in file managers
@@ -225,6 +227,7 @@ class PythonBridge {
       'output_dir': outputDir,
       if (googleToken != null) 'google_access_token': googleToken,
       if (searchApiKeys.isNotEmpty) 'search_api_keys': searchApiKeys,
+      'search_provider_settings': searchProviderSettings,
       if (customSystemPrompt != null && !isOfflineModel) 'system_prompt': customSystemPrompt,
       if (isOfflineModel && modelInfo != null) 'offline_model_info': {
         'display_name': modelInfo.displayName,

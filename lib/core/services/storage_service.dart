@@ -42,6 +42,23 @@ class StorageService {
   static const _keyLocalBenchmarkHistory = 'local_benchmark_history';
   // RASTACODER_V8_SEARCH_KEYS
   static const _searchApiProviders = <String>{'anysearch', 'exa', 'langsearch', 'tavily'};
+  // RASTACODER_V9_SEARCH_SETTINGS
+  static const Map<String, Map<String, dynamic>> _searchSettingsDefaults = {
+    'anysearch': {'max_results': 5, 'domain': '', 'sub_domain': ''},
+    'exa': {
+      'num_results': 5, 'topic': 'general', 'search_type': 'auto',
+      'start_published_date': '', 'include_domains': <String>[],
+      'exclude_domains': <String>[], 'include_text': true,
+      'include_summary': true, 'include_highlights': false,
+    },
+    'langsearch': {'count': 5, 'freshness': 'noLimit', 'summary': true},
+    'tavily': {
+      'max_results': 5, 'topic': 'general', 'search_depth': 'basic',
+      'include_answer': true, 'time_range': '',
+      'include_domains': <String>[], 'exclude_domains': <String>[],
+      'include_raw_content': false,
+    },
+  };
 
   /// Store Claude API key securely
   Future<void> setApiKey(String key) async {
@@ -98,6 +115,58 @@ class StorageService {
     for (final provider in _searchApiProviders) {
       final value = await getSearchApiKey(provider);
       if (value != null) result[provider] = value;
+    }
+    return result;
+  }
+
+  String _searchSettingsStorageKey(String provider) {
+    final normalized = provider.trim().toLowerCase();
+    if (!_searchApiProviders.contains(normalized)) {
+      throw ArgumentError('Unsupported search provider: $provider');
+    }
+    return 'search_provider_settings_$normalized';
+  }
+
+  Map<String, dynamic> defaultSearchProviderSettings(String provider) {
+    final normalized = provider.trim().toLowerCase();
+    final defaults = _searchSettingsDefaults[normalized];
+    if (defaults == null) {
+      throw ArgumentError('Unsupported search provider: $provider');
+    }
+    return Map<String, dynamic>.from(defaults.map((key, value) =>
+        MapEntry(key, value is List ? List<dynamic>.from(value) : value)));
+  }
+
+  Future<Map<String, dynamic>> getSearchProviderSettings(String provider) async {
+    final defaults = defaultSearchProviderSettings(provider);
+    final raw = await _storage.read(key: _searchSettingsStorageKey(provider));
+    if (raw == null || raw.isEmpty) return defaults;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        for (final entry in decoded.entries) {
+          defaults[entry.key.toString()] = entry.value;
+        }
+      }
+    } catch (_) {}
+    return defaults;
+  }
+
+  Future<void> setSearchProviderSettings(
+    String provider,
+    Map<String, dynamic> settings,
+  ) async {
+    final merged = defaultSearchProviderSettings(provider)..addAll(settings);
+    await _storage.write(
+      key: _searchSettingsStorageKey(provider),
+      value: jsonEncode(merged),
+    );
+  }
+
+  Future<Map<String, Map<String, dynamic>>> getAllSearchProviderSettings() async {
+    final result = <String, Map<String, dynamic>>{};
+    for (final provider in _searchApiProviders) {
+      result[provider] = await getSearchProviderSettings(provider);
     }
     return result;
   }

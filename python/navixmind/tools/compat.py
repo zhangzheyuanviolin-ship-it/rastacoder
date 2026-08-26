@@ -494,9 +494,8 @@ def _repair_with_context(name: str, args: Dict[str, Any], context: Optional[Dict
         notes.append("default:output_path=archive.zip")
 
     if name in {"modify_docx", "modify_pptx", "modify_xlsx"} and not args.get("output_path") and isinstance(args.get("input_path"), str):
-        ext = {"modify_docx": "docx", "modify_pptx": "pptx", "modify_xlsx": "xlsx"}[name]
-        args["output_path"] = _derive_output(args["input_path"], "modified", ext)
-        notes.append("derived:output_path")
+        args["output_path"] = args["input_path"]
+        notes.append("default:output_path=in_place")
 
     if name == "smart_crop" and not args.get("output_path") and isinstance(args.get("input_path"), str):
         ext = _extension(args["input_path"]) or "mp4"
@@ -638,19 +637,38 @@ def normalize_tool_call(
                 "frame": "extract_frame", "screenshot": "extract_frame",
                 "transcode": "convert", "conversion": "convert",
                 "convert_audio": "extract_audio", "audio_convert": "extract_audio", "audio_conversion": "extract_audio",
+                "speed": "speed", "tempo": "speed", "playback_speed": "speed",
+                "speed_up": "speed", "speedup": "speed", "accelerate": "speed",
+                "slow_down": "speed", "slowdown": "speed",
             }
             normalized = aliases.get(raw, raw)
             if normalized != raw:
                 notes.append(f"operation:{raw}->{normalized}")
             args["operation"] = normalized
 
-        params = args.get("params")
-        if not isinstance(params, dict):
-            params = {}
-        for key in ("start", "end", "duration", "width", "height", "x", "y", "vf", "af", "video_filter", "audio_filter", "format", "bitrate", "timestamp", "codec", "quality", "args"):
+        raw_params = args.get("params")
+        params = dict(raw_params) if isinstance(raw_params, dict) else {}
+        if args.get("operation") == "speed" and not isinstance(raw_params, dict) and raw_params not in (None, ""):
+            try:
+                params["factor"] = float(str(raw_params).strip())
+                notes.append("params:scalar->params.factor")
+            except (TypeError, ValueError):
+                pass
+        for key in ("start", "end", "duration", "width", "height", "x", "y", "vf", "af", "video_filter", "audio_filter", "format", "bitrate", "timestamp", "codec", "quality", "args", "factor", "speed", "rate"):
             if key in args and key not in params:
                 params[key] = args.pop(key)
                 notes.append(f"top-level:{key}->params.{key}")
+        if args.get("operation") == "speed" and "factor" not in params:
+            for alias in ("speed", "rate"):
+                if alias in params:
+                    params["factor"] = params.pop(alias)
+                    notes.append(f"params.{alias}->params.factor")
+                    break
+        if args.get("operation") == "speed" and "factor" in params:
+            try:
+                params["factor"] = float(params["factor"])
+            except (TypeError, ValueError):
+                pass
         if "codec" in params:
             codec_raw = str(params["codec"]).lower().strip()
             codec = {"h264": "libx264", "avc": "libx264", "h265": "libx265", "hevc": "libx265"}.get(codec_raw, codec_raw)
@@ -759,10 +777,36 @@ def normalize_tool_call(
                 notes.append(f"action:{action}->{mapped}")
             args["action"] = mapped
 
+    # Search functions expose only user intent to the model. Provider knobs are
+    # merged later from user settings. Repair common 4B aliases before stripping noise.
+    search_tools = {"anysearch_search", "exa_search", "langsearch_search", "tavily_search"}
+    if name in search_tools:
+        if not isinstance(args.get("query"), str) or not args.get("query", "").strip():
+            for alias in ("q", "keyword", "keywords", "search_query", "text"):
+                value = args.get(alias)
+                if isinstance(value, str) and value.strip():
+                    args["query"] = value.strip()
+                    notes.append(f"{alias}->query")
+                    break
+        if not isinstance(args.get("query"), str) or not args.get("query", "").strip():
+            topic_value = args.get("topic")
+            if isinstance(topic_value, str) and topic_value.strip():
+                args["query"] = topic_value.strip()
+                notes.append("topic->query")
+        if not isinstance(args.get("query"), str) or not args.get("query", "").strip():
+            free_value = _freeform(args)
+            if free_value:
+                args["query"] = free_value
+                notes.append("freeform->query")
+        for key in list(args.keys()):
+            if key != "query":
+                args.pop(key, None)
+                notes.append(f"search_setting_removed:{key}")
+
     # Generic free-form keys are compatibility scaffolding, never canonical
     # tool arguments. Remove them after extracting deterministic information.
     for key in ("param", "request", "instruction", "command", "query"):
-        if key == "query" and name == "gmail":
+        if key == "query" and name in ({"gmail"} | search_tools):
             continue
         if key in args:
             args.pop(key, None)

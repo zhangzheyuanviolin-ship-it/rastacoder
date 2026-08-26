@@ -104,18 +104,21 @@ def download_media(
             parent = os.path.dirname(final_path)
             if parent:
                 os.makedirs(parent, exist_ok=True)
-            request_headers = best_format.get('http_headers') or headers
+            request_headers = best_format.get('http_headers') or info.get('http_headers') or {}
             with requests.get(download_url, headers=request_headers, stream=True, timeout=60) as response:
                 response.raise_for_status()
                 with open(final_path, 'wb') as out:
                     for chunk in response.iter_content(chunk_size=1024 * 1024):
                         if chunk:
                             out.write(chunk)
+            size_bytes = os.path.getsize(final_path)
+            if size_bytes <= 0:
+                raise ToolError("Downloaded media file is empty.")
             return {
                 "title": title,
                 "duration": duration,
                 "output_path": final_path,
-                "size_bytes": os.path.getsize(final_path),
+                "size_bytes": size_bytes,
                 "format": format,
                 "extension": ext,
                 "extractor": extractor,

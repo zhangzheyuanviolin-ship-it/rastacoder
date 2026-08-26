@@ -5,6 +5,7 @@ This module provides tool definitions and execution logic.
 """
 
 from typing import Any, Dict
+from pathlib import Path
 
 from .web import web_fetch, headless_browser
 from .documents import (
@@ -832,6 +833,14 @@ _existing_offline_names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
 OFFLINE_TOOLS_SCHEMA.extend(t for t in _V8_SEARCH_TOOL_SCHEMAS if t["name"] not in _existing_offline_names)
 
 
+# RASTACODER_V9_SEARCH_INTENT_ONLY
+for _schema_list in (TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA):
+    for _tool in _schema_list:
+        if _tool.get("name") in {"anysearch_search", "exa_search", "langsearch_search", "tavily_search"}:
+            _tool["input_schema"] = {"type": "object", "properties": {"query": {"type": "string", "description": "Search keywords or natural-language search question"}}, "required": ["query"]}
+            _tool["description"] = "Search the web. Only supply query; result count/type/filter settings are configured by the user."
+
+
 # RASTACODER_V7_COMPLETE_SKILLS
 # Every structured v7 utility is available to the local model when its Skill is
 # enabled. Keep the schema gated by Skills rather than dumping all tools into
@@ -861,14 +870,15 @@ for _schema_list in (TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA):
         _op = _props["operation"]
         _op["enum"] = [
             "trim", "crop", "resize", "filter", "custom", "extract_audio",
-            "extract_frame", "convert", "concat", "mix_audio", "merge_av"
+            "extract_frame", "convert", "concat", "mix_audio", "merge_av", "speed"
         ]
         _op["description"] = "Structured media operation; custom is the advanced raw FFmpeg escape hatch"
         _props["params"]["description"] = (
             "trim {start,end/duration}; crop {width,height,x,y}; resize {width,height}; "
             "filter {vf,af}; custom {args}; extract_audio {format,bitrate}; "
             "extract_frame {timestamp}; convert {codec,quality}; concat {media_type:audio|video}; "
-            "mix_audio {duration}; merge_av uses first input as video and second as audio."
+            "mix_audio {duration}; merge_av uses first input as video and second as audio; "
+            "speed {factor} changes playback speed, for example factor=1.5."
         )
         # input_path is operation-dependent now; executor performs the precise check.
         _tool["input_schema"]["required"] = ["output_path", "operation"]
@@ -954,19 +964,19 @@ LOCAL_TOOL_PROMPT_HINTS = {
     "ocr_image": "ocr_image(image_path)",
     "image_compose": "image_compose(input_paths, output_path, operation, params?) ; operation=concat_horizontal|concat_vertical|overlay|resize|adjust|crop|grayscale|blur|rotate|flip|convert",
     "smart_crop": "smart_crop(input_path, output_path, aspect_ratio?)",
-    "ffmpeg_process": "ffmpeg_process(input_path?, input_paths?, output_path, operation, params?) ; operation=trim|crop|resize|filter|custom|extract_audio|extract_frame|convert|concat|mix_audio|merge_av",
+    "ffmpeg_process": "ffmpeg_process(input_path?, input_paths?, output_path, operation, params?) ; operation=trim|crop|resize|filter|custom|extract_audio|extract_frame|convert|concat|mix_audio|merge_av|speed ; speed params={factor:1.5}",
     "download_media": "download_media(url, format?)",
     "web_fetch": "web_fetch(url, extract_mode?)",
     "headless_browser": "headless_browser(url, wait_seconds?, extract_selector?)",
     "python_execute": "python_execute(code, file_paths?)",
     "gmail": "gmail(action, query?, message_id?) ; action=list|read",
     "google_calendar": "google_calendar(action, date_range?, event?, event_id?) ; action=list|create|delete|update",
-    "anysearch_search": "anysearch_search(query, max_results?, domain?, sub_domain?, sub_domain_params?)",
+    "anysearch_search": "anysearch_search(query)",
     "anysearch_extract": "anysearch_extract(url)",
     "anysearch_get_sub_domains": "anysearch_get_sub_domains(domain? or domains?)",
-    "exa_search": "exa_search(query, num_results?, topic?, search_type?, start_published_date?, include_domains?, exclude_domains?, include_text?, include_summary?, include_highlights?)",
-    "langsearch_search": "langsearch_search(query, count?, freshness?, summary?)",
-    "tavily_search": "tavily_search(query, max_results?, topic?, search_depth?, include_answer?, time_range?, include_domains?, exclude_domains?, include_raw_content?)",
+    "exa_search": "exa_search(query)",
+    "langsearch_search": "langsearch_search(query)",
+    "tavily_search": "tavily_search(query)",
 }
 
 
@@ -1065,6 +1075,73 @@ def _record_tool_diag(context: Dict[str, Any], stage: str, **fields: Any) -> Non
     event = {"stage": stage}
     event.update({k: _safe_diag_value(v) for k, v in fields.items()})
     events.append(event)
+
+
+def _verify_output_artifact(path: Any) -> int:
+    import os
+    if not isinstance(path, str) or not path or not os.path.isfile(path):
+        raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Output file missing: {path}")
+    size = os.path.getsize(path)
+    if size <= 0:
+        raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Output file is empty: {path}")
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".zip":
+            import zipfile
+            with zipfile.ZipFile(path, "r") as zf:
+                bad = zf.testzip()
+                if bad is not None:
+                    raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Corrupt ZIP member: {bad}")
+        elif ext == ".pdf":
+            from pypdf import PdfReader
+            if len(PdfReader(path).pages) < 1:
+                raise ToolError("[TOOL_POSTCONDITION_ERROR] Generated PDF has no pages")
+        elif ext == ".docx":
+            from docx import Document
+            Document(path)
+        elif ext == ".pptx":
+            from pptx import Presentation
+            Presentation(path)
+        elif ext == ".xlsx":
+            from openpyxl import load_workbook
+            wb = load_workbook(path, read_only=True, data_only=False)
+            if not wb.sheetnames:
+                wb.close(); raise ToolError("[TOOL_POSTCONDITION_ERROR] Generated XLSX has no sheets")
+            wb.close()
+        elif ext in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}:
+            from PIL import Image
+            with Image.open(path) as image:
+                image.verify()
+    except ToolError:
+        raise
+    except Exception as exc:
+        raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Cannot reopen generated artifact {path}: {exc}") from exc
+    return size
+
+
+def _verify_tool_result(tool_name: str, args: Dict[str, Any], result: Any) -> Any:
+    if not isinstance(result, dict):
+        return result
+    if result.get("success") is False:
+        raise ToolError(f"[TOOL_POSTCONDITION_ERROR] {tool_name} returned success=false")
+    paths = []
+    if isinstance(result.get("output_path"), str) and result.get("output_path"):
+        paths.append(result["output_path"])
+    if isinstance(result.get("output_paths"), list):
+        paths.extend(p for p in result["output_paths"] if isinstance(p, str) and p)
+    sizes = {p: _verify_output_artifact(p) for p in dict.fromkeys(paths)}
+    if tool_name == "write_file" and paths:
+        expected = str(args.get("content", ""))
+        try:
+            actual = Path(paths[0]).read_text(encoding="utf-8")
+        except Exception as exc:
+            raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Cannot read back text output: {exc}") from exc
+        if actual != expected:
+            raise ToolError("[TOOL_POSTCONDITION_ERROR] Written text differs from requested content")
+    if paths:
+        result["verified_output"] = True
+        result["verified_size_bytes"] = sum(sizes.values())
+    return result
 
 
 def execute_tool(
@@ -1221,7 +1298,8 @@ def execute_tool(
     except TypeError as e:
         raise ToolError(f"[MODEL_TOOL_ARGUMENT_ERROR] {tool_name}: {str(e)}")
 
-    return tool_func(**args)
+    result = tool_func(**args)
+    return _verify_tool_result(tool_name, args, result)
 
 
 def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:

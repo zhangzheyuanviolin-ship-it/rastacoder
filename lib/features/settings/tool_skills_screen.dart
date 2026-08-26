@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 import '../../core/models/tool_skill.dart';
 import '../../core/services/storage_service.dart';
+import 'search_provider_settings_screen.dart';
 
 // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
 class ToolSkillsScreen extends StatefulWidget {
@@ -181,6 +182,34 @@ class _ToolSkillsScreenState extends State<ToolSkillsScreen> {
                 onPressed: () => _configureSearchApiKey(provider),
                 icon: const Icon(Icons.key, size: 18),
                 label: Text(configured ? '$providerLabel API Key：已配置' : '配置 $providerLabel API Key'),
+              ),
+            ),
+          ),
+        if (provider != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+            child: Semantics(
+              button: true,
+              label: '$providerLabel 搜索设置，双击配置返回数量、搜索类型和过滤条件',
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final saved = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SearchProviderSettingsScreen(
+                        provider: provider,
+                        providerLabel: providerLabel ?? provider,
+                      ),
+                    ),
+                  );
+                  if (saved == true && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('$providerLabel 搜索设置已保存')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.tune, size: 18),
+                label: Text('配置 $providerLabel 搜索设置'),
               ),
             ),
           ),

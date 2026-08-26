@@ -267,6 +267,28 @@ class NativeToolExecutor {
     }
   }
 
+  String _buildATempoChain(double factor) {
+    if (!factor.isFinite || factor <= 0 || factor > 16.0) {
+      throw ArgumentError('Speed factor must be greater than 0 and at most 16');
+    }
+    var remaining = factor;
+    final filters = <String>[];
+    while (remaining > 2.0) {
+      filters.add('atempo=2.0');
+      remaining /= 2.0;
+    }
+    while (remaining < 0.5) {
+      filters.add('atempo=0.5');
+      remaining /= 0.5;
+    }
+    final value = remaining
+        .toStringAsFixed(6)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+    filters.add('atempo=$value');
+    return filters.join(',');
+  }
+
   /// Execute FFmpeg operation
   Future<Map<String, dynamic>> _executeFFmpeg(Map<String, dynamic> args) async {
     final requestedInputPath = args['input_path'] as String?;
@@ -338,6 +360,25 @@ class NativeToolExecutor {
         }
         command = '-y -i "${effectiveInputs[0]}" -i "${effectiveInputs[1]}" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -shortest "$outputPath"';
         break;
+      case 'speed':
+        final rawFactor = params['factor'] ?? params['speed'] ?? params['rate'];
+        final factor = rawFactor is num
+            ? rawFactor.toDouble()
+            : double.tryParse(rawFactor?.toString() ?? '');
+        if (factor == null || !factor.isFinite || factor <= 0 || factor > 16.0) {
+          throw ArgumentError('Speed requires params.factor > 0 and <= 16, for example 1.5');
+        }
+        final audioFilter = _buildATempoChain(factor);
+        const audioExts = <String>{'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.wma', '.amr'};
+        final dot = inputPath.lastIndexOf('.');
+        final inputExt = dot >= 0 ? inputPath.substring(dot).toLowerCase() : '';
+        if (audioExts.contains(inputExt)) {
+          command = '-y -i "$inputPath" -filter:a "$audioFilter" "$outputPath"';
+        } else {
+          command = '-y -i "$inputPath" -filter:v "setpts=PTS/$factor" -filter:a "$audioFilter" -c:v libx264 -pix_fmt yuv420p -c:a aac "$outputPath"';
+        }
+        break;
+
       case 'crop':
         final x = params['x'] ?? 0;
         final y = params['y'] ?? 0;
@@ -526,6 +567,16 @@ class NativeToolExecutor {
       command = command.replaceAll('"$outputPath"', '"$tempPath"');
     }
 
+    // Capture source duration for operations whose postcondition depends on it.
+    double? inputMediaDuration;
+    if (operation == 'speed') {
+      try {
+        final probeSession = await FFprobeKit.getMediaInformation(inputPath);
+        final durationStr = probeSession.getMediaInformation()?.getDuration();
+        if (durationStr != null) inputMediaDuration = double.tryParse(durationStr);
+      } catch (_) {}
+    }
+
     // Execute FFmpeg command
     debugPrint('[FFmpeg] Command: $command');
     final startTime = DateTime.now();
@@ -559,6 +610,9 @@ class NativeToolExecutor {
           }
         }
         files.sort();
+        if (files.isEmpty || totalSize <= 0) {
+          throw Exception('FFmpeg reported success but generated no non-empty output files');
+        }
         return {
           'success': true,
           'output_paths': files,
@@ -570,7 +624,13 @@ class NativeToolExecutor {
       }
 
       final outputFile = File(outputPath);
+      if (!await outputFile.exists()) {
+        throw Exception('FFmpeg reported success but output file is missing');
+      }
       final outputSize = await outputFile.length();
+      if (outputSize <= 0) {
+        throw Exception('FFmpeg reported success but output file is empty');
+      }
 
       // Probe output file for actual media duration
       double? mediaDuration;
@@ -585,6 +645,27 @@ class NativeToolExecutor {
         // Probing may fail for non-media outputs (e.g., images) — that's fine
       }
 
+      bool durationVerified = false;
+      double? verifiedSpeedFactor;
+      if (operation == 'speed' && inputMediaDuration != null && mediaDuration != null) {
+        final rawFactor = params['factor'] ?? params['speed'] ?? params['rate'];
+        final factor = rawFactor is num
+            ? rawFactor.toDouble()
+            : double.tryParse(rawFactor?.toString() ?? '');
+        if (factor != null && factor > 0) {
+          final expected = inputMediaDuration! / factor;
+          var tolerance = expected * 0.25;
+          if (tolerance < 1.5) tolerance = 1.5;
+          if ((mediaDuration - expected).abs() > tolerance) {
+            try { await outputFile.delete(); } catch (_) {}
+            throw Exception(
+                'Speed verification failed: expected about ${expected.toStringAsFixed(2)}s, got ${mediaDuration.toStringAsFixed(2)}s');
+          }
+          verifiedSpeedFactor = factor;
+          durationVerified = true;
+        }
+      }
+
       final result = {
         'success': true,
         'output_path': outputPath,
@@ -594,6 +675,10 @@ class NativeToolExecutor {
       };
       if (mediaDuration != null) {
         result['media_duration_seconds'] = mediaDuration;
+      }
+      if (verifiedSpeedFactor != null) {
+        result['speed_factor'] = verifiedSpeedFactor;
+        result['duration_verified'] = durationVerified;
       }
       return result;
     } else {
