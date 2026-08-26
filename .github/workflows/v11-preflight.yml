@@ -1,0 +1,108 @@
+name: Preflight RastaCoder Workspace OpenAI Compat v11
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-workspace-openai-compat-v11
+    paths:
+      - 'V11_PREFLIGHT_TRIGGER.md'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-v11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout v11 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile v11 patch and validators before touching source
+        run: |
+          python3 -m py_compile \
+            scripts/apply_iteration_v11_workspace_openai.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py
+
+      - name: Apply reviewed v11 patch
+        run: python3 scripts/apply_iteration_v11_workspace_openai.py
+
+      - name: Compile generated Python source
+        run: |
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py
+
+      - name: Install validation dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+
+      - name: Preserve v9 systemic tool regression gates
+        run: python3 scripts/run_validate_iteration_v9.py
+
+      - name: Preserve v10 context-safe and history gates
+        run: python3 scripts/validate_iteration_v10.py
+
+      - name: Run exact v11 workspace and OpenAI-compatible gates
+        run: python3 scripts/validate_iteration_v11.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Preflight summary
+        run: |
+          echo 'V11 no-APK preflight passed.'
+          echo 'Exact real-device list_files malformed-key and workspace-path reproductions passed.'
+          echo 'Nested create/list/read workspace chain passed without process-CWD dependence.'
+          echo 'OpenAI-compatible Chat Completions tool_calls request/response round-trip passed.'
+          echo 'All v9 and v10 inherited regression gates remain green.'
