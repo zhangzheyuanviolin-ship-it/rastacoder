@@ -1,0 +1,26 @@
+name: Trigger RastaCoder v8 Release
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-chat-routing-search-v8
+    paths:
+      - 'V8_RELEASE_TRIGGER.md'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the gated v8 release workflow exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run v8-release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref iteration/qwen3-chat-routing-search-v8
+          echo 'Dispatched v8 release workflow after green no-APK preflight.'
