@@ -9,7 +9,9 @@ on:
       - 'python/navixmind/tools/search_tools.py'
       - 'scripts/apply_iteration_v8_*.py'
       - 'scripts/run_iteration_v8_backend.py'
+      - 'scripts/run_iteration_v8_chat.py'
       - 'scripts/run_iteration_v8_search_ui.py'
+      - 'scripts/run_validate_iteration_v8.py'
       - 'scripts/validate_iteration_v8.py'
       - 'V8_PREFLIGHT_TRIGGER.md'
   workflow_dispatch:
@@ -31,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/run_iteration_v8_backend.py
-          python3 scripts/apply_iteration_v8_chat.py
+          python3 scripts/run_iteration_v8_chat.py
           python3 scripts/run_iteration_v8_search_ui.py
 
       - name: Compile Python sources and v8 patch scripts
@@ -42,9 +44,11 @@ jobs:
             scripts/apply_iteration_v8_backend.py \
             scripts/run_iteration_v8_backend.py \
             scripts/apply_iteration_v8_chat.py \
+            scripts/run_iteration_v8_chat.py \
             scripts/apply_iteration_v8_search_ui.py \
             scripts/run_iteration_v8_search_ui.py \
             scripts/validate_iteration_v8.py \
+            scripts/run_validate_iteration_v8.py \
             python/navixmind/tools/search_tools.py \
             python/navixmind/tools/extended_tools.py \
             python/navixmind/tools/__init__.py \
@@ -61,7 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/validate_iteration_v8.py
+          python3 scripts/run_validate_iteration_v8.py
           grep -F '_ensureSelectedRouteReadyForSend' lib/features/chat/presentation/chat_screen.dart
           grep -F '本轮AI未输出思考内容。' lib/features/chat/presentation/widgets/message_bubble.dart
           ! grep -F 'ExpansionTile(' lib/features/chat/presentation/widgets/message_bubble.dart
