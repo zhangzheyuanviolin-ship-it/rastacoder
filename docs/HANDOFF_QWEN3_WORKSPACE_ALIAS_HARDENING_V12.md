@@ -45,3 +45,33 @@ Local Qwen3-4B called `list_files(path="/workspace")`; V11 left the path unchang
 - MLC runtime SHA-256: `5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48`
 - APK SHA-256: `6e62ec683e575ddb5cb78b4ee6883e600cf9d2a38616f26c6c277e483ddd0626`
 - APK size: `517027536` bytes
+
+## Post-release real-device findings — 2026-08-26
+
+V12 fixed the workspace-listing failure on the user's real device. Subsequent basic document/cloud tests exposed a broader architectural problem that supersedes patch-by-patch tool fixes.
+
+### DOCX
+
+Qwen3-4B first emitted `read_docx(..., extract=true)` and hit the enum contract (`text|tables|all`). It then self-corrected to `extract=text`; the tool successfully extracted 45,015 characters. The Agent subsequently hit consecutive local max-output limits and produced no usable final answer.
+
+### PPTX
+
+Qwen3-4B first emitted `read_pptx(..., extract=True)` and hit the enum contract (`text|slides|notes|all`). It then self-corrected to `extract=text`; the tool successfully extracted 6,979 characters. The supplied log ends at the following `llm_generate`; the user reports the basic task did not complete normally.
+
+### PDF
+
+No exact PDF device failure has been supplied yet. It must be tested as part of the same document-ingestion family in the next architecture pass.
+
+### OpenAI Compatible
+
+After configuring and selecting `OpenAI Compatible`, sending is blocked by the Flutter chat screen's generic cloud readiness gate, which still requires a Claude API key. The bridge/Python OpenAI-compatible configuration exists, but the UI prevents the request from reaching it. This is a confirmed deterministic routing bug and exposes a missing end-to-end provider test.
+
+### Strategic conclusion
+
+The parsers demonstrably work on the supplied DOCX/PPTX files, and Qwen3-4B can select and retry canonical tools. Current failures point to the model-facing Tool ABI, long-result ingestion/orchestration, provider routing, and insufficient end-to-end validation. The next iteration must audit all 37 canonical functions systematically instead of adding one-off repairs per tool.
+
+**Mandatory next-context document:**
+
+`docs/NEXT_CONTEXT_V13_SYSTEMIC_TOOL_ABI_AUDIT_HANDOFF.md`
+
+It contains the exact device logs, upstream-first findings, systemic diagnosis, required V13 architecture, 37-function contract-fuzz direction, document-ingestion redesign, explicit provider-routing plan, golden-path acceptance suite, and release discipline. Read it before any V13 code change or build.
