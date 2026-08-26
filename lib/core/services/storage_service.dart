@@ -18,6 +18,10 @@ class StorageService {
 
   // Keys
   static const _keyApiKey = 'claude_api_key';
+  // RASTACODER_V11_OPENAI_COMPAT_STORAGE
+  static const _keyOpenAICompatibleBaseUrl = 'openai_compatible_base_url';
+  static const _keyOpenAICompatibleApiKey = 'openai_compatible_api_key';
+  static const _keyOpenAICompatibleModel = 'openai_compatible_model';
   static const _keyGoogleRefreshToken = 'google_refresh_token';
   static const _keyDailyLimit = 'daily_cost_limit';
   static const _keyMonthlyLimit = 'monthly_cost_limit';
@@ -78,6 +82,47 @@ class StorageService {
   /// Delete API key
   Future<void> deleteApiKey() async {
     await _storage.delete(key: _keyApiKey);
+  }
+
+  Future<void> setOpenAICompatibleBaseUrl(String value) async {
+    final normalized = value.trim().replaceAll(RegExp(r'/+$'), '');
+    if (normalized.isEmpty) {
+      await _storage.delete(key: _keyOpenAICompatibleBaseUrl);
+    } else {
+      await _storage.write(key: _keyOpenAICompatibleBaseUrl, value: normalized);
+    }
+  }
+
+  Future<String?> getOpenAICompatibleBaseUrl() async =>
+      _storage.read(key: _keyOpenAICompatibleBaseUrl);
+
+  Future<void> setOpenAICompatibleApiKey(String value) async {
+    if (value.trim().isEmpty) {
+      await _storage.delete(key: _keyOpenAICompatibleApiKey);
+    } else {
+      await _storage.write(key: _keyOpenAICompatibleApiKey, value: value.trim());
+    }
+  }
+
+  Future<String?> getOpenAICompatibleApiKey() async =>
+      _storage.read(key: _keyOpenAICompatibleApiKey);
+
+  Future<void> setOpenAICompatibleModel(String value) async {
+    if (value.trim().isEmpty) {
+      await _storage.delete(key: _keyOpenAICompatibleModel);
+    } else {
+      await _storage.write(key: _keyOpenAICompatibleModel, value: value.trim());
+    }
+  }
+
+  Future<String?> getOpenAICompatibleModel() async =>
+      _storage.read(key: _keyOpenAICompatibleModel);
+
+  Future<Map<String, String>> getOpenAICompatibleConfig() async {
+    final baseUrl = (await getOpenAICompatibleBaseUrl())?.trim() ?? '';
+    final apiKey = (await getOpenAICompatibleApiKey())?.trim() ?? '';
+    final model = (await getOpenAICompatibleModel())?.trim() ?? '';
+    return {'base_url': baseUrl, 'api_key': apiKey, 'model': model};
   }
 
   // RASTACODER_V8_SEARCH_KEYS

@@ -841,6 +841,27 @@ for _schema_list in (TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA):
             _tool["description"] = "Search the web. Only supply query; result count/type/filter settings are configured by the user."
 
 
+# RASTACODER_V11_CANONICAL_LIST_FILES
+# One model-facing path concept prevents directory/path ambiguity. Common Android
+# roots are addressed as path prefixes (downloads/, documents/, pictures/, etc.).
+for _schema_list in (TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA):
+    for _tool in _schema_list:
+        if _tool.get("name") == "list_files":
+            _tool["description"] = (
+                "List files/directories. path is relative to the app workspace by default; "
+                "use downloads/, documents/, pictures/, screenshots/, or camera/ for common Android folders."
+            )
+            _tool["input_schema"] = {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "default": ".", "description": "Workspace-relative folder path; '.' means workspace root"},
+                    "recursive": {"type": "boolean", "default": False},
+                    "pattern": {"type": "string", "description": "Optional glob such as *.pptx"},
+                    "include_directories": {"type": "boolean", "default": True},
+                },
+                "required": [],
+            }
+
 # RASTACODER_V7_COMPLETE_SKILLS
 # Every structured v7 utility is available to the local model when its Skill is
 # enabled. Keep the schema gated by Skills rather than dumping all tools into
@@ -943,37 +964,37 @@ LOCAL_TOOL_PROMPT_HINTS = {
     "read_file": "read_file(file_path)",
     "write_file": "write_file(output_path, content)",
     "file_info": "file_info(file_path)",
-    "list_files": "list_files(directory?, path?, recursive?, pattern?, include_directories?)",
-    "file_manage": "file_manage(action, path?, source_path?, destination_path?, recursive?, overwrite?) ; action=list|mkdir|copy|move|rename|delete|touch|exists",
-    "create_zip": "create_zip(output_path, file_paths, compression?)",
+    "list_files": "list_files(path='.', recursive=false, pattern=null, include_directories=true) ; path is workspace-relative",
+    "file_manage": "file_manage(action, path, source_path, destination_path, recursive, overwrite) ; action=list|mkdir|copy|move|rename|delete|touch|exists",
+    "create_zip": "create_zip(output_path, file_paths, compression)",
     "list_zip": "list_zip(zip_path)",
-    "extract_zip": "extract_zip(zip_path, output_dir?, overwrite?)",
-    "read_pdf": "read_pdf(pdf_path, pages?)",
-    "create_pdf": "create_pdf(output_path, content?, title?, image_paths?)",
-    "pdf_manage": "pdf_manage(action, input_path?, input_paths?, output_path?, pages?, rotation?) ; action=merge|split|extract_pages|reorder|delete_pages|rotate",
-    "convert_document": "convert_document(input_path, output_format, output_path?) ; output_format=pdf|html|txt|docx",
-    "create_docx": "create_docx(output_path, content, title?)",
-    "read_docx": "read_docx(docx_path, extract?)",
+    "extract_zip": "extract_zip(zip_path, output_dir, overwrite)",
+    "read_pdf": "read_pdf(pdf_path, pages)",
+    "create_pdf": "create_pdf(output_path, content, title, image_paths)",
+    "pdf_manage": "pdf_manage(action, input_path, input_paths, output_path, pages, rotation) ; action=merge|split|extract_pages|reorder|delete_pages|rotate",
+    "convert_document": "convert_document(input_path, output_format, output_path) ; output_format=pdf|html|txt|docx",
+    "create_docx": "create_docx(output_path, content, title)",
+    "read_docx": "read_docx(docx_path, extract)",
     "modify_docx": "modify_docx(input_path, output_path, operations)",
-    "create_pptx": "create_pptx(output_path, title?, slides?)",
-    "read_pptx": "read_pptx(pptx_path, extract?)",
+    "create_pptx": "create_pptx(output_path, title, slides)",
+    "read_pptx": "read_pptx(pptx_path, extract)",
     "modify_pptx": "modify_pptx(input_path, output_path, operations)",
-    "create_xlsx": "create_xlsx(output_path, sheets?)",
-    "read_xlsx": "read_xlsx(xlsx_path, sheet?, range?, extract?)",
+    "create_xlsx": "create_xlsx(output_path, sheets)",
+    "read_xlsx": "read_xlsx(xlsx_path, sheet, range, extract)",
     "modify_xlsx": "modify_xlsx(input_path, output_path, operations)",
     "ocr_image": "ocr_image(image_path)",
-    "image_compose": "image_compose(input_paths, output_path, operation, params?) ; operation=concat_horizontal|concat_vertical|overlay|resize|adjust|crop|grayscale|blur|rotate|flip|convert",
-    "smart_crop": "smart_crop(input_path, output_path, aspect_ratio?)",
-    "ffmpeg_process": "ffmpeg_process(input_path?, input_paths?, output_path, operation, params?) ; operation=trim|crop|resize|filter|custom|extract_audio|extract_frame|convert|concat|mix_audio|merge_av|speed ; speed params={factor:1.5}",
-    "download_media": "download_media(url, format?)",
-    "web_fetch": "web_fetch(url, extract_mode?)",
-    "headless_browser": "headless_browser(url, wait_seconds?, extract_selector?)",
-    "python_execute": "python_execute(code, file_paths?)",
-    "gmail": "gmail(action, query?, message_id?) ; action=list|read",
-    "google_calendar": "google_calendar(action, date_range?, event?, event_id?) ; action=list|create|delete|update",
+    "image_compose": "image_compose(input_paths, output_path, operation, params) ; operation=concat_horizontal|concat_vertical|overlay|resize|adjust|crop|grayscale|blur|rotate|flip|convert",
+    "smart_crop": "smart_crop(input_path, output_path, aspect_ratio)",
+    "ffmpeg_process": "ffmpeg_process(input_path, input_paths, output_path, operation, params) ; operation=trim|crop|resize|filter|custom|extract_audio|extract_frame|convert|concat|mix_audio|merge_av|speed ; speed params={factor:1.5}",
+    "download_media": "download_media(url, format)",
+    "web_fetch": "web_fetch(url, extract_mode)",
+    "headless_browser": "headless_browser(url, wait_seconds, extract_selector)",
+    "python_execute": "python_execute(code, file_paths)",
+    "gmail": "gmail(action, query, message_id) ; action=list|read",
+    "google_calendar": "google_calendar(action, date_range, event, event_id) ; action=list|create|delete|update",
     "anysearch_search": "anysearch_search(query)",
     "anysearch_extract": "anysearch_extract(url)",
-    "anysearch_get_sub_domains": "anysearch_get_sub_domains(domain? or domains?)",
+    "anysearch_get_sub_domains": "anysearch_get_sub_domains(domain or domains)",
     "exa_search": "exa_search(query)",
     "langsearch_search": "langsearch_search(query)",
     "tavily_search": "tavily_search(query)",
@@ -1265,9 +1286,10 @@ def execute_tool(
     if file_map:
         _resolve_file_paths(args, file_map)
 
-    # Resolve relative output paths to writable directory
+    # Resolve every model-facing relative file path against the same workspace root.
     output_dir = context.get('output_dir')
     if output_dir:
+        _resolve_workspace_input_paths(args, output_dir)
         _resolve_output_paths(args, output_dir)
 
     _record_tool_diag(context, "paths_resolved", tool=tool_name, args=_safe_diag_value(args))
@@ -1354,16 +1376,94 @@ def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:
                     params[nested_key] = file_map[os.path.basename(value)]
 
 
+# RASTACODER_V11_GLOBAL_WORKSPACE_PATHS
+def _workspace_relative_path(value: str, output_dir: str) -> str:
+    import os
+    raw = str(value or '').strip().replace('\\', '/')
+    if not raw or raw in {'.', './', 'output', 'output/', 'workspace', 'workspace/'}:
+        return os.path.normpath(output_dir)
+    if os.path.isabs(raw):
+        return os.path.normpath(raw)
+    while raw.startswith('./'):
+        raw = raw[2:]
+    android_roots = {
+        'downloads': '/storage/emulated/0/Download',
+        'documents': '/storage/emulated/0/Documents',
+        'pictures': '/storage/emulated/0/Pictures',
+        'screenshots': '/storage/emulated/0/Pictures/Screenshots',
+        'camera': '/storage/emulated/0/DCIM/Camera',
+    }
+    first, _, remainder = raw.partition('/')
+    if first.lower() in android_roots:
+        base = os.path.normpath(android_roots[first.lower()])
+        if not remainder:
+            return base
+        if remainder == '..' or remainder.startswith('../'):
+            raise ToolError(f'Path escapes Android root: {value}')
+        target = os.path.normpath(os.path.join(base, remainder))
+        if os.path.commonpath([base, target]) != base:
+            raise ToolError(f'Path escapes Android root: {value}')
+        return target
+    if raw.startswith('output/'):
+        raw = raw[len('output/'):]
+    elif raw.startswith('workspace/'):
+        raw = raw[len('workspace/'):]
+    if raw == '..' or raw.startswith('../'):
+        raise ToolError(f'Path escapes workspace root: {value}')
+    root = os.path.normpath(output_dir)
+    target = os.path.normpath(os.path.join(root, raw))
+    if os.path.commonpath([root, target]) != root:
+        raise ToolError(f'Path escapes workspace root: {value}')
+    return target
+
+
+def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str) -> None:
+    path_keys = [
+        'image_path', 'input_path', 'pdf_path', 'file_path', 'path', 'source_path',
+        'zip_path', 'docx_path', 'pptx_path', 'xlsx_path',
+    ]
+    for key in path_keys:
+        value = args.get(key)
+        if isinstance(value, str):
+            args[key] = _workspace_relative_path(value, output_dir)
+    for key in ('image_paths', 'file_paths', 'input_paths'):
+        values = args.get(key)
+        if isinstance(values, list):
+            args[key] = [
+                _workspace_relative_path(v, output_dir) if isinstance(v, str) else v
+                for v in values
+            ]
+    operations = args.get('operations')
+    if isinstance(operations, list):
+        for op in operations:
+            if not isinstance(op, dict) or not isinstance(op.get('params'), dict):
+                continue
+            params = op['params']
+            for key in ('image_path', 'file_path', 'source_path', 'input_path'):
+                if isinstance(params.get(key), str):
+                    params[key] = _workspace_relative_path(params[key], output_dir)
+
+
 def _resolve_output_paths(args: Dict[str, Any], output_dir: str) -> None:
-    """Resolve relative output paths to a writable directory."""
+    """Resolve relative outputs inside the writable workspace without output/output duplication."""
     import os
     os.makedirs(output_dir, exist_ok=True)
-    output_keys = ['output_path']
-    for key in output_keys:
-        if key in args:
-            value = args[key]
-            if isinstance(value, str) and not os.path.isabs(value):
-                args[key] = os.path.join(output_dir, value)
+    value = args.get('output_path')
+    if isinstance(value, str) and not os.path.isabs(value):
+        raw = value.strip().replace('\\', '/')
+        while raw.startswith('./'):
+            raw = raw[2:]
+        if raw.startswith('output/'):
+            raw = raw[len('output/'):]
+        elif raw.startswith('workspace/'):
+            raw = raw[len('workspace/'):]
+        if raw == '..' or raw.startswith('../'):
+            raise ToolError(f'Output path escapes workspace root: {value}')
+        root = os.path.normpath(output_dir)
+        target = os.path.normpath(os.path.join(root, raw))
+        if os.path.commonpath([root, target]) != root:
+            raise ToolError(f'Output path escapes workspace root: {value}')
+        args['output_path'] = target
 
 
 def _file_info(file_path: str, **kwargs) -> dict:

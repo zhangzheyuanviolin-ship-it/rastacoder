@@ -19,6 +19,7 @@ import '../legal/privacy_policy.dart';
 import 'tool_skills_screen.dart';
 import 'local_model_parameters_screen.dart';
 import 'local_model_benchmark_screen.dart';
+import 'openai_compatible_settings_screen.dart';
 
 bool _extraLicensesRegistered = false;
 
@@ -545,6 +546,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       )
                     : null),
             onTap: _isLoading ? null : _setApiKey,
+          ),
+
+          // RASTACODER_V11_OPENAI_COMPAT_SETTINGS
+          _SettingsTile(
+            title: 'OpenAI 兼容接口',
+            subtitle: '配置自定义 Base URL、API Key 与 Model ID；可用于云端工具调用对照测试',
+            trailing: const Icon(Icons.cloud_outlined, size: 20),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OpenAICompatibleSettingsScreen()),
+            ),
           ),
 
           // Model Selection

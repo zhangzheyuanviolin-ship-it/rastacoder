@@ -532,6 +532,39 @@ def _repair_with_context(name: str, args: Dict[str, Any], context: Optional[Dict
             args["params"] = params
 
 
+# RASTACODER_V11_ARGUMENT_KEY_SANITIZER
+def _sanitize_argument_keys(args: Dict[str, Any], notes: List[str]) -> Dict[str, Any]:
+    """Repair punctuation copied from human-readable optional-argument hints.
+
+    Small local models sometimes emit keys such as ``path?`` or ``recursive?``.
+    Canonical keys always win if both spellings are present. Conflicting aliases
+    are dropped instead of silently overwriting an explicit canonical value.
+    """
+    cleaned: Dict[str, Any] = {}
+    origins: Dict[str, str] = {}
+    for raw_key, value in args.items():
+        original = str(raw_key)
+        key = original.strip()
+        key = re.sub(r'[\s?？:：]+$', '', key)
+        if not key:
+            notes.append(f'dropped_empty_key:{original!r}')
+            continue
+        if key != original:
+            notes.append(f'arg_key:{original}->{key}')
+        if key in cleaned:
+            previous = origins.get(key, key)
+            if original == key and previous != key:
+                cleaned[key] = value
+                origins[key] = original
+                notes.append(f'arg_key_collision:canonical_wins:{key}')
+            elif cleaned[key] != value:
+                notes.append(f'arg_key_collision:dropped:{original}->{key}')
+            continue
+        cleaned[key] = value
+        origins[key] = original
+    return cleaned
+
+
 def normalize_tool_call(
     tool_name: Any,
     raw_args: Any,
@@ -556,6 +589,8 @@ def normalize_tool_call(
             args = dict(nested)
             notes.append(f"unwrapped:{wrapper}")
             break
+
+    args = _sanitize_argument_keys(args, notes)
 
     name = TOOL_ALIASES.get(raw_token, raw_token)
     name = SINGLE_TOOL_SKILL_ALIASES.get(name, name)
@@ -756,6 +791,74 @@ def normalize_tool_call(
             if mapped != action:
                 notes.append(f"action:{action}->{mapped}")
             args["action"] = mapped
+
+    # RASTACODER_V11_WORKSPACE_LIST_COMPAT
+    if name == "list_files":
+        _move_alias(args, "path", ["folder", "folder_path", "dir", "directory_path"], notes)
+        directory = args.get("directory")
+        path_value = args.get("path")
+
+        # A frequent Qwen small-model failure is interpreting optionality as a
+        # boolean. Treat that as omitted/default rather than rejecting the call.
+        if isinstance(directory, bool) or (isinstance(directory, str) and directory.strip().lower() in {"true", "false"}):
+            args.pop("directory", None)
+            directory = None
+            notes.append("list_files:removed_boolean_directory")
+        if isinstance(path_value, bool):
+            args.pop("path", None)
+            path_value = None
+            notes.append("list_files:removed_boolean_path")
+
+        roots = {"output", "downloads", "documents", "pictures", "screenshots", "camera"}
+        directory_key = str(directory or "").strip().lower()
+        path_text = str(args.get("path") or "").strip().replace("\\", "/")
+        workspace_aliases = {"", ".", "./", "output", "output/", "workspace", "workspace/"}
+
+        if directory_key in roots:
+            if directory_key == "output":
+                if path_text.lower() in workspace_aliases:
+                    args["path"] = "."
+                elif path_text.lower().startswith("output/"):
+                    args["path"] = path_text[7:] or "."
+            else:
+                if path_text.lower() in workspace_aliases:
+                    args["path"] = directory_key
+                elif path_text and not os.path.isabs(path_text) and not any(
+                    path_text.lower() == root or path_text.lower().startswith(root + "/") for root in roots
+                ):
+                    args["path"] = f"{directory_key}/{path_text.lstrip('./')}"
+                elif not path_text:
+                    args["path"] = directory_key
+            args.pop("directory", None)
+            notes.append(f"list_files:directory->{args.get('path', '.')}")
+        elif "directory" in args:
+            # Unknown legacy directory strings are treated as a path only when
+            # no explicit path exists. This keeps the canonical model interface
+            # to one path concept.
+            if not path_text and isinstance(directory, str) and directory.strip():
+                args["path"] = directory.strip()
+                notes.append("list_files:legacy_directory->path")
+            args.pop("directory", None)
+
+        path_text = str(args.get("path") or ".").strip().replace("\\", "/")
+        if path_text.lower() in workspace_aliases:
+            args["path"] = "."
+        elif path_text.lower().startswith("output/"):
+            args["path"] = path_text[7:] or "."
+        elif path_text.lower().startswith("workspace/"):
+            args["path"] = path_text[10:] or "."
+
+        for bool_key in ("recursive", "include_directories"):
+            if isinstance(args.get(bool_key), str):
+                lowered = args[bool_key].strip().lower()
+                if lowered in {"true", "1", "yes", "on"}:
+                    args[bool_key] = True
+                    notes.append(f"{bool_key}:string->true")
+                elif lowered in {"false", "0", "no", "off"}:
+                    args[bool_key] = False
+                    notes.append(f"{bool_key}:string->false")
+        if args.get("pattern") in ("", None):
+            args.pop("pattern", None)
 
     if name == "download_media" and "format" in args:
         raw_format = str(args["format"]).strip().lower().replace("-", "_").replace(" ", "_")

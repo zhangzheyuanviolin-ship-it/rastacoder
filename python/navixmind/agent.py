@@ -1012,6 +1012,176 @@ class LocalLLMClient:
         return openai_tools
 
 
+# RASTACODER_V11_OPENAI_COMPATIBLE_CLIENT
+class OpenAICompatibleClient:
+    """Adapter for /v1/chat/completions providers with native tool_calls."""
+
+    def __init__(self, base_url: str, api_key: str, model: str):
+        self.base_url = str(base_url or '').strip().rstrip('/')
+        self.api_key = str(api_key or '').strip()
+        self.model = str(model or '').strip()
+        if not self.base_url or not self.model:
+            raise APIError('OpenAI-compatible Base URL and Model ID are required', 400)
+
+    def _endpoint(self) -> str:
+        lower = self.base_url.lower()
+        if lower.endswith('/chat/completions'):
+            return self.base_url
+        if lower.endswith('/v1'):
+            return self.base_url + '/chat/completions'
+        return self.base_url + '/v1/chat/completions'
+
+    @staticmethod
+    def _convert_messages(messages: List[Dict[str, Any]], system: str) -> List[Dict[str, Any]]:
+        converted: List[Dict[str, Any]] = [{"role": "system", "content": system}]
+        for msg in messages:
+            role = str(msg.get('role', 'user'))
+            content = msg.get('content', '')
+            if isinstance(content, str):
+                converted.append({"role": role, "content": content})
+                continue
+            if not isinstance(content, list):
+                converted.append({"role": role, "content": str(content)})
+                continue
+            if role == 'assistant':
+                text_parts = []
+                calls = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get('type') == 'text' and block.get('text'):
+                        text_parts.append(str(block.get('text')))
+                    elif block.get('type') == 'tool_use':
+                        calls.append({
+                            'id': str(block.get('id') or f"call_{len(calls)}"),
+                            'type': 'function',
+                            'function': {
+                                'name': str(block.get('name') or ''),
+                                'arguments': json.dumps(block.get('input') or {}, ensure_ascii=False),
+                            },
+                        })
+                item: Dict[str, Any] = {'role': 'assistant', 'content': '\n'.join(text_parts) or None}
+                if calls:
+                    item['tool_calls'] = calls
+                converted.append(item)
+            elif role == 'user':
+                ordinary = []
+                for block in content:
+                    if isinstance(block, dict) and block.get('type') == 'tool_result':
+                        converted.append({
+                            'role': 'tool',
+                            'tool_call_id': str(block.get('tool_use_id') or ''),
+                            'content': str(block.get('content') or ''),
+                        })
+                    elif isinstance(block, dict) and block.get('type') == 'text':
+                        ordinary.append(str(block.get('text') or ''))
+                    elif isinstance(block, str):
+                        ordinary.append(block)
+                if any(x for x in ordinary):
+                    converted.append({'role': 'user', 'content': '\n'.join(x for x in ordinary if x)})
+            else:
+                converted.append({'role': role, 'content': str(content)})
+        return converted
+
+    def create_message(
+        self, messages: List[Dict[str, Any]], system: str = SYSTEM_PROMPT,
+        tools: Optional[List[dict]] = None, max_tokens: int = 4096, retry_count: int = 2
+    ) -> dict:
+        headers = {'content-type': 'application/json'}
+        if self.api_key:
+            headers['authorization'] = f'Bearer {self.api_key}'
+        body: Dict[str, Any] = {
+            'model': self.model,
+            'messages': self._convert_messages(messages, system),
+            'max_tokens': int(max_tokens),
+        }
+        if tools:
+            body['tools'] = LocalLLMClient._convert_tools_to_openai(tools)
+            body['tool_choice'] = 'auto'
+
+        last_error: Optional[APIError] = None
+        for attempt in range(max(1, retry_count)):
+            try:
+                response = requests.post(self._endpoint(), headers=headers, json=body, timeout=120)
+                if response.status_code == 200:
+                    data = response.json()
+                    choices = data.get('choices') if isinstance(data, dict) else None
+                    if not isinstance(choices, list) or not choices:
+                        raise APIError('OpenAI-compatible response has no choices', 502)
+                    choice = choices[0] if isinstance(choices[0], dict) else {}
+                    message = choice.get('message') if isinstance(choice.get('message'), dict) else {}
+                    blocks: List[Dict[str, Any]] = []
+                    text = message.get('content')
+                    if isinstance(text, str) and text.strip():
+                        blocks.append({'type': 'text', 'text': text})
+                    raw_calls = message.get('tool_calls')
+                    if not isinstance(raw_calls, list):
+                        raw_calls = []
+                    legacy = message.get('function_call')
+                    if isinstance(legacy, dict):
+                        raw_calls = list(raw_calls) + [{'id': 'legacy_function_call', 'function': legacy}]
+                    for index, call in enumerate(raw_calls):
+                        if not isinstance(call, dict):
+                            continue
+                        fn = call.get('function') if isinstance(call.get('function'), dict) else call
+                        raw_name = fn.get('name')
+                        raw_args = _coerce_tool_args(fn.get('arguments', fn.get('args', {})))
+                        canonical, canonical_args, repairs = normalize_tool_call(raw_name, raw_args)
+                        blocks.append({
+                            'type': 'tool_use',
+                            'id': str(call.get('id') or f'call_{index}'),
+                            'name': canonical,
+                            'input': canonical_args,
+                            '_raw_name': str(raw_name or ''),
+                            '_raw_input': raw_args,
+                            '_raw_source': json.dumps(call, ensure_ascii=False)[:1500],
+                            '_parser_repairs': repairs,
+                        })
+                    finish = str(choice.get('finish_reason') or '').lower()
+                    if any(b.get('type') == 'tool_use' for b in blocks) or finish in {'tool_calls', 'function_call'}:
+                        stop_reason = 'tool_use'
+                    elif finish in {'length', 'max_tokens'}:
+                        stop_reason = 'max_tokens'
+                    else:
+                        stop_reason = 'end_turn'
+                    usage_raw = data.get('usage') if isinstance(data.get('usage'), dict) else {}
+                    return {
+                        'stop_reason': stop_reason,
+                        'content': blocks,
+                        'usage': {
+                            'input_tokens': int(usage_raw.get('prompt_tokens') or usage_raw.get('input_tokens') or 0),
+                            'output_tokens': int(usage_raw.get('completion_tokens') or usage_raw.get('output_tokens') or 0),
+                        },
+                    }
+
+                try:
+                    error_data = response.json()
+                except Exception:
+                    error_data = {}
+                error_obj = error_data.get('error') if isinstance(error_data, dict) else None
+                if isinstance(error_obj, dict):
+                    message = str(error_obj.get('message') or error_obj)
+                else:
+                    message = str(error_data or getattr(response, 'text', '') or 'Unknown API error')
+                last_error = APIError(message[:2000], int(response.status_code))
+                if response.status_code in {408, 429, 500, 502, 503, 504} and attempt < retry_count - 1:
+                    import time
+                    time.sleep(1 if response.status_code == 429 else 2 ** attempt)
+                    continue
+                raise last_error
+            except requests.Timeout:
+                last_error = APIError('OpenAI-compatible request timed out', 408)
+                if attempt < retry_count - 1:
+                    continue
+                raise last_error
+            except requests.RequestException as exc:
+                last_error = APIError(f'OpenAI-compatible network error: {exc}', 0)
+                if attempt < retry_count - 1:
+                    continue
+                raise last_error
+        raise last_error or APIError('Unknown OpenAI-compatible API error', 0)
+
+
 class APIError(Exception):
     """Error from Claude API."""
 
@@ -1175,8 +1345,16 @@ def process_query(
     # Check if offline model is selected (doesn't need API key)
     preferred = context.get('preferred_model', '')
     is_offline_model = 'offline_model_info' in context if context else False
+    is_openai_compatible = preferred == 'openai-compatible'
+    openai_config = context.get('openai_compatible') if isinstance(context.get('openai_compatible'), dict) else {}
 
-    if not api_key and not is_offline_model:
+    if is_openai_compatible:
+        if not str(openai_config.get('base_url') or '').strip() or not str(openai_config.get('model') or '').strip():
+            return {
+                "content": "OpenAI 兼容接口尚未配置完整。请在设置中填写 Base URL 和 Model ID。",
+                "error": True
+            }
+    elif not api_key and not is_offline_model:
         return {
             "content": "API key not configured. Please enter your Claude API key to get started, or select an offline model.",
             "error": True
@@ -1232,8 +1410,15 @@ def process_query(
     else:
         if system_prompt != SYSTEM_PROMPT:
             bridge.log("Using custom system prompt", level="info")
-        # Create Claude client with selected model
-        client = ClaudeClient(api_key, model=selected_model)
+        if is_openai_compatible:
+            client = OpenAICompatibleClient(
+                base_url=str(openai_config.get('base_url') or ''),
+                api_key=str(openai_config.get('api_key') or ''),
+                model=str(openai_config.get('model') or selected_model),
+            )
+            bridge.log(f"Using OpenAI-compatible cloud model: {client.model}", level="info")
+        else:
+            client = ClaudeClient(api_key, model=selected_model)
 
     # Build initial messages from session context. Local context budget is
     # a user-entered exact token count; cloud keeps the existing global ceiling.
@@ -1493,7 +1678,7 @@ def process_query(
 
                         model_result = (
                             _prepare_tool_result_for_model(tool_name, result, context, max_tokens)
-                            if is_offline else result_str
+                            if (is_offline or is_openai_compatible) else result_str
                         )
                         tool_results.append({
                             "type": "tool_result",
@@ -1506,7 +1691,7 @@ def process_query(
                             context['_diagnostics'].append({
                                 'stage': 'tool_error', 'tool': tool_name, 'error': str(e)[:2000]
                             })
-                        error_content = _tool_error_for_model(tool_name, e) if is_offline else str(e)
+                        error_content = _tool_error_for_model(tool_name, e) if (is_offline or is_openai_compatible) else str(e)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_id,
@@ -1672,6 +1857,12 @@ def _select_model(query: str, context: Dict[str, Any]) -> Tuple[str, str]:
     requested_model = context.get('preferred_model', '')
     if context.get('offline_model_info'):
         return requested_model, f"Using offline model: {requested_model}"
+
+    # V11 custom OpenAI-compatible provider keeps the exact user-entered model ID.
+    if requested_model == 'openai-compatible':
+        cfg = context.get('openai_compatible') if isinstance(context.get('openai_compatible'), dict) else {}
+        model = str(cfg.get('model') or 'openai-compatible').strip()
+        return model, f"Using OpenAI-compatible model: {model}"
 
     # Check 1: Cost budget threshold
     cost_percent_used = context.get('cost_percent_used', 0) or 0

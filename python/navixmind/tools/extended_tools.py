@@ -26,20 +26,33 @@ def _default_output_dir(_output_dir: Optional[str]) -> str:
     return os.getcwd()
 
 
+# RASTACODER_V11_WORKSPACE_ROOT
 def _resolve_workspace_path(value: str, _output_dir: Optional[str]) -> str:
-    """Resolve model-facing relative paths against the real app output root."""
+    """Resolve a model-facing path against the real writable workspace."""
     raw = os.path.expanduser(str(value or '').strip())
+    root = os.path.normpath(_default_output_dir(_output_dir))
     if not raw:
-        return raw
+        return root
     if os.path.isabs(raw):
         return os.path.normpath(raw)
-    normalized = raw.replace('\\', '/').lstrip('./')
-    root = _default_output_dir(_output_dir)
-    if normalized == 'output':
-        return os.path.normpath(root)
+    normalized = raw.replace('\\', '/').strip()
+    while normalized.startswith('./'):
+        normalized = normalized[2:]
+    if normalized in {'', '.', 'output', 'output/', 'workspace', 'workspace/'}:
+        return root
     if normalized.startswith('output/'):
-        normalized = normalized[len('output/'): ]
-    return os.path.normpath(os.path.join(root, normalized))
+        normalized = normalized[len('output/'):]
+    elif normalized.startswith('workspace/'):
+        normalized = normalized[len('workspace/'):]
+    if normalized == '..' or normalized.startswith('../'):
+        raise ToolError(f'Workspace path escapes output root: {value}')
+    candidate = os.path.normpath(os.path.join(root, normalized))
+    try:
+        if os.path.commonpath([root, candidate]) != root:
+            raise ToolError(f'Workspace path escapes output root: {value}')
+    except ValueError:
+        raise ToolError(f'Workspace path is invalid: {value}')
+    return candidate
 
 
 def _resolve_named_directory(directory: str, _output_dir: Optional[str]) -> str:
@@ -55,6 +68,49 @@ def _resolve_named_directory(directory: str, _output_dir: Optional[str]) -> str:
     return mapping.get(key, directory)
 
 
+def _resolve_list_target(directory: str, path: Optional[str], _output_dir: Optional[str]) -> str:
+    """Resolve one canonical list target. Relative paths are workspace-relative."""
+    named = {
+        "output": _default_output_dir(_output_dir),
+        "downloads": "/storage/emulated/0/Download",
+        "documents": "/storage/emulated/0/Documents",
+        "pictures": "/storage/emulated/0/Pictures",
+        "screenshots": "/storage/emulated/0/Pictures/Screenshots",
+        "camera": "/storage/emulated/0/DCIM/Camera",
+    }
+    raw = str(path or '').strip().replace('\\', '/')
+    directory_key = str(directory or 'output').strip().lower()
+    if not raw:
+        return os.path.normpath(named.get(directory_key, _resolve_named_directory(directory_key, _output_dir)))
+    if os.path.isabs(raw):
+        return os.path.normpath(raw)
+    while raw.startswith('./'):
+        raw = raw[2:]
+    if raw in {'', '.', 'output', 'output/', 'workspace', 'workspace/'}:
+        return os.path.normpath(named['output'])
+    first, _, remainder = raw.partition('/')
+    first_key = first.lower()
+    if first_key in named:
+        base = os.path.normpath(named[first_key])
+        if not remainder:
+            return base
+        if remainder == '..' or remainder.startswith('../'):
+            raise ToolError(f'Directory path escapes selected root: {path}')
+        target = os.path.normpath(os.path.join(base, remainder))
+        if os.path.commonpath([base, target]) != base:
+            raise ToolError(f'Directory path escapes selected root: {path}')
+        return target
+    if directory_key in named and directory_key != 'output':
+        base = os.path.normpath(named[directory_key])
+        if raw == '..' or raw.startswith('../'):
+            raise ToolError(f'Directory path escapes selected root: {path}')
+        target = os.path.normpath(os.path.join(base, raw))
+        if os.path.commonpath([base, target]) != base:
+            raise ToolError(f'Directory path escapes selected root: {path}')
+        return target
+    return _resolve_workspace_path(raw, _output_dir)
+
+
 def list_files(
     directory: str = "output",
     path: Optional[str] = None,
@@ -64,7 +120,7 @@ def list_files(
     _output_dir: Optional[str] = None,
 ) -> dict:
     """List files/directories in app output or common Android folders."""
-    target = path or _resolve_named_directory(directory, _output_dir)
+    target = _resolve_list_target(directory, path, _output_dir)
     if not os.path.isdir(target):
         raise ToolError(f"Directory not found or inaccessible: {target}")
 
@@ -100,6 +156,8 @@ def list_files(
         entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
         return {
             "directory": target,
+            "requested_path": path if path not in (None, "") else ".",
+            "workspace_root": os.path.normpath(_default_output_dir(_output_dir)),
             "count": len(entries),
             "recursive": recursive,
             "pattern": pattern,

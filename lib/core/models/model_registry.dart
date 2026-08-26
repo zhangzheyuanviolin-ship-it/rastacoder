@@ -128,7 +128,16 @@ class ModelRegistry {
     apiModelId: 'claude-haiku-4-5-20251001',
   );
 
-  static const cloudModels = [auto, opus, sonnet, haiku];
+  // RASTACODER_V11_OPENAI_COMPAT_MODEL
+  static const openAICompatible = ModelInfo(
+    id: 'openai-compatible',
+    displayName: 'OpenAI Compatible',
+    description: 'Custom Base URL, API Key and Model ID; uses the same tool layer',
+    provider: ModelProvider.cloud,
+    apiModelId: 'openai-compatible',
+  );
+
+  static const cloudModels = [auto, opus, sonnet, haiku, openAICompatible];
 
   // -- Offline models (MLC LLM quantized) --
 
