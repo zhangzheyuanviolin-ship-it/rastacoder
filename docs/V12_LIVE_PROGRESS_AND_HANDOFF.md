@@ -6,23 +6,17 @@ Started: 2026-08-26
 
 ## User real-device failure that triggered V12
 
-The first V11 local-model task failed.
-
-User request: inspect the workspace directory and report files.
-
-Model emitted:
+User asked the local Qwen3-4B model to inspect the workspace and report its files. The model emitted:
 ```json
 {"name":"list_files","arguments":{"path":"/workspace","recursive":false,"pattern":null,"include_directories":true}}
 ```
-
-Execution reached `paths_resolved` with the path still exactly `/workspace`, then failed:
-`Directory not found or inaccessible: /workspace`
-
-The next model response ended the turn and told the user it could not access the workspace.
+The V11 diagnostics reached `paths_resolved` with `/workspace` unchanged and failed with:
+`Directory not found or inaccessible: /workspace`.
+The next local-model response ended the turn instead of recovering.
 
 ## Exact V11 audit completed
 
-Audited from the exact V11 final source HEAD:
+Audited from exact V11 final source:
 - `python/navixmind/tools/compat.py`
 - `python/navixmind/tools/__init__.py`
 - `python/navixmind/tools/extended_tools.py`
@@ -32,70 +26,120 @@ Audited from the exact V11 final source HEAD:
 - `.github/workflows/v11-preflight.yml`
 - `docs/HANDOFF_QWEN3_WORKSPACE_OPENAI_COMPAT_V11.md`
 
-### Root cause 1 — compatibility alias set was incomplete
+### Confirmed V11 root causes
 
-V11 `list_files` compatibility recognized relative workspace aliases:
-`.`, `./`, `output`, `output/`, `workspace`, `workspace/`.
+1. V11 compatibility recognized relative aliases `.`, `output`, `workspace`, but omitted `/workspace`, `/output`, and nested virtual absolute aliases. The user's literal call therefore recorded no repair.
+2. Global `_workspace_relative_path()` returned every absolute path unchanged before virtual-workspace interpretation. `/workspace` therefore escaped the V11 mapping layer.
+3. `extended_tools._resolve_workspace_path()` and `_resolve_list_target()` repeated the same absolute-path bypass at a lower layer.
+4. `_tool_error_for_model()` supplied no workspace-specific recovery for `Directory not found`; Qwen3-4B was free to end the turn after one failure. The general prompt's file-not-found guidance also leaned toward asking for reattachment, which is wrong for workspace discovery.
+5. Successful V11 `list_files` results still exposed physical `directory`, `workspace_root`, and `entries[*].path` values to the model, undermining the intended logical workspace namespace during multi-step tasks.
 
-It did not recognize `/workspace`, `/output`, or nested absolute virtual aliases such as `/workspace/folder`. Therefore the user's literal call passed normalization with `repairs: []`, exactly as shown in the device diagnostics.
+## V12 implementation
 
-### Root cause 2 — global resolver explicitly bypassed every absolute path
+Primary patch:
+`scripts/apply_iteration_v12_workspace_alias_hardening.py`
 
-V11 `_workspace_relative_path()` contains this ordering:
-1. recognize relative aliases;
-2. `if os.path.isabs(raw): return os.path.normpath(raw)`;
-3. only later resolve relative workspace and Android prefixes.
+Primary validator:
+`scripts/validate_iteration_v12.py`
 
-Thus `/workspace` is treated as a real Linux/Android filesystem absolute path before virtual workspace semantics have any chance to apply. This is the direct reason the device `paths_resolved` event still showed `/workspace`.
+The patch creates `python/navixmind/tools/path_contract.py` and implements one explicit logical model namespace:
+- workspace root: `.`
+- accepted compatibility aliases: `workspace`, `output`, `/workspace`, `/output`, including nested forms
+- supported logical Android roots: `downloads`, `documents`, `pictures`, `screenshots`, `camera`, including defensive leading-slash variants
+- uploaded/trusted real absolute paths remain valid
+- traversal outside selected logical roots remains rejected
 
-### Root cause 3 — extended tool resolver repeated the same bypass
+The patch also:
+- normalizes `/workspace` to `.` before execution
+- makes executor and extended file tools use the same central resolver
+- strengthens the local prompt/schema to tell Qwen3-4B to use `path='.'` for workspace root
+- adds workspace-specific retry guidance after list/path errors
+- converts `list_files` entries back to logical paths before local/cloud-compatible model prefill so physical app paths are not taught back to the model
 
-V11 `extended_tools._resolve_workspace_path()` and `_resolve_list_target()` also return absolute paths unchanged. Even if one execution route bypasses the global resolver, the lower layer still interprets `/workspace` literally. V11 therefore had two independent escape points for this exact small-model path form.
+## First V12 no-APK preflight — intentionally stopped a residual defect
 
-### Root cause 4 — tool failure recovery encouraged an early end-turn
+Run: `32966081018`
+URL: `https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32966081018`
+Result: FAILURE, no APK produced.
 
-V10/V11 `_tool_error_for_model()` only gives a specific retry instruction for argument/name schema errors, network errors, auth, etc. A `Directory not found or inaccessible` failure falls into the generic branch: do not repeat the identical call; correct it if clear, otherwise explain failure.
+Passed before the V12-specific failure:
+- patch/validator compile
+- patch application
+- generated Python compile
+- V9 inherited gates
+- V10 inherited gates
+- V11 inherited workspace/OpenAI-compatible gates
 
-The general system prompt also says that if a file is not found, ask the user to re-attach it. That guidance is inappropriate for a workspace-root discovery request. After the first path failure, Qwen3-4B therefore had no strong instruction to retry `list_files(path='.')` and naturally ended the turn. The user log shows exactly this behavior.
+V12-specific failure traceback showed the actual model payload still contained:
+`workspace_path: /tmp/<physical-workspace>`
+while `entries[*]` had already been correctly logicalized.
 
-### Root cause 5 — model-facing list results still leak physical filesystem paths
+### Second-order cause discovered by preflight
 
-V11 `list_files()` returns physical absolute `directory`, `workspace_root`, and absolute `entries[*].path`. `_prepare_tool_result_for_model()` serializes that dictionary for the local model. This means that even when the first list succeeds, later multi-step calls can be conditioned on physical paths rather than the one logical workspace namespace. It undermines the intended V11 contract and can reintroduce path drift in longer tasks.
+`execute_tool()` globally resolved `list_files(path='.')` into the physical `output_dir` before `extended_tools.list_files()` ran. The listing itself therefore succeeded, but `list_files.requested_path` received the physical path. `_list_files_payload_for_model()` faithfully emitted that value as `workspace_path`, creating one remaining physical-path leak.
 
-## V12 design decided after audit
+This is a real implementation defect; the validator is correct and must remain strict.
 
-V12 will implement a single explicit model-path contract and use it at all relevant layers:
+### Precise boundary fix
 
-1. Canonical model workspace root is `.`.
-2. Compatibility aliases accepted defensively: `workspace`, `output`, `/workspace`, `/output`, plus nested forms such as `/workspace/folder/sub` and `/output/folder/sub`.
-3. Common Android logical roots accept `downloads`, `documents`, `pictures`, `screenshots`, `camera`, including defensive leading-slash variants generated by small models.
-4. Uploaded files resolved by `_file_map` keep their trusted real absolute path.
-5. Physical app workspace paths remain internal execution details. Model-facing `list_files` results are converted back to logical paths before re-prefill.
-6. `list_files` prompt/schema explicitly instruct the model to use `path='.'` for workspace root and to avoid inventing OS roots.
-7. Workspace/list path failures return specific recoverable guidance: retry the workspace root with `path='.'`; do not ask for a file re-attachment when the requested object is the workspace itself.
-8. Exact regression test will reproduce the user's literal call `path='/workspace'` and require success against a temporary workspace.
-9. Systemic tests will cover `/output`, nested virtual aliases, list -> read -> write -> relist chains, model-facing logical-path sanitization, traversal rejection, and recovery text.
-10. Preserve OpenAI-compatible provider and inherited V9/V10/V11 gates.
+Added:
+`scripts/apply_iteration_v12_list_boundary_fix.py`
+
+Marker in generated source:
+`RASTACODER_V12_PRESERVE_LIST_LOGICAL_PATH`
+
+Behavior:
+- `execute_tool()` does not run `list_files.path` through the generic input-path resolver.
+- `list_files` retains the normalized logical path (`.`, `folder/sub`, `downloads/...`).
+- `list_files` itself resolves that logical path to the physical target using `resolve_list_path(..., _output_dir)`.
+- all other tools keep the universal physical input-path resolver.
+- exact `/workspace` device call still becomes `.` in compatibility normalization before this boundary.
+- the model-facing `requested_path` can therefore remain `.` instead of the private filesystem root.
+
+## V12 exact/systemic regression requirements
+
+The V12 validator requires all of the following:
+1. Exact user call `list_files(path='/workspace', recursive=false, ...)` succeeds against the real configured workspace.
+2. `/output` is equivalent to workspace root.
+3. `/workspace/folder/sub` resolves correctly.
+4. `/workspace/...` can be reused by `read_file`.
+5. `/workspace/generated.txt` writes inside the configured workspace rather than literal Linux `/workspace`.
+6. Lower extended-tool resolver independently follows the same contract.
+7. Leading-slash logical Android roots are normalized safely.
+8. `/workspace/../...` traversal is rejected.
+9. Model-facing list payload contains logical paths and contains no physical workspace root.
+10. Prompt/schema explicitly teach `path='.'`.
+11. `Directory not found` recovery explicitly instructs one corrected `path='.'` retry.
+12. Trusted real absolute attachment paths remain usable.
+13. All inherited V9/V10/V11 gates remain green.
 
 ## Release discipline
 
-- One deterministic no-APK V12 preflight after code + validator review.
-- Only if preflight is fully green, trigger one formal stable-signed ARM64 V12 APK build/release.
+- No APK build has been triggered during V12 debugging.
+- First no-APK preflight caught the residual boundary leak before release.
+- A second deterministic no-APK preflight will run the primary patch plus the precise boundary fix and all inherited/new gates.
+- Only after that entire preflight is green may one formal stable-signed ARM64 V12 APK build/release be triggered.
 - No random APK build/release trial-and-error.
 
 ## Work status
 
 - [x] Created V12 branch from exact V11 final HEAD.
-- [x] Recorded the user's exact failure before code changes.
-- [x] Audited exact V11 workspace resolver, compatibility normalization, tool schema/prompt, Agent recovery, model-facing result path behavior, V11 validator and preflight.
-- [x] Identified five root causes / structural weaknesses above.
-- [ ] Add centralized V12 path contract and patch all relevant execution/model-facing layers.
-- [ ] Add exact + systemic V12 validator.
-- [ ] Commit code/validator checkpoint.
-- [ ] Run no-APK preflight.
-- [ ] Run one formal release build only after preflight is green.
-- [ ] Persist verified source + final handoff with hashes/URLs.
+- [x] Recorded user failure before code changes.
+- [x] Completed exact V11 root-cause audit.
+- [x] Implemented central V12 path contract and model-facing logical list results.
+- [x] Added exact + systemic V12 validator.
+- [x] Ran first no-APK preflight; inherited V9/V10/V11 gates all green.
+- [x] Diagnosed first preflight V12 failure as a real logical/physical boundary leak.
+- [x] Added precise `list_files` executor-boundary fix.
+- [ ] Run second deterministic no-APK preflight with boundary fix.
+- [ ] If and only if fully green, create/run one formal V12 release build.
+- [ ] Persist verified generated source and final V12 handoff.
+- [ ] Record final APK/release metadata, source HEAD, checksums, run URLs.
 
-## Handoff rule if this agent is interrupted
+## Emergency handoff rule
 
-Continue only from `iteration/qwen3-workspace-alias-hardening-v12` and read this document first. Do not restart from main or re-run an older V11 patch script manually. Fetch the latest commit on this branch. Complete the unchecked items in order. Do not trigger an APK build until the deterministic V12 validator and all inherited V9/V10/V11 gates pass in the dedicated no-APK preflight.
+If this agent is interrupted, continue only from `iteration/qwen3-workspace-alias-hardening-v12` and read this document first. Use the latest branch commit. The generated V12 source is produced by applying, in this order:
+1. `scripts/apply_iteration_v12_workspace_alias_hardening.py`
+2. `scripts/apply_iteration_v12_list_boundary_fix.py`
+
+Then run inherited V9/V10/V11 validators and `scripts/validate_iteration_v12.py`. Do not trigger an APK build until the dedicated second no-APK preflight is completely green. Preserve V11 OpenAI-compatible support, package/signing identity, MLC runtime, 25-Skill/37-tool invariant, and all inherited gates.
