@@ -1,0 +1,93 @@
+name: RastaCoder v8 Routing Chat Search Preflight
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-chat-routing-search-v8
+    paths:
+      - '.github/workflows/v8-preflight.yml'
+      - 'python/navixmind/tools/search_tools.py'
+      - 'scripts/apply_iteration_v8_*.py'
+      - 'scripts/validate_iteration_v8.py'
+      - 'V8_PREFLIGHT_TRIGGER.md'
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply reviewed v8 patch chain to verified v7 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v8_backend.py
+          python3 scripts/apply_iteration_v8_chat.py
+          python3 scripts/apply_iteration_v8_search_ui.py
+
+      - name: Compile Python sources and v8 patch scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v8_backend.py \
+            scripts/apply_iteration_v8_chat.py \
+            scripts/apply_iteration_v8_search_ui.py \
+            scripts/validate_iteration_v8.py \
+            python/navixmind/tools/search_tools.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/agent.py
+
+      - name: Install validator dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+
+      - name: Run v8 systemic and functional regression validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_iteration_v8.py
+          grep -F '_ensureSelectedRouteReadyForSend' lib/features/chat/presentation/chat_screen.dart
+          grep -F '本轮AI未输出思考内容。' lib/features/chat/presentation/widgets/message_bubble.dart
+          ! grep -F 'ExpansionTile(' lib/features/chat/presentation/widgets/message_bubble.dart
+          ! grep -F '思考模式：' lib/features/chat/presentation/widgets/message_bubble.dart
+          grep -F 'Delete verification failed' python/navixmind/tools/extended_tools.py
+          grep -F 'anysearch_search' python/navixmind/tools/__init__.py
+          grep -F 'tavily_search' python/navixmind/tools/__init__.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Flutter dependency and analyzer gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Preflight summary
+        run: |
+          echo 'v8 preflight passed without building an APK.'
+          echo 'Cold-start model routing, three-region chat layout, true expand/collapse, reasoning sanitization, verified recursive delete, secure search-key UI, and four independent search providers passed.'
+          echo '25 manual Skills cover 37 canonical local functions.'
