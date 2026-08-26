@@ -14,6 +14,10 @@ from .documents import (
 from .media import download_media
 from .google_api import google_calendar, gmail
 from .code_executor import python_execute
+from .extended_tools import (
+    list_files, file_manage, list_zip, extract_zip, pdf_manage,
+    create_pptx, create_xlsx, image_compose,
+)
 
 from ..bridge import ToolError, get_bridge
 from .compat import normalize_tool_call
@@ -148,11 +152,11 @@ TOOLS_SCHEMA = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["replace_text", "add_paragraph", "update_table_cell"]},
+                            "action": {"type": "string", "enum": ["replace_text", "add_paragraph", "update_table_cell", "add_heading", "add_page_break", "add_table", "add_image"]},
                             "params": {"type": "object"}
                         }
                     },
-                    "description": "replace_text: {old, new}. add_paragraph: {text, style?}. update_table_cell: {table, row, col, text}."
+                    "description": "replace_text {old,new}; add_paragraph {text,style?}; update_table_cell {table,row,col,text}; add_heading {text,level?}; add_page_break {}; add_table {rows:[[...]]}; add_image {image_path,width_inches?}."
                 }
             },
             "required": ["input_path", "output_path", "operations"]
@@ -188,11 +192,11 @@ TOOLS_SCHEMA = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["replace_text", "add_slide", "update_slide_text", "set_notes"]},
+                            "action": {"type": "string", "enum": ["replace_text", "add_slide", "update_slide_text", "set_notes", "add_textbox", "add_image", "delete_slide"]},
                             "params": {"type": "object"}
                         }
                     },
-                    "description": "replace_text: {old, new}. add_slide: {layout_index?, title?, content?}. update_slide_text: {slide, shape_name, text}. set_notes: {slide, text}."
+                    "description": "replace_text {old,new}; add_slide {layout_index?,title?,content?}; update_slide_text {slide,shape_name,text}; set_notes {slide,text}; add_textbox {slide,text,left?,top?,width?,height?}; add_image {slide,image_path,left?,top?,width?,height?}; delete_slide {slide}."
                 }
             },
             "required": ["input_path", "output_path", "operations"]
@@ -230,11 +234,11 @@ TOOLS_SCHEMA = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "action": {"type": "string", "enum": ["set_cell", "set_formula", "add_row", "add_sheet", "delete_sheet"]},
+                            "action": {"type": "string", "enum": ["set_cell", "set_formula", "add_row", "add_sheet", "delete_sheet", "rename_sheet", "insert_row", "delete_row", "insert_column", "delete_column"]},
                             "params": {"type": "object"}
                         }
                     },
-                    "description": "set_cell: {sheet?, cell, value}. set_formula: {sheet?, cell, formula}. add_row: {sheet?, values: []}. add_sheet: {name}. delete_sheet: {name}."
+                    "description": "set_cell {sheet?,cell,value}; set_formula {sheet?,cell,formula}; add_row {sheet?,values}; add_sheet/delete_sheet; rename_sheet {old_name,new_name}; insert/delete row/column {sheet?,index,amount?}."
                 }
             },
             "required": ["input_path", "output_path", "operations"]
@@ -250,7 +254,7 @@ TOOLS_SCHEMA = [
                 "file_paths": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of file paths to include in the archive"
+                    "description": "List of file or directory paths to include recursively in the archive"
                 },
                 "compression": {
                     "type": "string",
@@ -335,7 +339,7 @@ TOOLS_SCHEMA = [
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["list", "create", "delete"],
+                    "enum": ["list", "create", "delete", "update"],
                     "description": "Action to perform"
                 },
                 "date_range": {
@@ -443,6 +447,121 @@ The code runs with a 30-second timeout. Print statements and the last expression
         }
     }
 ]
+
+
+# RASTACODER_V7_COMPLETE_SKILLS
+# Restore post-Qwen3 upstream tools which were omitted by the old 23-tool
+# baseline and add structured scene-complete primitives requested for v7.
+TOOLS_SCHEMA.extend([
+    {
+        "name": "list_files",
+        "description": "List/discover files and directories. Supports app output and common Android folders, optional recursive traversal and filename pattern filtering.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "directory": {"type": "string", "enum": ["output", "downloads", "documents", "pictures", "screenshots", "camera"], "default": "output"},
+                "path": {"type": "string", "description": "Optional explicit accessible directory path"},
+                "recursive": {"type": "boolean", "default": False},
+                "pattern": {"type": "string", "description": "Optional glob such as *.txt"},
+                "include_directories": {"type": "boolean", "default": True},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "file_manage",
+        "description": "Manage files/directories: list, mkdir, copy, move, rename, delete, touch, exists. Use structured paths; no shell commands are needed.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "mkdir", "copy", "move", "rename", "delete", "touch", "exists"]},
+                "path": {"type": "string"},
+                "source_path": {"type": "string"},
+                "destination_path": {"type": "string"},
+                "recursive": {"type": "boolean", "default": False},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "list_zip",
+        "description": "List files and metadata inside a ZIP archive without extracting it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"zip_path": {"type": "string"}},
+            "required": ["zip_path"],
+        },
+    },
+    {
+        "name": "extract_zip",
+        "description": "Safely extract a ZIP archive into a writable directory. Rejects path traversal entries.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "zip_path": {"type": "string"},
+                "output_dir": {"type": "string", "description": "Optional folder name/path; generated automatically when omitted"},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "required": ["zip_path"],
+        },
+    },
+    {
+        "name": "pdf_manage",
+        "description": "Manage PDF pages: merge PDFs, split into individual pages, extract/reorder/delete pages, or rotate selected pages.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["merge", "split", "extract_pages", "reorder", "delete_pages", "rotate"]},
+                "input_path": {"type": "string"},
+                "input_paths": {"type": "array", "items": {"type": "string"}},
+                "output_path": {"type": "string"},
+                "pages": {"description": "1-based pages, e.g. '1-3,5' or [3,1,2] for reorder"},
+                "rotation": {"type": "integer", "default": 90},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "create_pptx",
+        "description": "Create a PowerPoint PPTX from structured slides with titles, content/bullets and optional speaker notes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "title": {"type": "string"},
+                "slides": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["output_path"],
+        },
+    },
+    {
+        "name": "create_xlsx",
+        "description": "Create an Excel XLSX workbook from structured sheets and rows.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "output_path": {"type": "string"},
+                "sheets": {"type": "array", "items": {"type": "object"}, "description": "[{name, rows:[[...], ...]}]"},
+            },
+            "required": ["output_path"],
+        },
+    },
+    {
+        "name": "image_compose",
+        "description": "Full image manipulation: horizontal/vertical concat, overlay, resize/upscale/downscale, color adjustment, crop, grayscale, blur, rotate, flip and format conversion.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "input_paths": {"type": "array", "items": {"type": "string"}},
+                "output_path": {"type": "string"},
+                "operation": {"type": "string", "enum": ["concat_horizontal", "concat_vertical", "overlay", "resize", "adjust", "crop", "grayscale", "blur", "rotate", "flip", "convert"]},
+                "params": {"type": "object", "description": "resize {width,height}; crop {x,y,width,height}; adjust {brightness,contrast,saturation,sharpness,gamma}; rotate {degrees}; flip {direction}; convert {format,quality}."},
+            },
+            "required": ["input_paths", "output_path", "operation"],
+        },
+    },
+])
 
 
 # Compact tool schemas for offline (on-device) models with small context windows.
@@ -648,6 +767,55 @@ OFFLINE_TOOLS_SCHEMA = [
 ]
 
 
+# RASTACODER_V7_COMPLETE_SKILLS
+# Every structured v7 utility is available to the local model when its Skill is
+# enabled. Keep the schema gated by Skills rather than dumping all tools into
+# every request.
+_V7_LOCAL_TOOL_NAMES = {
+    "list_files", "file_manage", "list_zip", "extract_zip", "pdf_manage",
+    "create_pptx", "create_xlsx", "image_compose",
+}
+_existing_offline_names = {t["name"] for t in OFFLINE_TOOLS_SCHEMA}
+OFFLINE_TOOLS_SCHEMA.extend(
+    t for t in TOOLS_SCHEMA
+    if t["name"] in _V7_LOCAL_TOOL_NAMES and t["name"] not in _existing_offline_names
+)
+
+# The native executor already supports raw/custom FFmpeg. V6 accidentally hid
+# that escape hatch from the compact local schema. V7 also adds structured
+# multi-input operations so common concat/mix tasks do not require raw syntax.
+for _schema_list in (TOOLS_SCHEMA, OFFLINE_TOOLS_SCHEMA):
+    for _tool in _schema_list:
+        if _tool.get("name") != "ffmpeg_process":
+            continue
+        _props = _tool["input_schema"]["properties"]
+        _props["input_paths"] = {
+            "type": "array", "items": {"type": "string"},
+            "description": "Multiple input media files for concat, mix_audio or merge_av"
+        }
+        _op = _props["operation"]
+        _op["enum"] = [
+            "trim", "crop", "resize", "filter", "custom", "extract_audio",
+            "extract_frame", "convert", "concat", "mix_audio", "merge_av"
+        ]
+        _op["description"] = "Structured media operation; custom is the advanced raw FFmpeg escape hatch"
+        _props["params"]["description"] = (
+            "trim {start,end/duration}; crop {width,height,x,y}; resize {width,height}; "
+            "filter {vf,af}; custom {args}; extract_audio {format,bitrate}; "
+            "extract_frame {timestamp}; convert {codec,quality}; concat {media_type:audio|video}; "
+            "mix_audio {duration}; merge_av uses first input as video and second as audio."
+        )
+        # input_path is operation-dependent now; executor performs the precise check.
+        _tool["input_schema"]["required"] = ["output_path", "operation"]
+
+
+# RASTACODER_V7_MEDIA_DOWNLOAD
+for _tool in TOOLS_SCHEMA:
+    if _tool.get("name") == "download_media":
+        _tool["description"] = "Resolve and actually download video/audio from supported platforms into the app workspace (not YouTube)."
+        _tool["input_schema"]["properties"]["output_path"] = {"type": "string", "description": "Optional output filename/path"}
+        break
+
 # Local inference and tool locality are independent. Expose these app-side
 # capabilities to on-device models too; each tool still enforces its own
 # connectivity/auth requirements.
@@ -667,25 +835,25 @@ OFFLINE_TOOLS_SCHEMA.extend(
 # Skill IDs are UI-only. They are deliberately never shown to the model.
 # The model sees canonical callable function names only.
 LOCAL_SKILLS = {
-    "text_files": {"tools": ("read_file", "write_file", "file_info")},
-    "zip_archive": {"tools": ("create_zip", "file_info")},
-    "pdf_read": {"tools": ("read_pdf", "file_info")},
-    "pdf_create": {"tools": ("create_pdf",)},
-    "document_convert": {"tools": ("convert_document",)},
-    "word": {"tools": ("create_docx", "read_docx", "modify_docx")},
-    "powerpoint": {"tools": ("read_pptx", "modify_pptx")},
-    "excel": {"tools": ("read_xlsx", "modify_xlsx")},
-    "ocr": {"tools": ("ocr_image",)},
-    "image_processing": {"tools": ("smart_crop",)},
-    "video_processing": {"tools": ("ffmpeg_process",)},
-    "audio_processing": {"tools": ("ffmpeg_process",)},
-    "media_download": {"tools": ("download_media",)},
-    "web_fetch": {"tools": ("web_fetch",)},
-    "dynamic_web": {"tools": ("headless_browser",)},
-    "basic_calculation": {"tools": ("python_execute",)},
-    "scientific_calculation": {"tools": ("python_execute",)},
-    "data_analysis": {"tools": ("python_execute",)},
-    "charts": {"tools": ("python_execute",)},
+    "text_files": {"tools": ("read_file", "write_file", "file_info", "list_files", "file_manage")},
+    "zip_archive": {"tools": ("create_zip", "list_zip", "extract_zip", "file_info", "list_files", "file_manage")},
+    "pdf_read": {"tools": ("read_pdf", "pdf_manage", "file_info", "list_files")},
+    "pdf_create": {"tools": ("create_pdf", "pdf_manage", "image_compose", "file_info", "list_files")},
+    "document_convert": {"tools": ("convert_document", "read_file", "read_pdf", "read_docx", "file_info", "list_files")},
+    "word": {"tools": ("create_docx", "read_docx", "modify_docx", "convert_document", "file_info", "list_files", "file_manage")},
+    "powerpoint": {"tools": ("create_pptx", "read_pptx", "modify_pptx", "file_info", "list_files", "file_manage")},
+    "excel": {"tools": ("create_xlsx", "read_xlsx", "modify_xlsx", "file_info", "list_files", "file_manage")},
+    "ocr": {"tools": ("ocr_image", "image_compose", "file_info", "list_files")},
+    "image_processing": {"tools": ("image_compose", "smart_crop", "file_info", "list_files", "file_manage")},
+    "video_processing": {"tools": ("ffmpeg_process", "file_info", "list_files", "file_manage")},
+    "audio_processing": {"tools": ("ffmpeg_process", "file_info", "list_files", "file_manage")},
+    "media_download": {"tools": ("download_media", "file_info", "list_files", "file_manage")},
+    "web_fetch": {"tools": ("web_fetch", "write_file", "file_info", "list_files")},
+    "dynamic_web": {"tools": ("headless_browser", "web_fetch", "write_file", "file_info")},
+    "basic_calculation": {"tools": ("python_execute", "read_file", "write_file", "file_info")},
+    "scientific_calculation": {"tools": ("python_execute", "read_file", "write_file", "file_info")},
+    "data_analysis": {"tools": ("python_execute", "read_file", "write_file", "read_xlsx", "create_xlsx", "file_info", "list_files")},
+    "charts": {"tools": ("python_execute", "write_file", "image_compose", "file_info", "list_files")},
     "gmail": {"tools": ("gmail",)},
     "google_calendar": {"tools": ("google_calendar",)},
 }
@@ -696,26 +864,34 @@ LOCAL_TOOL_PROMPT_HINTS = {
     "read_file": "read_file(file_path)",
     "write_file": "write_file(output_path, content)",
     "file_info": "file_info(file_path)",
+    "list_files": "list_files(directory?, path?, recursive?, pattern?, include_directories?)",
+    "file_manage": "file_manage(action, path?, source_path?, destination_path?, recursive?, overwrite?) ; action=list|mkdir|copy|move|rename|delete|touch|exists",
     "create_zip": "create_zip(output_path, file_paths, compression?)",
+    "list_zip": "list_zip(zip_path)",
+    "extract_zip": "extract_zip(zip_path, output_dir?, overwrite?)",
     "read_pdf": "read_pdf(pdf_path, pages?)",
     "create_pdf": "create_pdf(output_path, content?, title?, image_paths?)",
+    "pdf_manage": "pdf_manage(action, input_path?, input_paths?, output_path?, pages?, rotation?) ; action=merge|split|extract_pages|reorder|delete_pages|rotate",
     "convert_document": "convert_document(input_path, output_format, output_path?) ; output_format=pdf|html|txt|docx",
     "create_docx": "create_docx(output_path, content, title?)",
     "read_docx": "read_docx(docx_path, extract?)",
     "modify_docx": "modify_docx(input_path, output_path, operations)",
+    "create_pptx": "create_pptx(output_path, title?, slides?)",
     "read_pptx": "read_pptx(pptx_path, extract?)",
     "modify_pptx": "modify_pptx(input_path, output_path, operations)",
+    "create_xlsx": "create_xlsx(output_path, sheets?)",
     "read_xlsx": "read_xlsx(xlsx_path, sheet?, range?, extract?)",
     "modify_xlsx": "modify_xlsx(input_path, output_path, operations)",
     "ocr_image": "ocr_image(image_path)",
+    "image_compose": "image_compose(input_paths, output_path, operation, params?) ; operation=concat_horizontal|concat_vertical|overlay|resize|adjust|crop|grayscale|blur|rotate|flip|convert",
     "smart_crop": "smart_crop(input_path, output_path, aspect_ratio?)",
-    "ffmpeg_process": "ffmpeg_process(input_path, output_path, operation, params?) ; operations=trim|crop|resize|filter|extract_audio|extract_frame|convert ; for MP3/WAV/M4A/AAC/FLAC/OGG audio output use operation=extract_audio and params.format",
+    "ffmpeg_process": "ffmpeg_process(input_path?, input_paths?, output_path, operation, params?) ; operation=trim|crop|resize|filter|custom|extract_audio|extract_frame|convert|concat|mix_audio|merge_av",
     "download_media": "download_media(url, format?)",
     "web_fetch": "web_fetch(url, extract_mode?)",
     "headless_browser": "headless_browser(url, wait_seconds?, extract_selector?)",
     "python_execute": "python_execute(code, file_paths?)",
     "gmail": "gmail(action, query?, message_id?) ; action=list|read",
-    "google_calendar": "google_calendar(action, date_range?, event?, event_id?) ; action=list|create|delete",
+    "google_calendar": "google_calendar(action, date_range?, event?, event_id?) ; action=list|create|delete|update",
 }
 
 
@@ -868,6 +1044,14 @@ def execute_tool(
         "file_info": _file_info,
         "read_file": read_file,
         "write_file": write_file,
+        "list_files": list_files,
+        "file_manage": file_manage,
+        "list_zip": list_zip,
+        "extract_zip": extract_zip,
+        "pdf_manage": pdf_manage,
+        "create_pptx": create_pptx,
+        "create_xlsx": create_xlsx,
+        "image_compose": image_compose,
     }
 
     if tool_name not in tool_map:
@@ -934,9 +1118,11 @@ def execute_tool(
     if tool_name in ["google_calendar", "gmail"]:
         args["_context"] = context
 
-    # Pass output_dir to python_execute for file writing and plot auto-save
+    # Pass output_dir to Python tools which need a stable workspace root.
     if tool_name == "python_execute" and output_dir:
         args["output_dir"] = output_dir
+    if tool_name in {"list_files", "file_manage", "extract_zip", "pdf_manage", "download_media"} and output_dir:
+        args["_output_dir"] = output_dir
 
     # Pass timeout for native tools
     if tool_name in ["ocr_image", "ffmpeg_process", "smart_crop"]:
@@ -957,7 +1143,7 @@ def execute_tool(
 def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:
     """Resolve basename references to full file paths using the attached files map."""
     import os
-    path_keys = ['image_path', 'input_path', 'pdf_path', 'file_path', 'path', 'docx_path', 'pptx_path', 'xlsx_path']
+    path_keys = ['image_path', 'input_path', 'pdf_path', 'file_path', 'path', 'source_path', 'zip_path', 'docx_path', 'pptx_path', 'xlsx_path']
     for key in path_keys:
         if key in args:
             value = args[key]
@@ -970,7 +1156,7 @@ def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:
                     args[key] = file_map[os.path.basename(value)]
 
     # Also resolve arrays of paths (e.g. image_paths for create_pdf, file_paths for create_zip)
-    array_path_keys = ['image_paths', 'file_paths']
+    array_path_keys = ['image_paths', 'file_paths', 'input_paths']
     for key in array_path_keys:
         if key in args and isinstance(args[key], list):
             resolved = []
@@ -985,6 +1171,25 @@ def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:
                 else:
                     resolved.append(p)
             args[key] = resolved
+
+    # Office modification operations may carry attached image/file paths one
+    # level deeper under operations[*].params. Resolve those basenames too.
+    operations = args.get('operations')
+    if isinstance(operations, list):
+        for op in operations:
+            if not isinstance(op, dict):
+                continue
+            params = op.get('params')
+            if not isinstance(params, dict):
+                continue
+            for nested_key in ('image_path', 'file_path', 'source_path', 'input_path'):
+                value = params.get(nested_key)
+                if not isinstance(value, str):
+                    continue
+                if value in file_map:
+                    params[nested_key] = file_map[value]
+                elif os.path.basename(value) in file_map:
+                    params[nested_key] = file_map[os.path.basename(value)]
 
 
 def _resolve_output_paths(args: Dict[str, Any], output_dir: str) -> None:

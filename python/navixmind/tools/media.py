@@ -11,7 +11,9 @@ from ..utils.security import is_blocked_domain
 
 def download_media(
     url: str,
-    format: str = "video"
+    format: str = "video",
+    output_path: str = None,
+    _output_dir: str = None,
 ) -> dict:
     """
     Download media from supported platforms.
@@ -87,13 +89,37 @@ def download_media(
             if not download_url:
                 raise ToolError("Could not extract download URL")
 
+            # Actually save the resolved media file. Earlier builds returned
+            # download_url here even though no Flutter/native download handler existed.
+            # Stream with the extractor-provided request headers when available.
+            import re
+            import requests
+            safe_title = re.sub(r'[^\w\-. ()\[\]]+', '_', str(title)).strip(' ._') or 'download'
+            if output_path:
+                final_path = output_path
+            else:
+                root = _output_dir or os.getcwd()
+                os.makedirs(root, exist_ok=True)
+                final_path = os.path.join(root, f"{safe_title}.{ext}")
+            parent = os.path.dirname(final_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            request_headers = best_format.get('http_headers') or headers
+            with requests.get(download_url, headers=request_headers, stream=True, timeout=60) as response:
+                response.raise_for_status()
+                with open(final_path, 'wb') as out:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            out.write(chunk)
             return {
                 "title": title,
                 "duration": duration,
-                "download_url": download_url,
+                "output_path": final_path,
+                "size_bytes": os.path.getsize(final_path),
                 "format": format,
                 "extension": ext,
                 "extractor": extractor,
+                "success": True,
             }
 
     except yt_dlp.DownloadError as e:

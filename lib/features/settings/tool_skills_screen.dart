@@ -73,10 +73,10 @@ class _ToolSkillsScreenState extends State<ToolSkillsScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 Semantics(
-                  label: '当前启用 ${_enabled.length} 个技能，共 ${LocalToolSkillCatalog.all.length} 个。原始工具覆盖 $covered 个，共 ${LocalToolSkillCatalog.originalToolNames.length} 个。',
+                  label: '当前启用 ${_enabled.length} 个技能，共 ${LocalToolSkillCatalog.all.length} 个。规范工具覆盖 $covered 个，共 ${LocalToolSkillCatalog.allCanonicalToolNames.length} 个。',
                   child: Text(
-                    '当前启用 ${_enabled.length}/${LocalToolSkillCatalog.all.length} 个技能；原始工具覆盖 $covered/${LocalToolSkillCatalog.originalToolNames.length}。'
-                    '${LocalToolSkillCatalog.hasCompleteCoverage ? ' 全部原始工具均已归类。' : ' 工具覆盖异常。'}',
+                    '当前启用 ${_enabled.length}/${LocalToolSkillCatalog.all.length} 个技能；规范工具覆盖 $covered/${LocalToolSkillCatalog.allCanonicalToolNames.length}。'
+                    '${LocalToolSkillCatalog.hasCompleteCoverage ? ' 当前完整工具面均已归类。' : ' 工具覆盖异常。'}',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -118,11 +118,11 @@ class _ToolSkillsScreenState extends State<ToolSkillsScreen> {
                   for (final skill in LocalToolSkillCatalog.inCategory(category))
                     Semantics(
                       container: true,
-                      label: '${skill.title}，${_enabled.contains(skill.id) ? '已开启' : '已关闭'}。${skill.description}',
+                      label: '${skill.title}，${_enabled.contains(skill.id) ? '已开启' : '已关闭'}。${skill.description}。支持：${skill.capabilities.join('、')}',
                       child: SwitchListTile(
                         value: _enabled.contains(skill.id),
                         title: Text(skill.title),
-                        subtitle: Text('${skill.description}\n底层工具：${skill.toolNames.join(', ')}'),
+                        subtitle: Text('${skill.description}\n支持动作：${skill.capabilities.join('、')}\n底层工具：${skill.toolNames.join(', ')}'),
                         onChanged: (value) {
                           setState(() {
                             if (value) {

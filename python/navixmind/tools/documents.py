@@ -428,29 +428,46 @@ def create_zip(
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
-        # Verify all files exist before creating the archive
+        # Verify all inputs exist. V7 accepts both files and directories.
         for fpath in file_paths:
-            if not os.path.isfile(fpath):
-                raise ToolError(f"File not found: {fpath}")
+            if not os.path.exists(fpath):
+                raise ToolError(f"File or directory not found: {fpath}")
 
-        # Track basenames to handle duplicates
+        # Track top-level basenames to handle collisions.
         seen_names = {}
         zip_compression = compression_map[compression]
 
         with zipfile.ZipFile(output_path, 'w', compression=zip_compression) as zf:
             for fpath in file_paths:
-                basename = os.path.basename(fpath)
-
-                # Handle duplicate basenames by appending a counter
+                basename = os.path.basename(os.path.normpath(fpath)) or 'item'
                 if basename in seen_names:
                     seen_names[basename] += 1
-                    name, ext = os.path.splitext(basename)
-                    arcname = f"{name}_{seen_names[basename]}{ext}"
+                    root_name = f"{basename}_{seen_names[basename]}"
                 else:
                     seen_names[basename] = 0
-                    arcname = basename
+                    root_name = basename
 
-                zf.write(fpath, arcname)
+                if os.path.isdir(fpath):
+                    wrote_any = False
+                    for root, dirs, files in os.walk(fpath):
+                        rel_root = os.path.relpath(root, fpath)
+                        archive_root = root_name if rel_root == '.' else os.path.join(root_name, rel_root)
+                        if not files and not dirs:
+                            zf.writestr(archive_root.rstrip('/') + '/', b'')
+                        for filename in files:
+                            source = os.path.join(root, filename)
+                            arcname = os.path.join(archive_root, filename)
+                            zf.write(source, arcname)
+                            wrote_any = True
+                    if not wrote_any:
+                        zf.writestr(root_name.rstrip('/') + '/', b'')
+                else:
+                    name, ext = os.path.splitext(root_name)
+                    if seen_names[basename] > 0:
+                        arcname = f"{name}{ext}"
+                    else:
+                        arcname = root_name
+                    zf.write(fpath, arcname)
 
         # Get final archive size
         archive_size = os.path.getsize(output_path)
@@ -572,6 +589,38 @@ def modify_docx(input_path: str, output_path: str, operations: list) -> dict:
                     if row_idx < len(table.rows) and col_idx < len(table.rows[row_idx].cells):
                         table.rows[row_idx].cells[col_idx].text = text
                         applied += 1
+
+            elif action == "add_heading":
+                doc.add_heading(params.get("text", ""), level=int(params.get("level", 1)))
+                applied += 1
+
+            elif action == "add_page_break":
+                doc.add_page_break()
+                applied += 1
+
+            elif action == "add_table":
+                rows = params.get("rows", []) or []
+                if not isinstance(rows, list) or not rows:
+                    raise ToolError("add_table requires params.rows as a non-empty 2D list")
+                col_count = max(len(row) if isinstance(row, list) else 1 for row in rows)
+                table = doc.add_table(rows=len(rows), cols=col_count)
+                for r, row in enumerate(rows):
+                    values = row if isinstance(row, list) else [row]
+                    for c, value in enumerate(values):
+                        table.cell(r, c).text = str(value)
+                applied += 1
+
+            elif action == "add_image":
+                image_path = params.get("image_path")
+                if not image_path or not os.path.isfile(image_path):
+                    raise ToolError(f"add_image image not found: {image_path}")
+                width_inches = params.get("width_inches")
+                if width_inches is None:
+                    doc.add_picture(image_path)
+                else:
+                    from docx.shared import Inches
+                    doc.add_picture(image_path, width=Inches(float(width_inches)))
+                applied += 1
 
         output_dir = os.path.dirname(output_path)
         if output_dir:
@@ -755,6 +804,46 @@ def modify_pptx(input_path: str, output_path: str, operations: list) -> dict:
                     notes_slide.notes_text_frame.text = text
                     applied += 1
 
+            elif action == "add_textbox":
+                from pptx.util import Inches
+                slide_num = params.get("slide", 1) - 1
+                if 0 <= slide_num < len(prs.slides):
+                    slide = prs.slides[slide_num]
+                    box = slide.shapes.add_textbox(
+                        Inches(float(params.get("left", 1))),
+                        Inches(float(params.get("top", 1))),
+                        Inches(float(params.get("width", 6))),
+                        Inches(float(params.get("height", 1))),
+                    )
+                    box.text_frame.text = str(params.get("text", ""))
+                    applied += 1
+
+            elif action == "add_image":
+                from pptx.util import Inches
+                slide_num = params.get("slide", 1) - 1
+                image_path = params.get("image_path")
+                if not image_path or not os.path.isfile(image_path):
+                    raise ToolError(f"add_image image not found: {image_path}")
+                if 0 <= slide_num < len(prs.slides):
+                    kwargs = {
+                        "left": Inches(float(params.get("left", 1))),
+                        "top": Inches(float(params.get("top", 1))),
+                    }
+                    if params.get("width") is not None:
+                        kwargs["width"] = Inches(float(params["width"]))
+                    if params.get("height") is not None:
+                        kwargs["height"] = Inches(float(params["height"]))
+                    prs.slides[slide_num].shapes.add_picture(image_path, **kwargs)
+                    applied += 1
+
+            elif action == "delete_slide":
+                slide_num = params.get("slide", 1) - 1
+                if 0 <= slide_num < len(prs.slides):
+                    slide_id = prs.slides._sldIdLst[slide_num]
+                    prs.part.drop_rel(slide_id.rId)
+                    prs.slides._sldIdLst.remove(slide_id)
+                    applied += 1
+
         output_dir = os.path.dirname(output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
@@ -917,9 +1006,33 @@ def modify_xlsx(input_path: str, output_path: str, operations: list) -> dict:
 
             elif action == "delete_sheet":
                 name = params.get("name")
-                if name in wb.sheetnames:
+                if name in wb.sheetnames and len(wb.sheetnames) > 1:
                     del wb[name]
                     applied += 1
+
+            elif action == "rename_sheet":
+                old_name = params.get("old_name") or params.get("sheet")
+                new_name = params.get("new_name")
+                if old_name in wb.sheetnames and new_name:
+                    wb[old_name].title = str(new_name)[:31]
+                    applied += 1
+
+            elif action in {"insert_row", "delete_row", "insert_column", "delete_column"}:
+                sheet_name = params.get("sheet") or wb.active.title
+                if sheet_name not in wb.sheetnames:
+                    raise ToolError(f"Sheet not found: {sheet_name}")
+                ws = wb[sheet_name]
+                index = int(params.get("index", 1))
+                amount = int(params.get("amount", 1))
+                if action == "insert_row":
+                    ws.insert_rows(index, amount)
+                elif action == "delete_row":
+                    ws.delete_rows(index, amount)
+                elif action == "insert_column":
+                    ws.insert_cols(index, amount)
+                else:
+                    ws.delete_cols(index, amount)
+                applied += 1
 
         output_dir = os.path.dirname(output_path)
         if output_dir:

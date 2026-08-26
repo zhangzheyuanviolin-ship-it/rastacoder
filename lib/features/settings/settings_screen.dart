@@ -556,7 +556,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             gpuMemoryMB: _gpuMemoryMB,
             onChanged: (model) async {
               await StorageService.instance.setPreferredModel(model);
-              setState(() => _preferredModel = model);
+              final info = ModelRegistry.getById(model);
+              if (info != null && info.isOffline) {
+                final downloaded = await LocalLLMService.instance.isModelDownloaded(model);
+                if (downloaded) {
+                  await LocalLLMService.instance.loadModel(model);
+                }
+              } else if (LocalLLMService.instance.loadedModelId != null) {
+                await LocalLLMService.instance.unloadModel();
+              }
+              if (mounted) setState(() => _preferredModel = model);
             },
             onDownloadModel: (modelId) async {
               await LocalLLMService.instance.downloadModel(modelId);
@@ -606,7 +615,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
           _SettingsTile(
             title: '默认工具与技能',
-            subtitle: '管理新会话默认开启的 21 个技能；完整覆盖原有 23 个本地工具',
+            subtitle: '管理 21 个手动技能；完整覆盖上游扩展与 V7 补全后的 31 个规范工具，并逐项显示场景动作',
             trailing: const Icon(Icons.build_outlined, size: 20),
             onTap: () async {
               await Navigator.push<Set<String>>(

@@ -24,8 +24,9 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: _accessibilityLabel,
-      hint: '长按可复制',
-      excludeSemantics: true,
+      hint: '长按可打开消息操作',
+      container: true,
+      explicitChildNodes: true,
       child: GestureDetector(
         onLongPress: () => _showContextMenu(context),
         child: Row(
@@ -65,23 +66,19 @@ class MessageBubble extends StatelessWidget {
 
   String get _accessibilityLabel {
     final roleLabel = switch (message.role) {
-      MessageRole.user => '您说',
+      MessageRole.user => '您的消息',
       MessageRole.assistant => 'RastaCoder 回复',
       MessageRole.system => '系统消息',
-      MessageRole.error => '错误',
+      MessageRole.error => '错误消息',
     };
-    final visibleContent = message.role == MessageRole.assistant
-        ? _splitThinking(message.content)[1]
-        : message.content;
     final hasThinking = (message.thinking?.trim().isNotEmpty ?? false) ||
         (message.role == MessageRole.assistant && _splitThinking(message.content)[0].isNotEmpty);
     final hasDiagnostics = message.diagnostics?.trim().isNotEmpty ?? false;
     final extras = <String>[
-      if (hasThinking) '包含可展开的思考过程',
-      if (message.thinkingMode != null && !hasThinking) '包含思考模式状态',
-      if (hasDiagnostics) '包含可展开并复制或分享的工具调用诊断',
+      if (hasThinking) '下方有独立的思考过程展开按钮',
+      if (hasDiagnostics) '下方有独立的工具调用诊断展开按钮',
     ];
-    return '$roleLabel：$visibleContent${extras.isEmpty ? '' : '。${extras.join('；')}'}';
+    return '$roleLabel${extras.isEmpty ? '' : '，${extras.join('，')}'}';
   }
 
   MainAxisAlignment get _alignment {
@@ -247,34 +244,16 @@ class MessageBubble extends StatelessWidget {
 
     if (thinking.isNotEmpty) {
       widgets.add(
-        Theme(
-          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-          child: ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: const EdgeInsets.only(bottom: 10),
-            initiallyExpanded: false,
-            maintainState: true,
-            title: Semantics(
-              button: true,
-              label: '思考过程，当前已折叠，双击展开',
-              child: Text(
-                '思考过程（点击展开）',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: NavixTheme.textSecondary,
-                    ),
-              ),
+        _AccessibleExpansionSection(
+          semanticTitle: '思考过程',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              thinking,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: NavixTheme.textTertiary,
+                  ),
             ),
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SelectableText(
-                  thinking,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: NavixTheme.textTertiary,
-                      ),
-                ),
-              ),
-            ],
           ),
         ),
       );
@@ -362,23 +341,10 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildDiagnosticsPanel(BuildContext context, String diagnostics) {
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 8),
-        initiallyExpanded: false,
-        maintainState: true,
-        title: Semantics(
-          button: true,
-          label: '工具调用诊断，当前已折叠，双击展开',
-          child: Text(
-            '工具调用诊断（点击展开）',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: NavixTheme.textSecondary,
-                ),
-          ),
-        ),
+    return _AccessibleExpansionSection(
+      semanticTitle: '工具调用诊断',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Align(
             alignment: Alignment.centerLeft,
@@ -646,6 +612,59 @@ class MessageBubble extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AccessibleExpansionSection extends StatefulWidget {
+  final String semanticTitle;
+  final Widget child;
+
+  const _AccessibleExpansionSection({
+    required this.semanticTitle,
+    required this.child,
+  });
+
+  @override
+  State<_AccessibleExpansionSection> createState() =>
+      _AccessibleExpansionSectionState();
+}
+
+class _AccessibleExpansionSectionState
+    extends State<_AccessibleExpansionSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final stateLabel = _expanded ? '已展开' : '已折叠';
+    final actionLabel = _expanded ? '双击收起' : '双击展开';
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 10),
+        initiallyExpanded: false,
+        maintainState: true,
+        onExpansionChanged: (value) {
+          if (mounted) setState(() => _expanded = value);
+        },
+        title: Semantics(
+          container: true,
+          button: true,
+          label: '${widget.semanticTitle}，当前$stateLabel，$actionLabel',
+          child: ExcludeSemantics(
+            child: Text(
+              _expanded
+                  ? '${widget.semanticTitle}（点击收起）'
+                  : '${widget.semanticTitle}（点击展开）',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: NavixTheme.textSecondary,
+                  ),
+            ),
+          ),
+        ),
+        children: [widget.child],
       ),
     );
   }

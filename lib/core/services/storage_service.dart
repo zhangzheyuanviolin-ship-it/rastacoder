@@ -123,10 +123,11 @@ class StorageService {
     await _storage.write(key: _keyPreferredModel, value: model);
   }
 
-  /// Get preferred model (default: 'auto')
+  /// Get preferred model. Fresh installs default to the on-device Qwen3 4B;
+  /// an explicit cloud selection such as 'auto' is still persisted verbatim.
   Future<String> getPreferredModel() async {
     final value = await _storage.read(key: _keyPreferredModel);
-    return value ?? 'auto';
+    return value ?? 'qwen3-4b';
   }
 
   // Token limit methods

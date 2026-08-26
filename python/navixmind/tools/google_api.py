@@ -50,6 +50,8 @@ def google_calendar(
             return _create_event(base_url, headers, event)
         elif action == "delete":
             return _delete_event(base_url, headers, event_id)
+        elif action == "update":
+            return _update_event(base_url, headers, event_id, event)
         else:
             raise ToolError(f"Unknown action: {action}")
 
@@ -126,6 +128,36 @@ def _list_events(base_url: str, headers: dict, date_range: Optional[str]) -> dic
         "count": len(events),
         "range": {"min": time_min, "max": time_max}
     }
+
+
+def _update_event(base_url: str, headers: dict, event_id: Optional[str], event: Optional[dict]) -> dict:
+    """Update selected fields of one Calendar event."""
+    if not event_id:
+        raise ToolError("event_id required for update action")
+    if not event:
+        raise ToolError("event details required for update action")
+    body = {}
+    if event.get("title") is not None:
+        body["summary"] = event["title"]
+    if event.get("description") is not None:
+        body["description"] = event["description"]
+    if event.get("location") is not None:
+        body["location"] = event["location"]
+    if event.get("start") is not None:
+        body["start"] = {"dateTime": event["start"], "timeZone": "UTC"}
+    if event.get("end") is not None:
+        body["end"] = {"dateTime": event["end"], "timeZone": "UTC"}
+    if not body:
+        raise ToolError("No supported event fields supplied for update")
+    response = requests.patch(
+        f"{base_url}/calendars/primary/events/{event_id}",
+        headers=headers,
+        json=body,
+        timeout=30,
+    )
+    response.raise_for_status()
+    updated = response.json()
+    return {"success": True, "event_id": updated.get("id"), "updated": True}
 
 
 def _delete_event(base_url: str, headers: dict, event_id: Optional[str]) -> dict:

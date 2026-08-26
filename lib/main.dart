@@ -16,6 +16,8 @@ import 'core/services/native_tool_executor.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/offline_queue_manager.dart';
 import 'core/services/local_llm_service.dart';
+import 'core/services/storage_service.dart';
+import 'core/models/model_registry.dart';
 import 'core/services/share_receiver_service.dart';
 
 void main() async {
@@ -98,8 +100,26 @@ void main() async {
   // Initialize offline queue manager
   await OfflineQueueManager.instance.initialize(isar);
 
-  // Initialize local LLM service (scans disk for downloaded models)
+  // Initialize local LLM service (scans disk for downloaded models).
   await LocalLLMService.instance.initialize();
+
+  // RASTACODER_V7_LOCAL_MODEL_RESTORE
+  // Persisting a model ID is not enough: after process death the native MLC
+  // engine is empty. Restore the last explicitly selected local model so the
+  // app does not appear to jump back to cloud/Auto after every restart.
+  final preferredModel = await StorageService.instance.getPreferredModel();
+  final preferredInfo = ModelRegistry.getById(preferredModel);
+  if (preferredInfo != null && preferredInfo.isOffline) {
+    try {
+      if (await LocalLLMService.instance.isModelDownloaded(preferredModel)) {
+        await LocalLLMService.instance.loadModel(preferredModel);
+      }
+    } catch (e) {
+      // Keep the user's selection even if the OS/driver cannot load it now;
+      // the normal on-demand load path can retry and surface the real error.
+      debugPrint('Preferred local model restore failed: $e');
+    }
+  }
 
   // Phase 3: Python init (runs async, doesn't block UI)
   PythonBridge.instance.initialize(logDir);

@@ -116,15 +116,21 @@ AVAILABLE TOOLS:
 - **modify_pptx** — Modify existing PPTX files (replace text, add slides, update shapes, set notes)
 - **read_xlsx** — Extract cell data, sheet names, and formulas from XLSX files
 - **modify_xlsx** — Modify existing XLSX files (set cells, formulas, add rows/sheets, delete sheets)
-- **ffmpeg_process** — Process video/audio: trim, crop, resize, filter, extract audio/frame, convert. Returns media_duration_seconds (actual media length) and processing_time_ms (execution time) — do NOT confuse them. NEVER use % patterns (like %03d) in output filenames — the tool expects a single output file. To split media into segments, use multiple trim calls with start/duration.
+- **ffmpeg_process** — Process video/audio: trim, crop, resize, filter, extract audio/frame, convert, concatenate, mix audio, merge A/V, or use advanced custom FFmpeg. Returns media_duration_seconds (actual media length) and processing_time_ms (execution time) — do NOT confuse them. NEVER use % patterns (like %03d) in output filenames — the tool expects a single output file. To split media into segments, use multiple trim calls with start/duration.
 - **smart_crop** — Smart crop video/image to focus on faces (for simple face-centered cropping only)
 - **ocr_image** — Extract text from images using OCR
 - **download_media** — Download video/audio from supported platforms (NOT YouTube)
-- **google_calendar** — Query or create Google Calendar events (list, create, delete)
+- **google_calendar** — Query or manage Google Calendar events (list, create, update, delete)
 - **gmail** — Read Gmail messages (list, read). Read-only access — sending is not available.
 - **file_info** — Get file metadata (size, name, extension)
 - **read_file** — Read text content from a file (any text-based format)
 - **write_file** — Write text content to a file (saved to device, available for download/sharing)
+- **list_files** — List/discover files and directories, including recursive/pattern searches
+- **file_manage** — Create directories; copy, move, rename, delete, touch or test files/directories
+- **list_zip / extract_zip** — Inspect and safely extract ZIP archives
+- **pdf_manage** — Merge, split, extract/reorder/delete/rotate PDF pages
+- **image_compose** — Resize/convert/concat/overlay/crop/adjust/rotate/flip/filter images
+- **create_pptx / create_xlsx** — Create PowerPoint presentations and Excel workbooks
 
 GOOGLE SERVICES (google_calendar, gmail):
 - These tools require the user to connect their Google account in Settings first.

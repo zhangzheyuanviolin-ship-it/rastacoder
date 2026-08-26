@@ -1009,15 +1009,27 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           tooltip: '菜单',
         ),
         actions: [
-          IconButton(
-            onPressed: _isProcessing ? null : _openConversationHistory,
-            icon: const Icon(Icons.history),
-            tooltip: '聊天记录',
+          Semantics(
+            button: true,
+            label: '聊天记录',
+            hint: '打开对话历史记录',
+            enabled: !_isProcessing,
+            child: IconButton(
+              onPressed: _isProcessing ? null : _openConversationHistory,
+              icon: const Icon(Icons.history),
+              tooltip: '聊天记录',
+            ),
           ),
-          IconButton(
-            onPressed: _isProcessing ? null : _startNewConversation,
-            icon: const Icon(Icons.add_comment_outlined),
-            tooltip: '新建对话',
+          Semantics(
+            button: true,
+            label: '新建对话',
+            hint: '创建一个新的聊天会话',
+            enabled: !_isProcessing,
+            child: IconButton(
+              onPressed: _isProcessing ? null : _startNewConversation,
+              icon: const Icon(Icons.add_comment_outlined),
+              tooltip: '新建对话',
+            ),
           ),
           if (_isProcessing)
             const Padding(
