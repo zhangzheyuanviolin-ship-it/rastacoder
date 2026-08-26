@@ -31,10 +31,12 @@ jobs:
           python3 scripts/run_iteration_v7_tools.py
           python3 scripts/apply_iteration_v7_native.py
           python3 scripts/apply_iteration_v7_ui.py
+          python3 scripts/apply_iteration_v7_accessibility2.py
           python3 scripts/apply_iteration_v7_preoffice.py
           python3 scripts/apply_iteration_v7_office.py
           python3 scripts/apply_iteration_v7_archive.py
           python3 scripts/apply_iteration_v7_media.py
+          python3 scripts/apply_iteration_v7_pathing.py
 
       - name: Compile Python sources and patch scripts
         shell: bash
@@ -45,10 +47,12 @@ jobs:
             scripts/run_iteration_v7_tools.py \
             scripts/apply_iteration_v7_native.py \
             scripts/apply_iteration_v7_ui.py \
+            scripts/apply_iteration_v7_accessibility2.py \
             scripts/apply_iteration_v7_preoffice.py \
             scripts/apply_iteration_v7_office.py \
             scripts/apply_iteration_v7_archive.py \
             scripts/apply_iteration_v7_media.py \
+            scripts/apply_iteration_v7_pathing.py \
             scripts/validate_iteration_v7.py \
             python/navixmind/tools/extended_tools.py \
             python/navixmind/tools/__init__.py \
@@ -69,7 +73,8 @@ jobs:
           python3 scripts/validate_iteration_v7.py
           grep -F 'Actually save the resolved media file' python/navixmind/tools/media.py
           grep -F 'if os.path.isdir(fpath)' python/navixmind/tools/documents.py
-          grep -F 'output_path' python/navixmind/tools/media.py
+          grep -F "'source_path', 'zip_path'" python/navixmind/tools/__init__.py
+          grep -F 'class _AccessibleExpansionSection extends StatefulWidget' lib/features/chat/presentation/widgets/message_bubble.dart
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -95,4 +100,4 @@ jobs:
         run: |
           echo 'v7 preflight passed without building an APK.'
           echo '21 manual Skills cover 31 canonical local tools.'
-          echo 'File lifecycle, ZIP create/list/extract, actual media download, image compose, PDF page management, PPTX/XLSX creation, FFmpeg custom/multi-input schema, accessibility semantics, and local-model restore gates passed.'
+          echo 'File lifecycle, ZIP create/list/extract, actual media download, image compose, PDF page management, PPTX/XLSX creation, FFmpeg custom/multi-input schema, nested attachment pathing, accessibility semantics, and local-model restore gates passed.'
