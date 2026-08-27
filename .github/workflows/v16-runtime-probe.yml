@@ -1,0 +1,64 @@
+name: Probe V16 Native and Model Runtime
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-residual-runtime-hardening-v16
+    paths:
+      - 'V16_RUNTIME_PROBE_TRIGGER.md'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inspect exact known-good MLC runtime model libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 2 \
+            -o /tmp/upstream.apk \
+            https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+          echo '94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed  /tmp/upstream.apk' | sha256sum -c -
+          unzip -p /tmp/upstream.apk lib/arm64-v8a/libtvm4j_runtime_packed.so > /tmp/mlc-runtime.so
+          echo '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48  /tmp/mlc-runtime.so' | sha256sum -c -
+          echo '--- model-lib identifiers visible in packed runtime ---'
+          strings /tmp/mlc-runtime.so | grep -Eo '(qwen2|qwen3|ministral3)_[A-Za-z0-9_]+' | sort -u | tee /tmp/model-lib-strings.txt || true
+          for required in \
+            qwen2_q4f16_0_ce81ef8767dfb3f843c79deb0b3f66fc \
+            qwen2_q4f16_0_1be22ffdc6429c5019af9af8dae22086 \
+            qwen2_q4f16_0_ecc0cde57625a5817018e8d547361bb3 \
+            ministral3_q4f16_0_68e08feb72d08c3826f6a0b3623b81fc \
+            qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc; do
+              grep -F "$required" /tmp/model-lib-strings.txt
+          done
+
+      - name: Inspect official curl-cffi Android wheel native dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          WHEEL=/tmp/curl_cffi.whl
+          curl -L --fail --retry 5 --retry-delay 2 \
+            -o "$WHEEL" \
+            https://github.com/lexiforest/curl_cffi/releases/download/v0.16.2/curl_cffi-0.16.2-cp313-cp313-android_24_arm64_v8a.whl
+          echo '58598186eccd24d2b2e126f945d8a5bdca0066a2789052023d3d8370ebadca30  /tmp/curl_cffi.whl' | sha256sum -c -
+          rm -rf /tmp/curlwheel && mkdir /tmp/curlwheel
+          unzip -q "$WHEEL" -d /tmp/curlwheel
+          echo '--- wheel shared objects ---'
+          find /tmp/curlwheel -type f -name '*.so' -print | sort
+          WRAPPER="$(find /tmp/curlwheel -type f -name '_wrapper*.so' | head -n 1)"
+          test -n "$WRAPPER"
+          echo '--- wrapper DT_NEEDED ---'
+          readelf -d "$WRAPPER" | grep NEEDED | tee /tmp/wrapper-needed.txt
+          NEEDED="$(sed -n 's/.*Shared library: \[\(libc++_shared-[^]]*\.so\)\].*/\1/p' /tmp/wrapper-needed.txt | head -n 1)"
+          test -n "$NEEDED"
+          COMPANION="$(find /tmp/curlwheel -type f -name "$NEEDED" | head -n 1)"
+          test -n "$COMPANION"
+          echo "required_companion=$NEEDED"
+          echo "companion_path=$COMPANION"
+          sha256sum "$COMPANION"
