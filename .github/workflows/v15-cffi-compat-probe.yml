@@ -1,0 +1,43 @@
+name: Probe V15 curl-cffi CFFI compatibility
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-tool-runtime-hardening-v15
+    paths:
+      - 'V15_CFFI_COMPAT_TRIGGER.md'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install old CFFI backend and current curl-cffi without dependency override
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install 'cffi==1.17.1' 'certifi>=2024.2.2'
+          python -m pip install --no-deps 'https://github.com/lexiforest/curl_cffi/releases/download/v0.16.2/curl_cffi-0.16.2-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl'
+      - name: Prove wrapper ABI and browser impersonation work on CFFI 1.17.1 backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import cffi, _cffi_backend
+          assert cffi.__version__ == '1.17.1', cffi.__version__
+          assert _cffi_backend.__version__ == '1.17.1', _cffi_backend.__version__
+          import curl_cffi
+          from curl_cffi import requests
+          print('curl_cffi', curl_cffi.__version__)
+          print('cffi', cffi.__version__, 'backend', _cffi_backend.__version__)
+          r = requests.get('https://example.com/', impersonate='chrome', timeout=20)
+          assert r.status_code == 200, r.status_code
+          assert 'Example Domain' in r.text
+          print('V15 CFFI compatibility probe passed: import + HTTPS + Chrome impersonation succeeded.')
+          PY
