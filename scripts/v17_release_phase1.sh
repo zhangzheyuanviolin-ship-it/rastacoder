@@ -21,12 +21,14 @@ python3 -m py_compile \
   scripts/apply_iteration_v17_local_tool_recovery.py \
   scripts/apply_iteration_v17_prompt_legacy_guard.py \
   scripts/apply_iteration_v17_trusted_path_boundary.py \
+  scripts/apply_iteration_v17_tools_import_guard.py \
   scripts/validate_iteration_v17.py \
   scripts/prepare_curl_cffi_android_wheel.py \
   scripts/prepare_curl_cffi_native_companion_v16.py
 python3 scripts/apply_iteration_v17_local_tool_recovery.py
 python3 scripts/apply_iteration_v17_prompt_legacy_guard.py
 python3 scripts/apply_iteration_v17_trusted_path_boundary.py
+python3 scripts/apply_iteration_v17_tools_import_guard.py
 python3 -m py_compile \
   python/navixmind/agent.py \
   python/navixmind/tools/__init__.py \
