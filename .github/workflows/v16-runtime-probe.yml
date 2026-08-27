@@ -27,16 +27,22 @@ jobs:
           echo '94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed  /tmp/upstream.apk' | sha256sum -c -
           unzip -p /tmp/upstream.apk lib/arm64-v8a/libtvm4j_runtime_packed.so > /tmp/mlc-runtime.so
           echo '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48  /tmp/mlc-runtime.so' | sha256sum -c -
-          echo '--- model-lib identifiers visible in packed runtime ---'
-          strings /tmp/mlc-runtime.so | grep -Eo '(qwen2|qwen3|ministral3)_[A-Za-z0-9_]+' | sort -u | tee /tmp/model-lib-strings.txt || true
-          for required in \
-            qwen2_q4f16_0_ce81ef8767dfb3f843c79deb0b3f66fc \
-            qwen2_q4f16_0_1be22ffdc6429c5019af9af8dae22086 \
-            qwen2_q4f16_0_ecc0cde57625a5817018e8d547361bb3 \
-            ministral3_q4f16_0_68e08feb72d08c3826f6a0b3623b81fc \
-            qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc; do
-              grep -F "$required" /tmp/model-lib-strings.txt
-          done
+
+          cat > /tmp/expected-model-libs.txt <<'EOF'
+          ministral3_q4f16_0_68e08feb72d08c3826f6a0b3623b81fc
+          qwen2_q4f16_0_1be22ffdc6429c5019af9af8dae22086
+          qwen2_q4f16_0_ce81ef8767dfb3f843c79deb0b3f66fc
+          qwen2_q4f16_0_ecc0cde57625a5817018e8d547361bb3
+          qwen3_q4f16_0_744427a6c2d881a41e79d0bfb2a540dc
+          EOF
+          sed -i 's/^          //' /tmp/expected-model-libs.txt
+          strings /tmp/mlc-runtime.so \
+            | grep -Eo '(qwen2|qwen3|ministral3)_q4f16_0_[0-9a-f]{32}' \
+            | sort -u > /tmp/actual-model-libs.txt
+          echo '--- exact compiled model-library identifiers ---'
+          cat /tmp/actual-model-libs.txt
+          diff -u /tmp/expected-model-libs.txt /tmp/actual-model-libs.txt
+          test "$(wc -l < /tmp/actual-model-libs.txt)" -eq 5
 
       - name: Inspect official curl-cffi Android wheel native dependencies
         shell: bash
@@ -51,14 +57,23 @@ jobs:
           unzip -q "$WHEEL" -d /tmp/curlwheel
           echo '--- wheel shared objects ---'
           find /tmp/curlwheel -type f -name '*.so' -print | sort
-          WRAPPER="$(find /tmp/curlwheel -type f -name '_wrapper*.so' | head -n 1)"
-          test -n "$WRAPPER"
+          WRAPPER="$(find /tmp/curlwheel -type f -name '_wrapper*.so' -print -quit)"
+          test -f "$WRAPPER"
+          readelf -d "$WRAPPER" \
+            | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' \
+            | sort -u > /tmp/all-needed.txt
           echo '--- wrapper DT_NEEDED ---'
-          readelf -d "$WRAPPER" | grep NEEDED | tee /tmp/wrapper-needed.txt
-          NEEDED="$(sed -n 's/.*Shared library: \[\(libc++_shared-[^]]*\.so\)\].*/\1/p' /tmp/wrapper-needed.txt | head -n 1)"
-          test -n "$NEEDED"
-          COMPANION="$(find /tmp/curlwheel -type f -name "$NEEDED" | head -n 1)"
-          test -n "$COMPANION"
-          echo "required_companion=$NEEDED"
-          echo "companion_path=$COMPANION"
-          sha256sum "$COMPANION"
+          cat /tmp/all-needed.txt
+          grep -E '^lib[A-Za-z0-9+_.-]+-[0-9a-fA-F]+\.so$' /tmp/all-needed.txt > /tmp/private-needed.txt
+          echo '--- wheel-private hashed DT_NEEDED ---'
+          cat /tmp/private-needed.txt
+          test "$(wc -l < /tmp/private-needed.txt)" -eq 2
+          grep -Fx 'libc++_shared-d523468d.so' /tmp/private-needed.txt
+          grep -Fx 'libdl-a1426ed8.so' /tmp/private-needed.txt
+          while IFS= read -r needed; do
+            companion="$(find /tmp/curlwheel -type f -name "$needed" -print -quit)"
+            test -f "$companion"
+            printf 'required_companion=%s\n' "$needed"
+            printf 'companion_path=%s\n' "$companion"
+            /usr/bin/sha256sum -- "$companion"
+          done < /tmp/private-needed.txt
