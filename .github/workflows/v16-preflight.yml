@@ -6,9 +6,10 @@ on:
       - iteration/qwen3-residual-runtime-hardening-v16
     paths:
       - 'V16_PREFLIGHT_TRIGGER.md'
+      - 'V16_RELEASE_TRIGGER.md'
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   RUNTIME_PROBE_RUN: '33041507127'
@@ -208,3 +209,79 @@ jobs:
           echo 'curl-cffi wheel-private native companions are packaged byte-identically under exact DT_NEEDED filenames.'
           echo 'The fixed verified MLC runtime contains exactly the five model libraries already exposed by the UI; no unverified model was added.'
           echo 'Flutter analysis and exact Android Python dependency resolution passed without producing an APK.'
+
+  release-v16:
+    if: contains(github.event.head_commit.message, 'release: trigger registered V16 formal APK build')
+    needs: preflight-v16
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    env:
+      SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+      SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+      EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+      EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+      EXPECTED_PACKAGE: ai.navixmind
+      BUILD_NAME: 0.0.15
+      BUILD_NUMBER: '29'
+      OUTPUT_APK: RastaCoder-Qwen3-4B-residual-runtime-hardening-v16-update.apk
+      RELEASE_TAG: qwen3-residual-runtime-hardening-v16
+      PREFLIGHT_RUN: '33041993590'
+      PRIVATE_CURL_LIB: libc++_shared-d523468d.so
+    steps:
+      - name: Checkout V16 release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.11 for release pre-build regressions
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java for Android build
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter for single formal build
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Run locked V16 pre-build release phase
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/v16_release_phase1.sh
+
+      - name: Setup Python 3.13 for Android Chaquopy and curl-cffi
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Setup Gradle 8.4 for exact Android dependency/build phase
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+
+      - name: Build exactly one V16 APK and verify binary payloads
+        run: bash scripts/v16_release_phase2a_build.sh
+
+      - name: Restore Python 3.11 for final V9-V16 regressions
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Persist verified V16 source and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/v16_release_phase2b_publish.sh
+
+      - name: Cleanup signing and generated native/vendor materials
+        if: always()
+        run: |
+          rm -f android/app/rastacoder-dev.p12 android/key.properties android/local.properties upstream-known-good.apk
+          rm -rf android/app/vendor
+          rm -f "android/app/src/main/jniLibs/arm64-v8a/$PRIVATE_CURL_LIB"
