@@ -1,8 +1,9 @@
 """Canonical model-facing path contract for RastaCoder.
 
 The model works in a logical namespace. Physical Android/app paths are execution
-implementation details. Small models may still emit common virtual absolute
-aliases such as /workspace; those aliases are repaired deterministically.
+implementation details. Small models may emit virtual absolute aliases such as
+/ or /workspace; those aliases are repaired deterministically before any tool
+touches the Android filesystem.
 """
 from __future__ import annotations
 
@@ -20,8 +21,13 @@ ANDROID_LOGICAL_ROOTS = {
     'camera': '/storage/emulated/0/DCIM/Camera',
 }
 
+# V17 local-tool recovery invariant:
+# A model-facing bare slash means "the root of my workspace", never the Android
+# process/filesystem root. Small local models commonly express a logical root as
+# "/" even when the schema example says ".". Treating it as a real absolute
+# path causes Android EACCES and can break every path-taking local tool.
 WORKSPACE_ALIASES = {
-    '', '.', './', 'workspace', 'workspace/', 'output', 'output/',
+    '', '.', './', '/', 'workspace', 'workspace/', 'output', 'output/',
     '/workspace', '/workspace/', '/output', '/output/',
 }
 
@@ -56,10 +62,17 @@ def _strip_virtual_workspace_prefix(raw: str) -> Optional[str]:
 
 
 def resolve_model_path(value: str, workspace_root: str, allow_android_roots: bool = True) -> str:
-    """Resolve one model-facing path while preserving trusted real absolute paths.
+    """Resolve one model-facing path into an execution path.
 
     Virtual workspace aliases are interpreted before the generic absolute-path
-    branch. This is the key invariant missing in V11.
+    branch. In particular, V17 locks bare "/" to the app workspace root so an
+    on-device model cannot accidentally request Android's filesystem root when
+    it merely means "my workspace root".
+
+    Genuine absolute paths are still preserved for trusted attachment paths and
+    already-resolved internal execution paths; the agent/file-map layer is what
+    supplies those values. Documented Android roots remain available through
+    their logical aliases (downloads/, documents/, pictures/, etc.).
     """
     root = os.path.normpath(str(workspace_root))
     raw = str(value or '').strip().replace('\\', '/')
@@ -78,7 +91,8 @@ def resolve_model_path(value: str, workspace_root: str, allow_android_roots: boo
             return _safe_join(ANDROID_LOGICAL_ROOTS[first_key], remainder if sep else '', f'{first_key} root')
 
     # Attached files and already-resolved real Android/app paths reach here as
-    # genuine absolute paths and must remain usable.
+    # genuine absolute paths and must remain usable. Bare '/' never reaches this
+    # branch because it is a workspace alias above.
     if os.path.isabs(raw):
         return os.path.normpath(raw)
 
@@ -88,7 +102,7 @@ def resolve_model_path(value: str, workspace_root: str, allow_android_roots: boo
 
 
 def resolve_output_path(value: str, workspace_root: str) -> str:
-    """Resolve generated output paths. Virtual /workspace and /output are safe aliases."""
+    """Resolve generated output paths. /, /workspace and /output are workspace aliases."""
     return resolve_model_path(value, workspace_root, allow_android_roots=False)
 
 
@@ -102,6 +116,12 @@ def resolve_list_path(value: Optional[str], workspace_root: str, legacy_director
         if directory_key in ANDROID_LOGICAL_ROOTS:
             return os.path.normpath(ANDROID_LOGICAL_ROOTS[directory_key])
         raw = directory_key
+
+    # Bare '/' is deliberately interpreted as the logical workspace root.
+    # Keep this explicit guard in addition to WORKSPACE_ALIASES so a future
+    # alias refactor cannot silently reintroduce the V16 EACCES regression.
+    if raw == '/':
+        return os.path.normpath(workspace_root)
 
     # Legacy directory=<android-root> plus relative path keeps that root.
     if directory_key in ANDROID_LOGICAL_ROOTS and not os.path.isabs(raw):
