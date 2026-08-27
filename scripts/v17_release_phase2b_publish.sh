@@ -56,42 +56,41 @@ Full no-APK preflight: \`$PREFLIGHT_RUN\`
 MLC/native binary probe: \`$RUNTIME_PROBE_RUN\`
 
 ## Product priority and historical diagnosis
-- Local-model tool calling is the primary product capability. Cloud-provider tool calling remains secondary and must not regress the on-device path.
-- The real-device V16 failure was Qwen3-4B emitting \`list_files(path="/")\` for the logical workspace root. The call reached Android \`/\` and failed with EACCES.
-- The latent code defect entered with the V12 central path contract: the workspace alias set covered \`.\`, \`workspace\`, \`output\`, \`/workspace\` and \`/output\`, while bare \`/\` was omitted; the generic absolute-path branch then preserved it as an operating-system path.
-- V13 through V16 inherited that path-contract behavior. V14 is the last release for which local Qwen3-4B tool calls were explicitly user-confirmed working on device, so V17 treats V14 as the last real-device local-tool-good checkpoint while retaining all later fixes.
+- Local-model tool calling is the primary product capability. Cloud-provider tool calling remains secondary and must never regress the on-device path.
+- The copied V16 phone diagnostic showed Qwen3-4B emitting \`list_files(path="/")\` for the logical workspace root; the raw slash survived normalization and path resolution, reached Android \`/\`, and failed with EACCES.
+- The latent code defect entered with the V12 central path contract. It recognized \`.\`, \`workspace\`, \`output\`, \`/workspace\` and \`/output\`, while bare \`/\` was omitted and could fall through to the generic absolute-path branch.
+- V13 through V16 inherited the same underlying hole. V14 is the last release explicitly user-confirmed on device with local Qwen3-4B tools working, so V17 keeps every later runtime/cloud fix while restoring and hardening the local-first contract.
 
-## V17 shared path-contract recovery
-- Bare \`/\` is a first-class logical workspace-root alias at the central executor path boundary.
-- The local 3B-4B compatibility ABI independently normalizes \`list_files(path="/")\` to \`path="."\` and records that repair in diagnostics.
-- The fix is generalized beyond the exact crash: model-invented absolute-looking children such as \`/foo.txt\` and \`/folder/result.pdf\` are virtual workspace paths unless they are already-resolved trusted files or documented Android public-root aliases.
-- Arbitrary Android/Linux directories are no longer promoted merely because a small model wrote an absolute path.
-- Already-resolved attachment files, workspace paths and documented Android logical roots remain usable.
-- The common scalar resolver covers image/input/pdf/file/path/source/destination/zip/docx/pptx/xlsx path fields.
-- Array path inputs \`image_paths\`, \`file_paths\` and \`input_paths\` stay under the same central path contract.
-- Nested Office operation attachment paths remain resolved through the shared attachment/workspace boundary.
-- \`file_manage.destination_path\` is now included in the shared path boundary.
-- \`extract_zip.output_dir\` is now included in the shared output boundary alongside \`output_path\`.
-- Root-only output values are never treated as filenames; safe deterministic workspace filenames are synthesized where the operation permits it.
+## V17 systemic path and trust recovery
+- Bare \`/\` is a first-class logical workspace-root alias at the central path layer.
+- The 3B-4B compatibility ABI independently normalizes \`list_files(path="/")\` to \`path="."\` and records the repair.
+- The rule is generalized to the entire path family: model-invented \`/foo.txt\`, \`/folder/result.pdf\`, \`/data/...\`, \`/system/...\` and similar absolute-looking paths are workspace-relative unless they belong to documented Android public roots or were explicitly trusted by application state.
+- Attachment trust is explicit. The executor derives an exact absolute-path whitelist from \`context['_file_map']\`; merely guessing an existing filesystem path does not make it trusted.
+- CI uses the runner's real existing \`/etc/passwd\` as a negative case and verifies it is virtualized under the workspace when it is absent from the whitelist.
+- CI creates a real external attachment as the positive case, then verifies \`read_file\` can read it through the file map and \`file_manage copy\` can copy it into the workspace through both path-resolution layers.
+- Existing paths inside the workspace and documented Android logical roots remain usable.
+- Generated destinations are always workspace-owned. \`output_path\`, \`extract_zip.output_dir\` and \`file_manage.destination_path\` go through the strict output boundary and never inherit attachment trust.
+- Scalar path keys, array path keys and nested Office operation paths all use the same explicit-trust policy.
+- Model-facing list results are logicalized before reinjection, so private app filesystem paths are not taught back to the 4B model for its next call.
 
-## V17 25-Skill / 37-function local ABI audit
+## V17 complete local-tool audit
 - Exactly 25 manually controlled Skills remain present.
-- The union of enabled local Skills exposes exactly the same 37 canonical functions as the canonical tool registry.
-- The projected 4B tool schemas still contain all 37 functions, and every canonical function retains a compact local prompt hint.
-- Structured local-tool compatibility was strengthened for \`file_manage\`, \`list_zip\`, \`extract_zip\`, \`pdf_manage\`, \`create_pptx\`, \`create_xlsx\`, \`image_compose\`, \`convert_document\`, \`anysearch_extract\` and \`anysearch_get_sub_domains\` using deterministic aliases/defaults only.
-- Creation/conversion tools which can safely choose an output name now receive deterministic workspace-relative defaults, reducing small-model failures caused by meaningless Android absolute paths.
-- Exact replay of the copied phone failure is covered at compatibility, shared resolver, direct tool and executor levels.
-- Leading-slash variants are regression-tested across every shared scalar path field plus output file/directory boundaries.
-- File, Office, ZIP, PDF, image and media path families are covered centrally rather than with a list_files-only patch.
-- Network/search, Google-service, Python sandbox, media runtime, Office serialization and cloud compatibility safeguards remain covered by inherited V9-V16 gates.
-- All V9-V16 regressions remain green together with the new V17 gate before and after the formal build.
+- The union of enabled local Skills exposes exactly 37 canonical functions, matching the canonical registry.
+- The projected 4B schemas contain all 37 functions and every canonical function retains a compact local prompt hint.
+- CI automatically inventories every path-bearing field exposed across the 37 local schemas. A future new \`*_path\`, \`*_paths\` or \`*_dir\` field changes the inventory and forces a deliberate central-path audit instead of silently bypassing it.
+- The exact V16 phone call is replayed through compatibility, shared path resolution, direct tool execution and the executor boundary.
+- Manual Skill enforcement is explicitly tested after compatibility repair so a disabled function cannot be repaired into an executable call.
+- Structured 4B compatibility is strengthened for \`file_manage\`, \`list_zip\`, \`extract_zip\`, \`pdf_manage\`, \`create_pptx\`, \`create_xlsx\`, \`image_compose\`, \`convert_document\`, \`anysearch_extract\` and \`anysearch_get_sub_domains\` using deterministic aliases/container repairs only.
+- Safe deterministic output filenames cover local creation/conversion operations where the app can choose a filename itself, reducing small-model failures caused by root-only or missing output paths.
+- File, Office, archive, PDF, image, media, Python, search and connected-service tool surfaces retain inherited V9-V16 safeguards.
+- Every V9-V17 host regression is run before the build and again against the verified release source after the single formal build.
 
 ## Runtime/build invariants retained
 - Exact known-good MLC runtime remains unchanged.
-- Exactly the five previously verified MLC model libraries remain exposed; no unverified model library is introduced by V17.
-- Chaquopy Python 3.13, cffi 1.17.1 and the pinned curl-cffi 0.16.2 Android ARM64 payload remain under the V15/V16 compatibility and native-companion gates.
-- Stable signing identity and package ID are unchanged.
-- Formal output remains ARM64-only and is produced by exactly one APK build command after the locked no-APK preflight succeeds.
+- Exactly the five already-verified MLC model libraries remain registered; V17 adds no unverified model library.
+- Chaquopy Python 3.13, cffi 1.17.1 and pinned curl-cffi 0.16.2 Android ARM64 payload remain under V15/V16 compatibility/native gates.
+- Stable package ID and signing identity remain unchanged.
+- Formal output is ARM64-only and is produced by exactly one \`flutter build apk\` command after the locked no-APK preflight succeeds.
 
 ## Final verified artifact
 - ABI: \`arm64-v8a\` only
@@ -108,13 +107,15 @@ cat > docs/V17_LIVE_PROGRESS_AND_HANDOFF.md <<EOF
 
 - Full V9-V17 no-APK preflight \`$PREFLIGHT_RUN\`: SUCCESS.
 - Exact MLC/native binary probe \`$RUNTIME_PROBE_RUN\`: SUCCESS.
-- V12 introduced the latent missing bare-slash workspace alias; V13-V16 inherited it. V14 is the last user-confirmed real-device local-tool-good checkpoint.
-- Exact copied Qwen3-4B \`list_files(path="/")\` failure is covered at the compatibility ABI, shared path contract, direct tool and executor levels.
-- The same family is generalized: arbitrary model leading-slash children are workspace-relative, while trusted files and documented Android public roots remain usable.
-- Shared path coverage includes scalar, array and nested Office paths, plus \`file_manage.destination_path\` and \`extract_zip.output_dir\`.
-- Structured file/archive/PDF/Office/image compatibility and deterministic output defaults are covered for 4B local models.
-- Complete local surface invariant remains 25 manually controlled Skills / 37 canonical functions.
-- All inherited V9-V16 cloud/runtime/document/media/sandbox safeguards remain under regression gates.
+- V12 introduced the latent missing bare-slash alias; V13-V16 inherited it. V14 is the last user-confirmed real-device local-tool-good checkpoint.
+- Exact Qwen3-4B \`list_files(path="/")\` phone failure is covered at compatibility, central path, direct tool and executor layers.
+- All model-invented absolute-looking paths are virtualized unless the application explicitly trusts them through the file map or they are documented Android public roots.
+- A real existing system path is covered as a negative trust case; real external attachment read/copy are covered as positive trust cases.
+- Automatic path-field inventory covers all 37 local schemas; scalar, array, nested Office, destination and output-directory paths are gated.
+- Model-facing tool results remain logicalized and manual Skill enforcement remains authoritative.
+- Structured 4B ABI repair/defaults cover the thinner file/archive/PDF/Office/image utility surfaces.
+- Complete local surface remains 25 manually controlled Skills / 37 canonical functions.
+- All inherited V9-V16 cloud/runtime/document/media/sandbox safeguards remain green.
 - Flutter static analysis and exact Chaquopy ARM64 dependency resolution passed before the single formal APK build.
 - Verified APK SHA-256: \`$OUT_SHA\`.
 - Verified APK size: \`$OUT_SIZE\` bytes.
@@ -143,9 +144,11 @@ MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
 curl-cffi private native companion: $PRIVATE_CURL_LIB
 curl-cffi private companion SHA-256: $PRIVATE_SHA
 
-V17 is the local-first final recovery release. The exact real-device V16 failure was Qwen3-4B calling list_files with path "/" for its workspace. A latent V12 contract hole omitted bare slash from the logical workspace aliases, allowing the operating-system root to reach the tool implementation. V17 fixes that centrally and generalizes the rule to arbitrary model-invented leading-slash workspace children.
+V17 is the local-first final recovery release. The copied V16 device diagnostic showed Qwen3-4B calling list_files with path "/" for its workspace and Android returning EACCES. A latent V12 path-contract omission allowed that virtual root notation to reach the operating-system root.
 
-The audit was expanded across the entire on-device surface: 25 manually controlled Skills / 37 canonical functions, scalar/array/nested path families, destination and output-directory boundaries, structured file/archive/PDF/Office/image compatibility, deterministic output naming, tool-result/runtime regressions, Flutter analysis and exact Android ARM64 dependency resolution. All inherited V9-V16 safeguards remain green. The fixed MLC runtime and stable signing identity remain unchanged.
+V17 repairs the exact call at two layers and then generalizes the contract across the complete on-device surface. Model-invented absolute-looking paths are workspace-relative by default; only documented Android public roots and exact application-trusted attachment paths can cross that boundary. The CI suite includes an existing-system-path negative test, real attachment read/copy positive tests, automatic inventory of all path-bearing fields across the 37 local schemas, scalar/array/nested/destination/output-directory coverage, structured small-model ABI recovery, logical result reinjection and manual Skill enforcement.
+
+Exactly 25 manually controlled Skills / 37 canonical functions remain exposed. Every V9-V17 regression, Flutter analysis, curl-cffi Android native gate and exact ARM64 Chaquopy dependency gate passed before the one formal APK build. The fixed known-good MLC runtime and stable signing identity remain unchanged.
 
 Full no-APK preflight: https://github.com/${GITHUB_REPOSITORY}/actions/runs/$PREFLIGHT_RUN
 MLC/native binary probe: https://github.com/${GITHUB_REPOSITORY}/actions/runs/$RUNTIME_PROBE_RUN
