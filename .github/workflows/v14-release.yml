@@ -1,0 +1,321 @@
+name: Release RastaCoder Systemic Result Streaming v14
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-systemic-result-streaming-v14
+    paths:
+      - 'V14_RELEASE_TRIGGER.md'
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_APK_URL: https://github.com/alexandertaboriskiy/navixmind/releases/download/v0.5.0-beta/app-debug.apk
+  SOURCE_APK_SHA256: 94f574560ec469772021e284a12eabb71211393d25388c6669d854d58810a8ed
+  EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+  EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+  EXPECTED_PACKAGE: ai.navixmind
+  BUILD_NAME: 0.0.13
+  BUILD_NUMBER: '27'
+  OUTPUT_APK: RastaCoder-Qwen3-4B-systemic-result-streaming-v14-update.apk
+  RELEASE_TAG: qwen3-systemic-result-streaming-v14
+  PREFLIGHT_RUN: '33025579430'
+
+jobs:
+  release-v14:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout v14 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Compile and apply reviewed V14 systemic patches
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v14_systemic_result_streaming.py \
+            scripts/apply_iteration_v14_parser_r2.py \
+            scripts/apply_iteration_v14_streaming_r2.py \
+            scripts/apply_iteration_v14_history_clear.py \
+            scripts/validate_iteration_v14.py
+          python3 scripts/apply_iteration_v14_systemic_result_streaming.py
+          python3 scripts/apply_iteration_v14_parser_r2.py
+          python3 scripts/apply_iteration_v14_streaming_r2.py
+          python3 scripts/apply_iteration_v14_history_clear.py
+
+      - name: Compile generated source and run V9 through V14 functional gates
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/path_contract.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py \
+            scripts/validate_iteration_v14.py
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+          python3 scripts/run_validate_iteration_v9.py
+          python3 scripts/validate_iteration_v10.py
+          python3 scripts/validate_iteration_v11.py
+          python3 scripts/validate_iteration_v12.py
+          python3 scripts/validate_iteration_v13.py
+          python3 scripts/validate_iteration_v14.py
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate before APK build
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Restore exact known-good MLC runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 5 --retry-delay 3 -o upstream-known-good.apk "$SOURCE_APK_URL"
+          echo "$SOURCE_APK_SHA256  upstream-known-good.apk" | sha256sum -c -
+          test "$(stat -c '%s' upstream-known-good.apk)" -eq 593655513
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          src = pathlib.Path('upstream-known-good.apk')
+          dst = pathlib.Path('android/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(src) as z:
+              data = z.read('lib/arm64-v8a/libtvm4j_runtime_packed.so')
+          assert len(data) == 38786520, len(data)
+          digest = hashlib.sha256(data).hexdigest()
+          assert digest == '5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48', digest
+          dst.write_bytes(data)
+          print('Restored verified MLC runtime:', digest)
+          PY
+
+      - name: Restore stable RastaCoder signing identity and ARM64-only build config
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/signing/rastacoder-dev-keystore.p12.b64 | base64 -d > android/app/rastacoder-dev.p12
+          test "$(sha256sum android/app/rastacoder-dev.p12 | awk '{print $1}')" = "7048dea7d7152b80255716de2338eea539acd898cc3b8ecf8a9ca2203f21b169"
+          cat > android/key.properties <<'EOF'
+          storeFile=rastacoder-dev.p12
+          storePassword=RastaCoderDev2026!
+          keyAlias=rastacoder-dev
+          keyPassword=RastaCoderDev2026!
+          EOF
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          pattern = re.compile(r'(\bdebug\s*\{\s*\n\s*buildConfigField\s+"boolean",\s*"NAVIXMIND_DEBUG",\s*"true"\s*\n)', re.MULTILINE)
+          debug_slice = text[text.find('debug {'):text.find('release {')]
+          if 'signingConfig keystoreProperties.containsKey' not in debug_slice:
+              text, count = pattern.subn(r"\1            signingConfig keystoreProperties.containsKey('storeFile') ? signingConfigs.release : signingConfigs.debug\n", text, count=1)
+              if count != 1:
+                  raise SystemExit(f'Expected one debug buildType anchor, found {count}')
+          text = text.replace('abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"', 'abiFilters "arm64-v8a"')
+          p.write_text(text)
+          PY
+
+      - name: Build one final stable-signed ARM64 V14 APK
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --build-name="$BUILD_NAME" --build-number="$BUILD_NUMBER"
+          cp build/app/outputs/flutter-apk/app-debug.apk "$OUTPUT_APK"
+          test -s "$OUTPUT_APK"
+
+      - name: Verify final V14 APK package signature ABI runtime and all regression gates
+        id: verify_release
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          if [ -z "$APKSIGNER" ]; then
+            sdkmanager 'build-tools;35.0.0' >/dev/null
+            APKSIGNER="$SDK_ROOT/build-tools/35.0.0/apksigner"
+          fi
+          AAPT="$(dirname "$APKSIGNER")/aapt"
+          BADGING="$($AAPT dump badging "$OUTPUT_APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "package: name='$EXPECTED_PACKAGE'"
+          echo "$BADGING" | grep -F "versionCode='$BUILD_NUMBER'"
+          echo "$BADGING" | grep -F "versionName='$BUILD_NAME'"
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK" | tee apksigner.txt
+          CERT_SHA="$(awk -F': ' '/certificate SHA-256 digest/{print tolower($NF); exit}' apksigner.txt | tr -d ':')"
+          test "$CERT_SHA" = "$EXPECTED_CERT_SHA256"
+          python3 - <<'PY'
+          import hashlib, os, zipfile
+          apk = os.environ['OUTPUT_APK']
+          with zipfile.ZipFile(apk) as z:
+              names = z.namelist()
+              abis = sorted({n.split('/')[1] for n in names if n.startswith('lib/') and len(n.split('/')) >= 3})
+              assert abis == ['arm64-v8a'], abis
+              runtime = 'lib/arm64-v8a/libtvm4j_runtime_packed.so'
+              data = z.read(runtime)
+              assert len(data) == 38786520, len(data)
+              digest = hashlib.sha256(data).hexdigest()
+              assert digest == os.environ['EXPECTED_RUNTIME_SHA256'], digest
+          PY
+          python3 scripts/run_validate_iteration_v9.py
+          python3 scripts/validate_iteration_v10.py
+          python3 scripts/validate_iteration_v11.py
+          python3 scripts/validate_iteration_v12.py
+          python3 scripts/validate_iteration_v13.py
+          python3 scripts/validate_iteration_v14.py
+          OUT_SHA="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          OUT_SIZE="$(stat -c '%s' "$OUTPUT_APK")"
+          echo "out_sha=$OUT_SHA" >> "$GITHUB_OUTPUT"
+          echo "out_size=$OUT_SIZE" >> "$GITHUB_OUTPUT"
+          echo "cert_sha=$CERT_SHA" >> "$GITHUB_OUTPUT"
+          echo "Final APK SHA-256: $OUT_SHA"
+          echo "Final APK size: $OUT_SIZE"
+
+      - name: Persist verified V14 generated source and final handoff
+        env:
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+        run: |
+          set -euo pipefail
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
+          cat > docs/HANDOFF_QWEN3_SYSTEMIC_RESULT_STREAMING_V14.md <<EOF
+          # RastaCoder Qwen3 Systemic Result Streaming v14 — verified release handoff
+
+          Branch: \`iteration/qwen3-systemic-result-streaming-v14\`
+          Release tag: \`$RELEASE_TAG\`
+          Version: \`$BUILD_NAME\` / code \`$BUILD_NUMBER\`
+          Package: \`$EXPECTED_PACKAGE\`
+          Preflight run: \`$PREFLIGHT_RUN\`
+
+          ## V14 verified architecture
+          - Preserves exactly 25 manually controlled Skills / 37 canonical local functions and all V9-V13 safeguards.
+          - Applies one JSON-safe executor/result boundary across local tools so nested Python-only containers such as set/tuple cannot crash a successful tool turn before the model's final answer.
+          - Converts Qwen-style brace arrays through an ordered AST compatibility path, preserving spreadsheet row/column source order instead of creating unordered Python sets.
+          - Rejects incomplete function JSON containing bare argument keys with no value and gives bounded, schema-aware repair guidance; this covers the reported create_pdf failure class without hard-coding one PDF prompt.
+          - Adds a bounded post-tool empty-final recovery: after successful tool execution, an empty end_turn gets one tool-free final-answer generation instead of silently ending.
+          - Streams top-level local-model final text through the existing MLC receive channel to Flutter while internal document-ingestion helper generations remain private; each ReAct generation receives a fresh streaming draft state so tool-call rounds do not suppress the following final reply.
+          - Adds an accessible clear-all action to the chat-history manager. It clears all persisted conversations/messages in one Isar transaction, preserves the existing per-conversation delete action, and leaves generated/workspace files untouched.
+
+          ## Validation
+          - No-APK V14 preflight run \`$PREFLIGHT_RUN\`: SUCCESS, including V9/V10/V11/V12/V13/V14 gates and Flutter static analysis.
+          - Formal release repeats V9 through V14 gates before and after the APK build.
+          - Package/version, stable signing certificate, ARM64-only ABI and exact known-good MLC runtime are verified after build.
+
+          ## Final verified artifact
+          - ABI: \`arm64-v8a\` only
+          - Stable signing certificate SHA-256: \`$EXPECTED_CERT_SHA256\`
+          - MLC runtime SHA-256: \`$EXPECTED_RUNTIME_SHA256\`
+          - APK SHA-256: \`$OUT_SHA\`
+          - APK size: \`$OUT_SIZE\` bytes
+          EOF
+
+          cat > docs/V14_LIVE_PROGRESS_AND_HANDOFF.md <<EOF
+          # RastaCoder V14 live progress and handoff
+
+          - V14 no-APK preflight \`$PREFLIGHT_RUN\`: SUCCESS.
+          - 25 Skills / 37 canonical local functions preserved.
+          - Shared JSON/result boundary, ordered brace-array repair, incomplete-call rejection, post-tool final-response recovery, explicit final-text streaming and clear-all chat history all passed V14 gates.
+          - V9/V10/V11/V12/V13 inherited regression gates remained green before and after the APK build.
+          - Flutter static analysis passed before the formal build.
+          - Verified APK SHA-256: \`$OUT_SHA\`.
+          - Verified APK size: \`$OUT_SIZE\` bytes.
+          EOF
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            python/navixmind/agent.py \
+            python/navixmind/tools/compat.py \
+            android/app/src/main/kotlin/ai/navixmind/services/MLCInferenceChannel.kt \
+            lib/core/services/native_tool_executor.dart \
+            lib/core/services/local_llm_service.dart \
+            lib/features/chat/presentation/chat_screen.dart \
+            lib/core/services/conversation_manager.dart \
+            lib/features/chat/presentation/conversation_history_screen.dart \
+            docs/V14_LIVE_PROGRESS_AND_HANDOFF.md \
+            docs/HANDOFF_QWEN3_SYSTEMIC_RESULT_STREAMING_V14.md
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: persist verified systemic result streaming v14 source and handoff [skip ci]'
+            git push origin HEAD:iteration/qwen3-systemic-result-streaming-v14
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUT_SHA: ${{ steps.verify_release.outputs.out_sha }}
+          OUT_SIZE: ${{ steps.verify_release.outputs.out_size }}
+          CERT_SHA: ${{ steps.verify_release.outputs.cert_sha }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          RastaCoder Qwen3 4B Systemic Result Streaming v14
+
+          Version: $BUILD_NAME ($BUILD_NUMBER)
+          Package: $EXPECTED_PACKAGE
+          ABI: arm64-v8a only
+          APK SHA-256: $OUT_SHA
+          APK size: $OUT_SIZE bytes
+          Signing certificate SHA-256: $CERT_SHA
+          MLC runtime SHA-256: $EXPECTED_RUNTIME_SHA256
+
+          V14 hardens the shared successful-tool-to-final-answer boundary across all 25 Skills / 37 canonical local functions, preserves source order for Qwen brace-array spreadsheet calls, rejects missing-value tool JSON with precise bounded repair guidance, adds a post-tool empty-final recovery, streams top-level on-device final replies into the chat UI, and adds an accessible clear-all chat-history action while retaining per-conversation deletion. All V9-V13 safeguards remain intact.
+
+          Preflight: https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/$PREFLIGHT_RUN
+          EOF
+          gh release create "$RELEASE_TAG" "$OUTPUT_APK" \
+            --target iteration/qwen3-systemic-result-streaming-v14 \
+            --title 'RastaCoder Qwen3 4B Systemic Result Streaming v14' \
+            --notes-file release-notes.md
+
+      - name: Cleanup signing materials
+        if: always()
+        run: |
+          rm -f android/app/rastacoder-dev.p12 android/key.properties
