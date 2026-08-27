@@ -70,7 +70,9 @@ if 'RASTACODER_V14_STREAM_TO_UI_FLAG' not in agent:
                 max_tokens=max_tokens,
             )
 ''',
-        '''            if is_offline:
+        '''            # V10 semantic invariant retained: tools=None if (is_offline and force_no_tools_once) else tools_schema
+            # V14 makes the local/cloud split explicit so the local call can carry stream_to_ui.
+            if is_offline:
                 response = client.create_message(
                     messages=messages,
                     system=system_prompt,
