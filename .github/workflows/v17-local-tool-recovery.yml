@@ -42,10 +42,12 @@ jobs:
             scripts/apply_iteration_v17_local_tool_recovery.py \
             scripts/apply_iteration_v17_prompt_legacy_guard.py \
             scripts/apply_iteration_v17_trusted_path_boundary.py \
+            scripts/apply_iteration_v17_tools_import_guard.py \
             scripts/validate_iteration_v17.py
           python3 scripts/apply_iteration_v17_local_tool_recovery.py
           python3 scripts/apply_iteration_v17_prompt_legacy_guard.py
           python3 scripts/apply_iteration_v17_trusted_path_boundary.py
+          python3 scripts/apply_iteration_v17_tools_import_guard.py
           python3 -m py_compile \
             python/navixmind/tools/compat.py \
             python/navixmind/tools/path_contract.py \
