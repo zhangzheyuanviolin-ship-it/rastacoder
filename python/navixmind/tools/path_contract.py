@@ -8,7 +8,7 @@ tool touches the Android filesystem.
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Iterable, Optional
 
 from ..bridge import ToolError
 
@@ -24,8 +24,9 @@ ANDROID_LOGICAL_ROOTS = {
 # V17 local-tool recovery invariant:
 # A model-facing bare slash means "the root of my workspace", never Android's
 # filesystem root. The same logical rule extends to invented leading-slash
-# children such as /notes.txt: if they are not already-real trusted files or
-# documented Android public roots, they live under the app workspace.
+# children such as /notes.txt: unless the executor explicitly marks an absolute
+# path as trusted or it belongs to a documented Android public root, it lives
+# under the app workspace.
 WORKSPACE_ALIASES = {
     '', '.', './', '/', 'workspace', 'workspace/', 'output', 'output/',
     '/workspace', '/workspace/', '/output', '/output/',
@@ -59,6 +60,14 @@ def _inside(base: str, target: str) -> bool:
         return False
 
 
+def _normalize_trusted_paths(values: Optional[Iterable[str]]) -> set[str]:
+    result: set[str] = set()
+    for value in values or ():
+        if isinstance(value, str) and value.strip() and os.path.isabs(value):
+            result.add(os.path.normpath(value))
+    return result
+
+
 def _strip_virtual_workspace_prefix(raw: str) -> Optional[str]:
     value = raw.replace('\\', '/').strip()
     lower = value.lower()
@@ -70,24 +79,32 @@ def _strip_virtual_workspace_prefix(raw: str) -> Optional[str]:
     return None
 
 
-def resolve_model_path(value: str, workspace_root: str, allow_android_roots: bool = True) -> str:
+def resolve_model_path(
+    value: str,
+    workspace_root: str,
+    allow_android_roots: bool = True,
+    trusted_absolute_paths: Optional[Iterable[str]] = None,
+    trust_existing_files: bool = True,
+) -> str:
     """Resolve one model-facing path into an execution path.
 
     Rules are intentionally biased toward the local model's logical namespace:
     * '.', '/', workspace and output aliases resolve to the app workspace.
     * downloads/documents/pictures/screenshots/camera resolve to documented
       Android public roots when input access is allowed.
-    * real files which already exist are preserved. This retains the V12
-      attachment contract after the agent has mapped a basename to its actual
-      temporary/app path.
     * absolute paths under the workspace or documented Android roots remain
       real execution paths on later tool turns.
+    * an absolute path explicitly supplied through ``trusted_absolute_paths``
+      remains real. The agent uses this for attachment paths obtained from its
+      file map, so trust comes from application state instead of model text.
     * every other leading-slash path is interpreted as workspace-relative.
-      Thus /foo.txt and /folder/foo.txt can never fall through to Android '/'.
+      Thus /foo.txt, /data/foo.txt and /system/foo can never fall through to
+      Android '/'.
 
-    The executor still enforces tool-level access and Android permissions; this
-    function only prevents a small model's virtual-root notation from becoming
-    an accidental operating-system root request.
+    ``trust_existing_files`` defaults to True only for backwards compatibility
+    with direct/internal callers from the V12 contract. The model execution
+    boundary passes False and an explicit attachment whitelist, which removes
+    the "guessed an existing system file" bypass from local tool calls.
     """
     root = os.path.normpath(str(workspace_root))
     raw = str(value or '').strip().replace('\\', '/')
@@ -112,11 +129,12 @@ def resolve_model_path(value: str, workspace_root: str, allow_android_roots: boo
             return normalized
         if allow_android_roots and any(_inside(base, normalized) for base in ANDROID_LOGICAL_ROOTS.values()):
             return normalized
-        # V12 compatibility: basename->attachment mapping happens before this
-        # resolver. Preserve an already-real file so attached inputs outside the
-        # workspace continue to work. Do not preserve arbitrary absolute
-        # directories such as /data or /system merely because they exist.
-        if os.path.isfile(normalized):
+        if normalized in _normalize_trusted_paths(trusted_absolute_paths):
+            return normalized
+        # Legacy direct-call compatibility is deliberately opt-out at the model
+        # boundary. This keeps V12 callers working while execute_tool uses an
+        # explicit attachment whitelist and trust_existing_files=False.
+        if trust_existing_files and os.path.isfile(normalized):
             return normalized
         return _safe_join(root, normalized.lstrip('/'), 'workspace root')
 
@@ -126,8 +144,14 @@ def resolve_model_path(value: str, workspace_root: str, allow_android_roots: boo
 
 
 def resolve_output_path(value: str, workspace_root: str) -> str:
-    """Resolve generated outputs through the virtual workspace contract."""
-    return resolve_model_path(value, workspace_root, allow_android_roots=False)
+    """Resolve generated outputs through the strict virtual workspace contract."""
+    return resolve_model_path(
+        value,
+        workspace_root,
+        allow_android_roots=False,
+        trusted_absolute_paths=(),
+        trust_existing_files=False,
+    )
 
 
 def resolve_list_path(value: Optional[str], workspace_root: str, legacy_directory: str = 'output') -> str:
@@ -141,18 +165,22 @@ def resolve_list_path(value: Optional[str], workspace_root: str, legacy_director
             return os.path.normpath(ANDROID_LOGICAL_ROOTS[directory_key])
         raw = directory_key
 
-    # Bare '/' is deliberately interpreted as the logical workspace root.
     if raw == '/':
         return os.path.normpath(workspace_root)
 
-    # Legacy directory=<android-root> plus relative path keeps that root.
     if directory_key in ANDROID_LOGICAL_ROOTS and not os.path.isabs(raw):
         probe = raw.lstrip('./')
         first = probe.partition('/')[0].lower()
         if first not in ANDROID_LOGICAL_ROOTS and _strip_virtual_workspace_prefix(raw) is None:
             return _safe_join(ANDROID_LOGICAL_ROOTS[directory_key], probe, f'{directory_key} root')
 
-    return resolve_model_path(raw, workspace_root, allow_android_roots=True)
+    return resolve_model_path(
+        raw,
+        workspace_root,
+        allow_android_roots=True,
+        trusted_absolute_paths=(),
+        trust_existing_files=False,
+    )
 
 
 def logicalize_path(value: str, workspace_root: str) -> str:
