@@ -62,6 +62,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   int? _toolProgressIndex;
   bool _toolProgressPersisted = false;
   int? _conversationId;
+  // RASTACODER_V14_FINAL_STREAMING
+  int? _streamDraftIndex;
+  String? _streamGenerationId;
+  final StringBuffer _streamRawBuffer = StringBuffer();
+  bool _streamSawToolCall = false;
   String _conversationTitle = '新对话';
   bool _conversationLoaded = false;
 
@@ -148,6 +153,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       String? message;
       switch (phase) {
         case 'generation_started':
+          // RASTACODER_V14_STREAM_GENERATION_RESET
+          _beginStreamGeneration();
           message = '本地模型开始生成…';
           break;
         case 'first_token':
@@ -157,7 +164,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         case 'thinking_started':
           message = '正在思考…';
           break;
+        case 'content_delta':
+          _appendFinalStreamDelta(event);
+          return;
         case 'tool_call_started':
+          _discardStreamDraft();
           message = '正在形成工具调用…';
           break;
         case 'generation_completed':
@@ -168,6 +179,71 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }, onError: (Object error) {
       debugPrint('[MLC telemetry] $error');
     });
+  }
+
+  void _beginStreamGeneration() {
+    final index = _streamDraftIndex;
+    if (mounted && index != null && index >= 0 && index < _messages.length &&
+        _messages[index].role == MessageRole.assistant) {
+      setState(() => _messages.removeAt(index));
+    }
+    _resetStreamDraftState();
+  }
+
+  String _streamVisibleText(String raw) {
+    var value = raw.replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'<think>[\s\S]*$', caseSensitive: false), '');
+    value = value.replaceAll(RegExp(r'</?think>', caseSensitive: false), '');
+    return value;
+  }
+
+  void _appendFinalStreamDelta(Map<String, dynamic> event) {
+    if (!mounted || !_isProcessing || _streamSawToolCall) return;
+    final generationId = event['generation_id']?.toString() ?? '';
+    final delta = event['delta']?.toString() ?? '';
+    if (delta.isEmpty) return;
+    if (_streamGenerationId != null && _streamGenerationId != generationId) {
+      _discardStreamDraft();
+    }
+    _streamGenerationId = generationId;
+    _streamRawBuffer.write(delta);
+    final visible = _streamVisibleText(_streamRawBuffer.toString());
+    if (visible.isEmpty || visible.contains('<tool_call')) return;
+    setState(() {
+      final index = _streamDraftIndex;
+      final draft = ChatMessage(
+        role: MessageRole.assistant,
+        content: visible,
+        timestamp: DateTime.now(),
+      );
+      if (index != null && index >= 0 && index < _messages.length &&
+          _messages[index].role == MessageRole.assistant) {
+        _messages[index] = draft;
+      } else {
+        _messages.add(draft);
+        _streamDraftIndex = _messages.length - 1;
+      }
+    });
+    _scrollToBottom();
+  }
+
+  void _discardStreamDraft() {
+    _streamSawToolCall = true;
+    final index = _streamDraftIndex;
+    if (mounted && index != null && index >= 0 && index < _messages.length &&
+        _messages[index].role == MessageRole.assistant) {
+      setState(() => _messages.removeAt(index));
+    }
+    _streamDraftIndex = null;
+    _streamGenerationId = null;
+    _streamRawBuffer.clear();
+  }
+
+  void _resetStreamDraftState() {
+    _streamDraftIndex = null;
+    _streamGenerationId = null;
+    _streamRawBuffer.clear();
+    _streamSawToolCall = false;
   }
 
   Future<void> _initializeConversationHistory() async {
@@ -689,6 +765,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _toolProgressIndex = null;
     _toolProgressPersisted = false;
     _announcedNativeToolIds.clear();
+    _resetStreamDraftState();
 
     final conversationId = await _ensureConversation();
     final originalAttachments = _attachedFiles.isNotEmpty ? List<String>.from(_attachedFiles) : null;
@@ -777,7 +854,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         final thinkingMode = response.result!['thinking_mode'] as String?;
         final diagnostics = response.result!['diagnostics'] as String?;
         setState(() {
-          _messages.add(ChatMessage(
+          final canonical = ChatMessage(
             role: hasError ? MessageRole.error : MessageRole.assistant,
             content: content,
             timestamp: DateTime.now(),
@@ -787,7 +864,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             attachments: !hasError && createdFiles != null
                 ? createdFiles.map((e) => e.toString()).toList()
                 : null,
-          ));
+          );
+          final index = _streamDraftIndex;
+          if (!hasError && index != null && index >= 0 && index < _messages.length &&
+              _messages[index].role == MessageRole.assistant) {
+            _messages[index] = canonical;
+          } else {
+            _messages.add(canonical);
+          }
+          _resetStreamDraftState();
         });
         await _persistCurrentToolProgress(conversationId);
         await ConversationManager.instance.storeVisibleMessage(

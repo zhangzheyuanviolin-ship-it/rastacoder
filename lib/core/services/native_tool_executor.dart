@@ -1290,6 +1290,8 @@ class NativeToolExecutor {
     // RASTACODER_V5_SKILLS_PARAMS_BENCH_STREAM
     final temperature = (args['temperature'] as num?)?.toDouble() ?? 0.7;
     final topP = (args['top_p'] as num?)?.toDouble() ?? 0.95;
+    // RASTACODER_V14_STREAM_FORWARD_NATIVE
+    final streamToUi = args['stream_to_ui'] == true;
     final modelId = args['model_id'] as String?;
 
     if (messagesJson == null) {
@@ -1314,6 +1316,7 @@ class NativeToolExecutor {
         maxTokens: maxTokens,
         temperature: temperature,
         topP: topP,
+        streamToUi: streamToUi,
       );
       return {
         'success': true,
@@ -1329,6 +1332,7 @@ class NativeToolExecutor {
           maxTokens: maxTokens,
           temperature: temperature,
           topP: topP,
+          streamToUi: streamToUi,
         );
         return {
           'success': true,

@@ -57,6 +57,26 @@ class _ConversationHistoryScreenState extends State<ConversationHistoryScreen> {
     await _reload();
   }
 
+  // RASTACODER_V14_CLEAR_ALL_HISTORY_UI
+  Future<void> _deleteAll() async {
+    if (_items.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除所有聊天记录'),
+        content: const Text('确认清除全部聊天记录吗？此操作会删除所有对话和消息，无法撤销。已生成文件和工作区文件不会被删除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('清除全部')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ConversationManager.instance.deleteAllConversations();
+    if (!mounted) return;
+    Navigator.pop(context, -1);
+  }
+
   Future<void> _delete(Map<String, dynamic> item) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -83,7 +103,21 @@ class _ConversationHistoryScreenState extends State<ConversationHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('聊天记录')),
+      appBar: AppBar(
+        title: const Text('聊天记录'),
+        actions: [
+          Semantics(
+            button: true,
+            label: '清除所有聊天记录',
+            hint: '双击后会先要求确认',
+            child: IconButton(
+              tooltip: '清除所有聊天记录',
+              onPressed: _loading || _items.isEmpty ? null : _deleteAll,
+              icon: const Icon(Icons.delete_sweep_outlined),
+            ),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty

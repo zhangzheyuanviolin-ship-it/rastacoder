@@ -84,11 +84,13 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                     val maxTokens = call.argument<Int>("maxTokens") ?: 2048
                     val temperature = (call.argument<Number>("temperature")?.toFloat() ?: 0.7f).coerceIn(0.0f, 2.0f)
                     val topP = (call.argument<Number>("topP")?.toFloat() ?: 0.95f).coerceIn(0.01f, 1.0f)
+                    // RASTACODER_V14_EXPLICIT_UI_STREAM
+                    val streamToUi = call.argument<Boolean>("streamToUi") ?: false
                     if (messagesJson == null) {
                         result.error("INVALID_ARGS", "messagesJson required", null)
                         return@setMethodCallHandler
                     }
-                    generate(messagesJson, toolsJson, maxTokens, temperature, topP, result)
+                    generate(messagesJson, toolsJson, maxTokens, temperature, topP, streamToUi, result)
                 }
                 "unloadModel" -> {
                     unloadModel(result)
@@ -205,6 +207,7 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
         maxTokens: Int,
         temperature: Float,
         topP: Float,
+        streamToUi: Boolean,
         result: MethodChannel.Result
     ) {
         if (engine == null || loadedModelId == null) {
@@ -216,7 +219,7 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
             try {
                 Log.d(TAG, "Generating response (maxTokens=$maxTokens, temperature=$temperature, topP=$topP)")
                 val startTime = System.currentTimeMillis()
-                emitEvent(mapOf("phase" to "generation_started", "elapsed_ms" to 0L))
+                if (streamToUi) emitEvent(mapOf("phase" to "generation_started", "elapsed_ms" to 0L))
 
                 val messages = parseMessages(messagesJson)
                 val tools = if (toolsJson != null) parseTools(toolsJson) else null
@@ -242,6 +245,7 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                     var decodeTokensPerS: Float? = null
                     var firstTokenEmitted = false
                     var thinkingEmitted = false
+                    val generationId = System.nanoTime()
                     var toolCallEmitted = false
                     val probe = StringBuilder()
 
@@ -256,15 +260,24 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                                     if (probe.length > 256) probe.delete(0, probe.length - 256)
                                     if (!firstTokenEmitted) {
                                         firstTokenEmitted = true
-                                        emitEvent(mapOf("phase" to "first_token", "elapsed_ms" to (System.currentTimeMillis() - startTime)))
+                                        if (streamToUi) emitEvent(mapOf("phase" to "first_token", "elapsed_ms" to (System.currentTimeMillis() - startTime)))
                                     }
                                     if (!thinkingEmitted && probe.toString().contains("<think>", ignoreCase = true)) {
                                         thinkingEmitted = true
-                                        emitEvent(mapOf("phase" to "thinking_started"))
+                                        if (streamToUi) emitEvent(mapOf("phase" to "thinking_started"))
                                     }
                                     if (!toolCallEmitted && probe.toString().contains("<tool_call", ignoreCase = true)) {
                                         toolCallEmitted = true
-                                        emitEvent(mapOf("phase" to "tool_call_started"))
+                                        if (streamToUi) emitEvent(mapOf("phase" to "tool_call_started", "generation_id" to generationId))
+                                    }
+                                    // Only top-level ReAct generations have tools. Internal document-ingestion
+                                    // helper calls pass tools=null, so their private evidence notes never leak to UI.
+                                    if (streamToUi && !toolCallEmitted) {
+                                        emitEvent(mapOf(
+                                            "phase" to "content_delta",
+                                            "generation_id" to generationId,
+                                            "delta" to delta
+                                        ))
                                     }
                                 }
                             }
@@ -275,9 +288,9 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
                                     toolCallEmitted = true
                                     if (!firstTokenEmitted) {
                                         firstTokenEmitted = true
-                                        emitEvent(mapOf("phase" to "first_token", "elapsed_ms" to (System.currentTimeMillis() - startTime)))
+                                        if (streamToUi) emitEvent(mapOf("phase" to "first_token", "elapsed_ms" to (System.currentTimeMillis() - startTime)))
                                     }
-                                    emitEvent(mapOf("phase" to "tool_call_started"))
+                                    if (streamToUi) emitEvent(mapOf("phase" to "tool_call_started", "generation_id" to generationId))
                                 }
                             }
                             choice.delta.tool_calls?.forEachIndexed { index, tc ->
@@ -324,7 +337,7 @@ class MLCInferenceChannel(flutterEngine: FlutterEngine) {
 
                 val elapsed = System.currentTimeMillis() - startTime
                 Log.d(TAG, "Generation completed in ${elapsed}ms")
-                emitEvent(mapOf("phase" to "generation_completed", "elapsed_ms" to elapsed))
+                if (streamToUi) emitEvent(mapOf("phase" to "generation_completed", "elapsed_ms" to elapsed))
 
                 // Convert OpenAI format → Claude format
                 val claudeResponse = buildClaudeCompatibleResponse(openaiResponseJson)

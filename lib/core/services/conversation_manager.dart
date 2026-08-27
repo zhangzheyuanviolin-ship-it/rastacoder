@@ -121,6 +121,17 @@ class ConversationManager {
     });
   }
 
+  // RASTACODER_V14_CLEAR_ALL_HISTORY
+  /// Delete every persisted chat conversation and message in one transaction.
+  /// Generated/workspace files are intentionally left untouched.
+  Future<void> deleteAllConversations() async {
+    if (_isar == null) return;
+    await _isar!.writeTxn(() async {
+      await _isar!.messages.clear();
+      await _isar!.conversations.clear();
+    });
+  }
+
   /// Check if a conversation needs summarization and trigger if so.
   ///
   /// Should be called after adding a new message to a conversation.

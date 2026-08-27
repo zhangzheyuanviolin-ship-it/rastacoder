@@ -387,6 +387,8 @@ class LocalLLMService {
     int maxTokens = 2048,
     double temperature = 0.7,
     double topP = 0.95,
+    // RASTACODER_V14_STREAM_SERVICE_FLAG
+    bool streamToUi = false,
   }) async {
     if (_loadedModelId == null || _loadState != ModelLoadState.loaded) {
       throw StateError('No model loaded. Call loadModel() first.');
@@ -407,6 +409,7 @@ class LocalLLMService {
             'maxTokens': maxTokens,
             'temperature': temperature,
             'topP': topP,
+            'streamToUi': streamToUi,
           },
         );
         if (response == null) {

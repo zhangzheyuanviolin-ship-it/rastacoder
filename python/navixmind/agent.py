@@ -325,9 +325,30 @@ OFFLINE_MAX_TOKENS = {
 OFFLINE_SYSTEM_PROMPT = build_offline_skill_prompt(ALL_LOCAL_SKILL_IDS)
 
 
+# RASTACODER_V14_ORDERED_JSONISH_PARSER
+def _ordered_literal_eval(text: str) -> Any:
+    """Literal-eval JSON-ish model output while preserving brace-item source order."""
+    import ast
+
+    def walk(node):
+        if isinstance(node, ast.Dict):
+            return {walk(k): walk(v) for k, v in zip(node.keys, node.values)}
+        if isinstance(node, ast.List):
+            return [walk(v) for v in node.elts]
+        if isinstance(node, ast.Tuple):
+            return [walk(v) for v in node.elts]
+        if isinstance(node, ast.Set):
+            # Qwen-class small models sometimes use {a,b,c} where the schema
+            # requires [a,b,c]. Preserve lexical order instead of creating a
+            # Python set whose iteration order would scramble spreadsheet rows.
+            return [walk(v) for v in node.elts]
+        return ast.literal_eval(node)
+
+    return walk(ast.parse(text, mode='eval').body)
+
+
 def _parse_mapping(text: str) -> Optional[dict]:
     """Parse JSON-like tool call objects without executing model text."""
-    import ast
     import re
 
     value = text.strip()
@@ -340,12 +361,24 @@ def _parse_mapping(text: str) -> Optional[dict]:
         except (json.JSONDecodeError, ValueError, TypeError):
             pass
     try:
-        parsed = ast.literal_eval(value)
+        parsed = _ordered_literal_eval(value)
         if isinstance(parsed, dict):
             return parsed
-    except (ValueError, SyntaxError):
+    except (ValueError, SyntaxError, TypeError):
         pass
     return None
+
+
+def _missing_json_value_keys(text: str) -> List[str]:
+    """Return quoted object keys emitted without a ': value' payload."""
+    import re
+    keys: List[str] = []
+    pattern = re.compile(r'(?P<prefix>[,{]\s*)"(?P<key>(?:\\.|[^"\\])*)"\s*(?=,|})')
+    for match in pattern.finditer(str(text or '')):
+        key = match.group('key').strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
 
 
 def _coerce_tool_args(value: Any) -> dict:
@@ -425,6 +458,10 @@ def _build_tool_use(name: Any, arguments: Any, source: str, index: int) -> Optio
 
 def _try_parse_tool_json(json_str: str, index: int) -> Optional[dict]:
     """Parse common JSON/dict function-call variants into a tool_use block."""
+    # A quoted key with no colon/value means the model omitted semantic content.
+    # Reject it into the bounded format-repair path; never silently execute null.
+    if _missing_json_value_keys(json_str):
+        return None
     call_data = _parse_mapping(json_str)
     if not call_data:
         return None
@@ -640,7 +677,7 @@ def _search_result_payload_for_model(tool_name: str, result: Any, max_chars: int
         payload, _ = _trim_model_text(result.get('content'), max(300, max_chars - 220))
         out += ['content:', payload]
     else:
-        raw, _ = _trim_model_text(json.dumps(result, ensure_ascii=False, default=str), max_chars)
+        raw, _ = _trim_model_text(_json_boundary_dumps(result, ensure_ascii=False), max_chars)
         out.append(raw)
     final, truncated = _trim_model_text('\n'.join(out), max_chars)
     if truncated:
@@ -692,14 +729,14 @@ def _prepare_tool_result_for_model(tool_name: str, result: Any, context: Dict[st
         large_key = next((k for k in ('content', 'text', 'result', 'output', 'summary') if str(result.get(k) or '').strip()), None)
         if large_key:
             meta = {k: v for k, v in result.items() if k != large_key and isinstance(v, (str, int, float, bool, type(None)))}
-            meta_text = json.dumps(meta, ensure_ascii=False, default=str)
+            meta_text = _json_boundary_dumps(meta, ensure_ascii=False)
             body_limit = max(300, max_chars - len(meta_text) - 120)
             body, truncated = _trim_model_text(result.get(large_key), body_limit)
             payload = f'metadata: {meta_text}\n{large_key}:\n{body}'
             if truncated:
                 payload += '\ncontext_safety_note: Tool output was truncated before local-model prefill.'
         else:
-            payload, truncated = _trim_model_text(json.dumps(result, ensure_ascii=False, default=str), max_chars)
+            payload, truncated = _trim_model_text(_json_boundary_dumps(result, ensure_ascii=False), max_chars)
             if truncated:
                 payload += '\ncontext_safety_note: Tool output was truncated before local-model prefill.'
     else:
@@ -728,7 +765,7 @@ def _document_primary_text(result: Any) -> str:
         value = result.get(key)
         if value not in (None, "", [], {}):
             try:
-                return json.dumps(value, ensure_ascii=False, default=str)
+                return _json_boundary_dumps(value, ensure_ascii=False)
             except Exception:
                 return str(value)
     return ""
@@ -827,7 +864,7 @@ def _document_result_for_local_model(
         f"chunks_processed: {len(chunks)}\n"
         f"chunk_failures: {failures}\n"
         "coverage: complete executor-returned text was partitioned across all chunks\n"
-        f"metadata: {json.dumps(metadata, ensure_ascii=False, default=str)}\n"
+        f"metadata: {_json_boundary_dumps(metadata, ensure_ascii=False)}\n"
         "evidence_digest:\n"
         f"{digest}"
     )
@@ -904,7 +941,8 @@ class LocalLLMClient:
         system: str = OFFLINE_SYSTEM_PROMPT,
         tools: Optional[List[dict]] = None,
         max_tokens: int = 2048,
-        retry_count: int = 1
+        retry_count: int = 1,
+        stream_to_ui: bool = False
     ) -> dict:
         """
         Run inference via the native bridge (MLC LLM engine).
@@ -935,14 +973,16 @@ class LocalLLMClient:
 
         # Build args for native call
         args = {
-            'messages_json': json.dumps(openai_messages),
+            'messages_json': _json_boundary_dumps(openai_messages),
             'max_tokens': max_tokens,
             'model_id': self.model_id,
             'temperature': self.temperature,
             'top_p': self.top_p,
+            # RASTACODER_V14_STREAM_TO_UI_FLAG
+            'stream_to_ui': bool(stream_to_ui),
         }
         if openai_tools:
-            args['tools_json'] = json.dumps(openai_tools)
+            args['tools_json'] = _json_boundary_dumps(openai_tools)
 
         # Call native with longer timeout for local inference (model loading can take 30-60s)
         try:
@@ -981,7 +1021,7 @@ class LocalLLMClient:
                 block = dict(block)
                 block['_raw_name'] = str(raw_name or '')
                 block['_raw_input'] = raw_input
-                block['_raw_source'] = json.dumps({'name': raw_name, 'arguments': raw_input}, ensure_ascii=False)[:1500]
+                block['_raw_source'] = _json_boundary_dumps({'name': raw_name, 'arguments': raw_input}, ensure_ascii=False)[:1500]
                 block['_parser_repairs'] = list(parser_repairs)
                 block['name'] = name
                 block['input'] = tool_input
@@ -1011,7 +1051,7 @@ class LocalLLMClient:
                     block = dict(block)
                     block.setdefault('_raw_name', str(raw_name or ''))
                     block.setdefault('_raw_input', raw_input)
-                    block.setdefault('_raw_source', json.dumps({'name': raw_name, 'arguments': raw_input}, ensure_ascii=False)[:1500])
+                    block.setdefault('_raw_source', _json_boundary_dumps({'name': raw_name, 'arguments': raw_input}, ensure_ascii=False)[:1500])
                     existing_repairs = block.get('_parser_repairs') if isinstance(block.get('_parser_repairs'), list) else []
                     block['_parser_repairs'] = list(existing_repairs) + [r for r in parser_repairs if r not in existing_repairs]
                     block['name'] = name
@@ -1389,11 +1429,11 @@ def handle_request(request_json: str) -> str:
                 files=params.get('files', []),
                 context=params.get('context', {})
             )
-            return json.dumps({
+            return _json_boundary_dumps({
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": result
-            })
+            }, ensure_ascii=False)
 
         elif method == 'apply_delta':
             apply_delta(params)
@@ -1425,11 +1465,11 @@ def handle_request(request_json: str) -> str:
                 current_prompt=params.get('current_prompt', ''),
                 api_key=params.get('api_key', ''),
             )
-            return json.dumps({
+            return _json_boundary_dumps({
                 "jsonrpc": "2.0",
                 "id": request_id,
                 "result": result
-            })
+            }, ensure_ascii=False)
 
         else:
             return json.dumps({
@@ -1464,6 +1504,31 @@ def handle_request(request_json: str) -> str:
 
 
 
+# RASTACODER_V14_JSON_BOUNDARY
+def _json_boundary_safe(value: Any) -> Any:
+    """Recursively convert arbitrary executor/model values to deterministic JSON-safe data."""
+    if isinstance(value, dict):
+        return {str(k): _json_boundary_safe(v) for k, v in value.items()}
+    if isinstance(value, (set, frozenset)):
+        return [_json_boundary_safe(v) for v in sorted(value, key=lambda x: repr(x))]
+    if isinstance(value, (list, tuple)):
+        return [_json_boundary_safe(v) for v in value]
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace')
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    try:
+        if hasattr(value, 'item'):
+            return _json_boundary_safe(value.item())
+    except Exception:
+        pass
+    return str(value)
+
+
+def _json_boundary_dumps(value: Any, **kwargs: Any) -> str:
+    return json.dumps(_json_boundary_safe(value), **kwargs)
+
+
 def _diag_safe(value: Any) -> Any:
     secret_words = {'api_key', 'access_token', 'google_access_token', 'authorization', 'token', 'password'}
     if isinstance(value, dict):
@@ -1472,8 +1537,12 @@ def _diag_safe(value: Any) -> Any:
             key_s = str(key)
             result[key_s] = '[REDACTED]' if key_s.lower() in secret_words or key_s == '_context' else _diag_safe(item)
         return result
-    if isinstance(value, list):
-        return [_diag_safe(v) for v in value[:50]]
+    if isinstance(value, (list, tuple)):
+        return [_diag_safe(v) for v in list(value)[:50]]
+    if isinstance(value, (set, frozenset)):
+        return [_diag_safe(v) for v in sorted(value, key=lambda x: repr(x))[:50]]
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace')
     if isinstance(value, str) and len(value) > 2000:
         return value[:2000] + '...[truncated]'
     return value
@@ -1483,7 +1552,7 @@ def _format_diagnostics(context: Dict[str, Any]) -> str:
     events = context.get('_diagnostics', []) if isinstance(context, dict) else []
     safe = _diag_safe(events)
     try:
-        return json.dumps(safe, ensure_ascii=False, indent=2)
+        return _json_boundary_dumps(safe, ensure_ascii=False, indent=2)
     except Exception:
         return str(safe)
 
@@ -1645,6 +1714,8 @@ def process_query(
     offline_max_token_continuations = 0
     partial_final_chunks: List[str] = []
     force_no_tools_once = False
+    successful_tool_turns = 0
+    empty_final_recovery_used = False
 
     while iteration < max_iterations:
         iteration += 1
@@ -1655,12 +1726,23 @@ def process_query(
                 bridge.log("Running on device...", level="info")
             else:
                 bridge.log("Calling Claude API...", level="info")
-            response = client.create_message(
-                messages=messages,
-                system=system_prompt,
-                tools=None if (is_offline and force_no_tools_once) else tools_schema,
-                max_tokens=max_tokens,
-            )
+            # V10 semantic invariant retained: tools=None if (is_offline and force_no_tools_once) else tools_schema
+            # V14 makes the local/cloud split explicit so the local call can carry stream_to_ui.
+            if is_offline:
+                response = client.create_message(
+                    messages=messages,
+                    system=system_prompt,
+                    tools=None if force_no_tools_once else tools_schema,
+                    max_tokens=max_tokens,
+                    stream_to_ui=True,
+                )
+            else:
+                response = client.create_message(
+                    messages=messages,
+                    system=system_prompt,
+                    tools=tools_schema,
+                    max_tokens=max_tokens,
+                )
             if is_offline:
                 bridge.log("Got response from model", level="info")
             else:
@@ -1742,7 +1824,14 @@ def process_query(
                     'role': 'user',
                     'content': (
                         '[Tool call format error] The previous tool call was not executable. '
-                        'Retry now using ONLY one enabled canonical function name and the exact argument keys '
+                        + (
+                            'The previous JSON contained argument key(s) with no value: '
+                            + ', '.join(_missing_json_value_keys(raw_bad))
+                            + '. Every included key must have a colon and a real JSON value. '
+                            'Omit optional keys you do not need. For content/text/body, provide the complete requested text. '
+                            if _missing_json_value_keys(raw_bad) else ''
+                        )
+                        + 'Retry now using ONLY one enabled canonical function name and the exact argument keys '
                         'shown in the system prompt. Do not use Skill/category names or generic keys such as param. '
                         'Do not answer with prose.'
                     )
@@ -1759,6 +1848,22 @@ def process_query(
         if stop_reason == 'end_turn':
             visible_blocks = _strip_reasoning_from_blocks(content_blocks) if is_offline else content_blocks
             final_response = _merge_continuation_text(partial_final_chunks, _extract_text_content(visible_blocks))
+            if is_offline and not final_response.strip() and successful_tool_turns > 0 and not empty_final_recovery_used:
+                empty_final_recovery_used = True
+                force_no_tools_once = True
+                context['_diagnostics'].append({
+                    'stage': 'empty_final_recovery',
+                    'successful_tool_turns': successful_tool_turns,
+                    'created_files': [os.path.basename(p) for p in created_files],
+                })
+                messages.append({
+                    'role': 'user',
+                    'content': (
+                        'The requested tool operation already succeeded. Produce the final user-facing answer now. '
+                        'Do not call tools. Mention created file paths when applicable. Do not return an empty answer.'
+                    ),
+                })
+                continue
             bridge.log("Preparing response...", progress=0.95)
             # Store response in session. File paths are tracked in session._file_map
             # so follow-up queries can reference them. Do NOT append file list to the
@@ -1793,6 +1898,7 @@ def process_query(
                     parser_repairs = block.get('_parser_repairs') if isinstance(block.get('_parser_repairs'), list) else []
                     raw_source = block.get('_raw_source')
                     tool_name, tool_input, compat_notes = normalize_tool_call(tool_name, tool_input, context=context)
+                    tool_input = _json_boundary_safe(tool_input)
                     if is_offline:
                         repairs = list(parser_repairs) + [r for r in compat_notes if r not in parser_repairs]
                         context['_diagnostics'].append({
@@ -1833,7 +1939,7 @@ def process_query(
 
                         result = execute_tool(tool_name, tool_input, context)
                         # Truncate large results
-                        result_str = json.dumps(result) if isinstance(result, dict) else str(result)
+                        result_str = _json_boundary_dumps(result, ensure_ascii=False) if isinstance(result, (dict, list, tuple, set, frozenset)) else str(result)
 
                         # Log created files as clickable links and add to file map
                         if isinstance(result, dict):
@@ -1867,6 +1973,7 @@ def process_query(
                             "tool_use_id": tool_id,
                             "content": model_result
                         })
+                        successful_tool_turns += 1
                     except ToolError as e:
                         bridge.log(f"Tool error: {e}", level="warn")
                         if is_offline:

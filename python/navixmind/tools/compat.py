@@ -624,6 +624,17 @@ def _coerce_contract_values(name: str, args: Dict[str, Any], notes: List[str]) -
             notes.append(f"{key}:scalar->string")
 
 
+# RASTACODER_V14_CONTAINER_NORMALIZATION
+def _normalize_container_types(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _normalize_container_types(v) for k, v in value.items()}
+    if isinstance(value, (set, frozenset)):
+        return [_normalize_container_types(v) for v in sorted(value, key=lambda x: repr(x))]
+    if isinstance(value, (list, tuple)):
+        return [_normalize_container_types(v) for v in value]
+    return value
+
+
 def normalize_tool_call(
     tool_name: Any,
     raw_args: Any,
@@ -634,7 +645,7 @@ def normalize_tool_call(
     raw_token = _token(original_name)
 
     if isinstance(raw_args, dict):
-        args = dict(raw_args)
+        args = _normalize_container_types(raw_args)
     elif isinstance(raw_args, str) and raw_args.strip():
         args = {"param": raw_args.strip()}
         notes.append("string_args->param")
