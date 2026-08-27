@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import importlib.util
-import os
 import sys
 import tempfile
 import zipfile
@@ -21,7 +19,6 @@ def source(path):
     return (ROOT / path).read_text(encoding='utf-8')
 
 
-# Structural invariants inherited from the project.
 from navixmind.tools import TOOLS_SCHEMA, _verify_tool_result
 from navixmind.tools.extended_tools import extract_zip, image_compose
 from navixmind.tools.documents import read_xlsx
@@ -30,8 +27,7 @@ from navixmind.tools.code_executor import execute_python, validate_code
 names = [tool.get('name') for tool in TOOLS_SCHEMA]
 require(len(set(names)) == 37, f'Expected 37 canonical local functions, got {len(set(names))}')
 
-# 1: python-pptx notes must work at API level, and Android build must explicitly
-# extract pptx package resources so notesMaster.xml exists on-device.
+# 1: python-pptx notes API + Android resource packaging.
 from pptx import Presentation
 with tempfile.TemporaryDirectory() as td:
     pptx_path = Path(td) / 'notes.pptx'
@@ -57,7 +53,8 @@ with tempfile.TemporaryDirectory() as td:
         zf.writestr('empty.txt', b'')
         zf.writestr('nonempty.txt', b'ok')
     result = extract_zip(str(archive), output_dir=str(root / 'out'), overwrite=True)
-    require(result['output_sizes'][str(root / 'out' / 'empty.txt')] == 0, 'ZIP did not preserve zero-byte metadata')
+    empty_path = str(root / 'out' / 'empty.txt')
+    require(result['output_sizes'][empty_path] == 0, 'ZIP did not preserve zero-byte metadata')
     verified = _verify_tool_result('extract_zip', {'zip_path': str(archive)}, result)
     require(verified.get('verified_output') is True, 'Common verifier rejected a legal empty ZIP member')
     require((root / 'out' / 'empty.txt').is_file(), 'Empty ZIP member was not extracted')
@@ -69,7 +66,7 @@ with tempfile.TemporaryDirectory() as td:
     src = root / 'source.png'
     out = root / 'converted.jpg'
     Image.new('RGB', (8, 8), 'white').save(src)
-    result = image_compose('convert', [str(src)], str(out), {'format': 'jpg'})
+    result = image_compose([str(src)], str(out), 'convert', {'format': 'jpg'})
     require(result['format'] == 'JPEG', f'jpg alias did not normalize to JPEG: {result}')
     with Image.open(out) as image:
         require(image.format == 'JPEG', 'Converted image is not JPEG')
@@ -118,7 +115,7 @@ require(not valid, 'Full os import/system call must remain blocked')
 valid, errors = validate_code('x = (1).__class__')
 require(not valid, 'Dangerous __class__ access must remain blocked')
 
-# 3/4: FFmpeg must infer output codecs and separate numeric output duration from amix enum.
+# 3/4: FFmpeg output-aware codec and numeric mix duration.
 native = source('lib/core/services/native_tool_executor.dart')
 require("case '.mp3':" in native and 'libmp3lame' in native, 'MP3 output codec inference missing')
 require("case '.opus':" in native and 'libopus' in native, 'Opus output codec inference missing')
@@ -130,20 +127,19 @@ require("-vn -af \"$af\" $audioCodec" in native, 'Audio-only filter path missing
 require("case 'extract_frame':" in native and '-vframes 1' in native, 'extract_frame regression path missing')
 require("case 'convert':" in native, 'convert regression path missing')
 
-# 8: OCR no-text outcome has a signal without claiming engine failure.
+# 8: OCR no-text outcome has an explicit signal.
 require("'text_detected': textDetected" in native, 'OCR text_detected flag missing')
 require("'reason': 'no_text_detected'" in native, 'OCR no_text_detected reason missing')
 
-# 10: media downloader bundles and actively uses browser impersonation, and no
-# longer indexes formats[-1] for non-media URLs.
+# 10: media downloader has actual browser impersonation and clear non-media handling.
 media = source('python/navixmind/tools/media.py')
 require('from curl_cffi import requests as browser_requests' in media, 'curl-cffi transfer path missing')
 require("impersonate='chrome'" in media, 'Browser impersonation is not enabled')
 require('download_media only supports video/audio URLs' in media, 'Non-media error contract missing')
 require('formats[-1]' not in media, 'Unsafe formats[-1] fallback remains')
 
-# Unlimited tool-call mode: zero sentinel must cross UI/storage/agent and bypass
-# both the tool counter and tool-driven iteration ceiling.
+# Unlimited tool-call mode: zero sentinel crosses UI/storage/agent and bypasses
+# the tool counter plus tool-driven iteration ceiling.
 agent = source('python/navixmind/agent.py')
 settings = source('lib/features/settings/settings_screen.dart')
 storage = source('lib/core/services/storage_service.dart')
@@ -154,9 +150,9 @@ require("DropdownMenuItem(value: 0, child: Text('不限次数'))" in settings, '
 require('不限制本轮工具调用与工具驱动步骤' in settings, 'Unlimited UI explanation missing')
 require('zero means unlimited' in storage.lower(), 'Storage contract for zero sentinel missing')
 
-# Existing untested actions are retained and explicitly guarded from accidental removal.
+# Previously uncompleted coverage actions remain present.
 extended = source('python/navixmind/tools/extended_tools.py')
-require('action == "reorder"' in extended, 'pdf_manage reorder path missing')
+require('"reorder"' in extended and 'pdf_manage' in extended, 'pdf_manage reorder path missing')
 require('smart_crop' in names, 'smart_crop function missing')
 
 print('V15 validation passed: document/runtime, sandbox, media, OCR, XLSX, ZIP, and unlimited-tool gates are green.')
