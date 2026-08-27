@@ -38,9 +38,18 @@ jobs:
       - name: Apply reviewed V17 local compatibility delta
         run: |
           set -euo pipefail
-          python3 -m py_compile scripts/apply_iteration_v17_local_tool_recovery.py scripts/validate_iteration_v17.py
+          python3 -m py_compile \
+            scripts/apply_iteration_v17_local_tool_recovery.py \
+            scripts/apply_iteration_v17_prompt_legacy_guard.py \
+            scripts/validate_iteration_v17.py
           python3 scripts/apply_iteration_v17_local_tool_recovery.py
-          python3 -m py_compile python/navixmind/tools/compat.py python/navixmind/tools/path_contract.py python/navixmind/tools/__init__.py python/navixmind/tools/extended_tools.py python/navixmind/agent.py
+          python3 scripts/apply_iteration_v17_prompt_legacy_guard.py
+          python3 -m py_compile \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/path_contract.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/agent.py
 
       - name: Install host test dependencies
         run: |
@@ -149,6 +158,8 @@ jobs:
       - name: Preflight summary
         run: |
           echo 'V17 full no-APK preflight passed.'
-          echo 'Exact copied Qwen3 list_files slash-root failure is green at both repair layers.'
+          echo 'Exact copied Qwen3 list_files slash-root failure and arbitrary leading-slash family are green.'
+          echo 'All shared input, destination and output directory boundaries are covered.'
+          echo 'Structured local file/archive/PDF/image/Office ABIs are covered.'
           echo '25 local Skills and 37 canonical functions remain exposed.'
           echo 'All inherited V9 through V16 gates remain green.'
