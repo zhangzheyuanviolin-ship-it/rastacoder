@@ -733,11 +733,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _SettingsTile(
             title: '每次任务最大工具调用次数',
-            subtitle: '$_maxToolCalls — 达到该工具执行次数后停止',
+            subtitle: _maxToolCalls == 0
+                ? '不限次数 — 不限制本轮工具调用与工具驱动步骤'
+                : '$_maxToolCalls — 达到该工具执行次数后停止',
             trailing: DropdownButton<int>(
               value: _maxToolCalls,
               underline: const SizedBox(),
               items: const [
+                DropdownMenuItem(value: 0, child: Text('不限次数')),
                 DropdownMenuItem(value: 15, child: Text('15')),
                 DropdownMenuItem(value: 25, child: Text('25')),
                 DropdownMenuItem(value: 50, child: Text('50')),

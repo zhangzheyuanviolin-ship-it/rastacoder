@@ -1697,8 +1697,9 @@ def process_query(
     session.add_message("user", user_content)
 
     # ReAct loop — limits configurable from Settings
-    max_iterations = context.get('max_iterations', DEFAULT_MAX_ITERATIONS)
-    max_tool_calls = context.get('max_tool_calls', DEFAULT_MAX_TOOL_CALLS)
+    max_iterations = max(1, int(context.get('max_iterations', DEFAULT_MAX_ITERATIONS)))
+    max_tool_calls = int(context.get('max_tool_calls', DEFAULT_MAX_TOOL_CALLS))
+    unlimited_tool_calls = max_tool_calls <= 0
     max_tokens = context.get('max_tokens', DEFAULT_MAX_TOKENS)
 
     # On-device output length follows the dedicated manual setting.
@@ -1717,9 +1718,12 @@ def process_query(
     successful_tool_turns = 0
     empty_final_recovery_used = False
 
-    while iteration < max_iterations:
+    while unlimited_tool_calls or iteration < max_iterations:
         iteration += 1
-        bridge.log(f"Thinking... (step {iteration}/{max_iterations})", progress=iteration / max_iterations * 0.5)
+        if unlimited_tool_calls:
+            bridge.log(f"Thinking... (step {iteration}, unlimited tool mode)")
+        else:
+            bridge.log(f"Thinking... (step {iteration}/{max_iterations})", progress=iteration / max_iterations * 0.5)
 
         try:
             if is_offline:
@@ -1917,7 +1921,7 @@ def process_query(
                         )
 
                     tool_call_count += 1
-                    if tool_call_count > max_tool_calls:
+                    if not unlimited_tool_calls and tool_call_count > max_tool_calls:
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_id,
@@ -1928,7 +1932,10 @@ def process_query(
 
                     # Log tool name and input summary
                     input_summary = _summarize_tool_input(tool_name, tool_input)
-                    bridge.log(f"Tool: {tool_name} - {input_summary}", progress=0.5 + (iteration / max_iterations * 0.3))
+                    bridge.log(
+                        f"Tool: {tool_name} - {input_summary}",
+                        progress=None if unlimited_tool_calls else 0.5 + (iteration / max_iterations * 0.3),
+                    )
 
                     try:
                         # Log code for python_execute before running

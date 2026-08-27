@@ -335,12 +335,12 @@ class StorageService {
     return value != null ? int.tryParse(value) ?? 50 : 50;
   }
 
-  /// Set max tool calls per query
+  /// Set max tool calls per query. Zero means unlimited.
   Future<void> setMaxToolCalls(int calls) async {
     await _storage.write(key: _keyMaxToolCalls, value: calls.toString());
   }
 
-  /// Get max tool calls per query (default: 50)
+  /// Get max tool calls per query (default: 50; zero means unlimited)
   Future<int> getMaxToolCalls() async {
     final value = await _storage.read(key: _keyMaxToolCalls);
     return value != null ? int.tryParse(value) ?? 50 : 50;

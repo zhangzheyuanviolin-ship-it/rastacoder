@@ -967,79 +967,99 @@ def modify_pptx(input_path: str, output_path: str, operations: list) -> dict:
 # ---------------------------------------------------------------------------
 
 def read_xlsx(xlsx_path: str, sheet: str = None, range: str = None, extract: str = "values") -> dict:
-    """
-    Extract cell data, sheet names, and formulas from an XLSX file.
-
-    Args:
-        xlsx_path: Path to the XLSX file
-        sheet: Sheet name or index (omit for all sheets)
-        range: Cell range like "A1:D10" (omit for all data)
-        extract: What to extract — "values", "formulas", or "all"
-
-    Returns:
-        Dict with extracted data
-    """
+    """Read spreadsheet values/formulas without losing uncached formula cells."""
     from openpyxl import load_workbook
 
     validate_file_for_processing(xlsx_path, 'document')
+    extract = str(extract or "values").lower()
+    if extract not in {"values", "formulas", "all"}:
+        raise ToolError("read_xlsx extract must be values, formulas, or all")
 
     try:
-        wb = load_workbook(xlsx_path, data_only=(extract == "values"))
+        formula_wb = load_workbook(xlsx_path, data_only=False)
+        value_wb = load_workbook(xlsx_path, data_only=True) if extract in {"values", "all"} else None
         result = {
             "path": xlsx_path,
-            "sheet_names": wb.sheetnames,
-            "sheet_count": len(wb.sheetnames),
+            "sheet_names": formula_wb.sheetnames,
+            "sheet_count": len(formula_wb.sheetnames),
         }
-
-        # Determine which sheets to process
-        if sheet is not None:
-            if sheet.isdigit():
-                idx = int(sheet)
-                if idx < len(wb.sheetnames):
-                    sheets_to_read = [wb.sheetnames[idx]]
-                else:
-                    raise ToolError(f"Sheet index {idx} out of range. Available: {len(wb.sheetnames)} sheets.")
-            elif sheet in wb.sheetnames:
-                sheets_to_read = [sheet]
+        sheet_key = str(sheet) if sheet is not None else None
+        if sheet_key is not None:
+            if sheet_key.isdigit():
+                idx = int(sheet_key)
+                if idx >= len(formula_wb.sheetnames):
+                    raise ToolError(f"Sheet index {idx} out of range. Available: {len(formula_wb.sheetnames)} sheets.")
+                sheets_to_read = [formula_wb.sheetnames[idx]]
+            elif sheet_key in formula_wb.sheetnames:
+                sheets_to_read = [sheet_key]
             else:
-                raise ToolError(f"Sheet '{sheet}' not found. Available: {wb.sheetnames}")
+                raise ToolError(f"Sheet '{sheet_key}' not found. Available: {formula_wb.sheetnames}")
         else:
-            sheets_to_read = wb.sheetnames
+            sheets_to_read = formula_wb.sheetnames
 
         max_rows = PROCESSING_LIMITS.get('xlsx_rows', 100_000)
         sheets_data = {}
-
+        total_fallbacks = 0
         for sheet_name in sheets_to_read:
-            ws = wb[sheet_name]
-
-            if range:
-                cells = ws[range]
-            else:
-                cells = ws.iter_rows()
-
+            fws = formula_wb[sheet_name]
+            vws = value_wb[sheet_name] if value_wb is not None else None
+            formula_cells = fws[range] if range else fws.iter_rows()
             rows_data = []
+            formula_rows = []
+            fallbacks = []
             row_count = 0
-            for row in cells:
+            for frow in formula_cells:
                 if row_count >= max_rows:
                     rows_data.append(["[Truncated — max rows exceeded]"])
+                    if extract == "all":
+                        formula_rows.append(["[Truncated — max rows exceeded]"])
                     break
+                current_values = []
+                current_formulas = []
+                for fcell in frow:
+                    raw_formula = fcell.value
+                    is_formula = fcell.data_type == 'f' or (
+                        isinstance(raw_formula, str) and raw_formula.startswith('=')
+                    )
+                    current_formulas.append(raw_formula)
+                    if vws is None:
+                        current_values.append(raw_formula)
+                    else:
+                        cached = vws[fcell.coordinate].value
+                        if is_formula and cached is None:
+                            current_values.append(raw_formula)
+                            fallbacks.append({
+                                "cell": fcell.coordinate,
+                                "formula": raw_formula,
+                                "cached_value": None,
+                            })
+                        else:
+                            current_values.append(cached)
                 if extract == "formulas":
-                    rows_data.append([cell.value if cell.data_type == 'f' else cell.value for cell in row])
+                    rows_data.append(current_formulas)
                 else:
-                    rows_data.append([cell.value for cell in row])
+                    rows_data.append(current_values)
+                    if extract == "all":
+                        formula_rows.append(current_formulas)
                 row_count += 1
-
-            sheets_data[sheet_name] = {
+            entry = {
                 "rows": rows_data,
                 "row_count": row_count,
-                "dimensions": ws.dimensions,
+                "dimensions": fws.dimensions,
+                "has_uncached_formulas": bool(fallbacks),
             }
-
+            if extract == "all":
+                entry["formula_rows"] = formula_rows
+            if fallbacks:
+                entry["formula_fallbacks"] = fallbacks[:2000]
+                total_fallbacks += len(fallbacks)
+            sheets_data[sheet_name] = entry
         result["sheets"] = sheets_data
-        wb.close()
-
+        result["uncached_formula_count"] = total_fallbacks
+        formula_wb.close()
+        if value_wb is not None:
+            value_wb.close()
         return result
-
     except ToolError:
         raise
     except Exception as e:

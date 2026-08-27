@@ -289,6 +289,37 @@ class NativeToolExecutor {
     return filters.join(',');
   }
 
+  String _extensionOf(String path) {
+    final slash = path.lastIndexOf('/');
+    final dot = path.lastIndexOf('.');
+    return dot > slash ? path.substring(dot).toLowerCase() : '';
+  }
+
+  bool _isAudioOnlyOutput(String path) => const <String>{
+    '.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.wma', '.amr'
+  }.contains(_extensionOf(path));
+
+  String _audioCodecArgs(String outputPath, Map<String, dynamic> params) {
+    final bitrate = params['bitrate'] ?? params['audio_bitrate'] ?? '192k';
+    final ext = _extensionOf(outputPath);
+    switch (ext) {
+      case '.mp3':
+        return '-c:a libmp3lame -b:a $bitrate';
+      case '.wav':
+        return '-c:a pcm_s16le';
+      case '.flac':
+        return '-c:a flac';
+      case '.ogg':
+      case '.opus':
+        return '-c:a libopus -b:a $bitrate';
+      case '.aac':
+      case '.m4a':
+        return '-c:a aac -b:a $bitrate';
+      default:
+        return '-c:a aac -b:a $bitrate';
+    }
+  }
+
   /// Execute FFmpeg operation
   Future<Map<String, dynamic>> _executeFFmpeg(Map<String, dynamic> args) async {
     final requestedInputPath = args['input_path'] as String?;
@@ -350,8 +381,32 @@ class NativeToolExecutor {
         }
         final inputs = effectiveInputs.map((p) => '-i "$p"').join(' ');
         final labels = List.generate(effectiveInputs.length, (i) => '[$i:a:0]').join();
-        final durationMode = (params['duration'] ?? 'longest').toString();
-        command = '-y $inputs -filter_complex "${labels}amix=inputs=${effectiveInputs.length}:duration=$durationMode:normalize=0[a]" -map "[a]" "$outputPath"';
+        final rawDuration = params['duration'];
+        final requestedMode = (params['duration_mode'] ?? 'longest').toString().toLowerCase();
+        const modes = <String>{'longest', 'shortest', 'first'};
+        String durationMode;
+        String durationLimit = '';
+        if (rawDuration is num ||
+            (rawDuration is String && double.tryParse(rawDuration) != null)) {
+          final seconds = rawDuration is num
+              ? rawDuration.toDouble()
+              : double.parse(rawDuration.toString());
+          if (!seconds.isFinite || seconds <= 0) {
+            throw ArgumentError('mix_audio numeric duration must be greater than 0 seconds');
+          }
+          if (!modes.contains(requestedMode)) {
+            throw ArgumentError('mix_audio duration_mode must be longest, shortest, or first');
+          }
+          durationMode = requestedMode;
+          durationLimit = '-t $seconds';
+        } else {
+          durationMode = (rawDuration ?? requestedMode).toString().toLowerCase();
+          if (!modes.contains(durationMode)) {
+            throw ArgumentError('mix_audio duration accepts seconds or longest/shortest/first');
+          }
+        }
+        final audioCodec = _audioCodecArgs(outputPath, params);
+        command = '-y $inputs -filter_complex "${labels}amix=inputs=${effectiveInputs.length}:duration=$durationMode:normalize=0[a]" -map "[a]" $durationLimit $audioCodec "$outputPath"';
         break;
 
       case 'merge_av':
@@ -433,12 +488,13 @@ class NativeToolExecutor {
       case 'convert':
         final codec = params['codec'];
         final quality = params['quality'] ?? 23;
-        // Ensure quality is a valid integer for CRF
         final crf = (quality is int) ? quality : int.tryParse(quality.toString()) ?? 23;
-        if (codec != null) {
-          command = '-y -i "$inputPath" -c:v $codec -pix_fmt yuv420p -crf $crf -c:a aac "$outputPath"';
+        final audioCodec = _audioCodecArgs(outputPath, params);
+        if (_isAudioOnlyOutput(outputPath)) {
+          command = '-y -i "$inputPath" -vn $audioCodec "$outputPath"';
         } else {
-          command = '-y -i "$inputPath" -c:v libx264 -pix_fmt yuv420p -crf $crf -c:a aac "$outputPath"';
+          final videoCodec = codec ?? 'libx264';
+          command = '-y -i "$inputPath" -c:v $videoCodec -pix_fmt yuv420p -crf $crf $audioCodec "$outputPath"';
         }
         break;
 
@@ -485,13 +541,15 @@ class NativeToolExecutor {
         // Escape commas in expression functions (e.g. mod(x,y) -> mod(x\,y))
         if (vf != null) vf = _escapeFFmpegExprCommas(vf.toString());
         if (af != null) af = _escapeFFmpegExprCommas(af.toString());
-        // When video uses select (time-based frame selection), use filter_complex
-        // with explicit mapping to guarantee both A/V streams are filtered
-        if (vf != null && vf.toString().contains('select')) {
-          // Auto-generate matching audio filter if not provided
+        final audioCodec = _audioCodecArgs(outputPath, params);
+        final audioOnlyOutput = _isAudioOnlyOutput(outputPath);
+        if (audioOnlyOutput && vf != null) {
+          throw ArgumentError('A video filter cannot be written to an audio-only output file');
+        }
+        if (audioOnlyOutput) {
+          command = '-y -i "$inputPath" -vn -af "$af" $audioCodec "$outputPath"';
+        } else if (vf != null && vf.toString().contains('select')) {
           if (af == null) {
-            // Extract only select/setpts parts from vf for audio — strip
-            // video-only filters (hue, eq, colorbalance, etc.)
             final vfParts = vf.toString().split(',');
             final audioParts = <String>[];
             for (final part in vfParts) {
@@ -502,7 +560,6 @@ class NativeToolExecutor {
                     .replaceAll('setpts=N/FRAME_RATE/TB', 'asetpts=N/SR/TB')
                     .replaceAll('setpts=', 'asetpts='));
               }
-              // Skip video-only filters (hue, eq, format, colorbalance, etc.)
             }
             af = audioParts.isNotEmpty ? audioParts.join(',') : null;
             if (!vf.toString().contains('setpts')) {
@@ -515,14 +572,13 @@ class NativeToolExecutor {
               af = "aselect='1',asetpts=N/SR/TB";
             }
           }
-          // Use filter_complex with explicit stream mapping
-          command = '-y -i "$inputPath" -filter_complex "[0:v]$vf[v];[0:a]$af[a]" -map "[v]" -map "[a]" -c:v libx264 -pix_fmt yuv420p -crf 23 -c:a aac "$outputPath"';
+          command = '-y -i "$inputPath" -filter_complex "[0:v]$vf[v];[0:a]$af[a]" -map "[v]" -map "[a]" -c:v libx264 -pix_fmt yuv420p -crf 23 $audioCodec "$outputPath"';
         } else if (vf != null && af != null) {
-          command = '-y -i "$inputPath" -vf "$vf" -af "$af" -c:v libx264 -pix_fmt yuv420p -crf 23 -c:a aac "$outputPath"';
+          command = '-y -i "$inputPath" -vf "$vf" -af "$af" -c:v libx264 -pix_fmt yuv420p -crf 23 $audioCodec "$outputPath"';
         } else if (vf != null) {
-          command = '-y -i "$inputPath" -vf "$vf" -c:v libx264 -pix_fmt yuv420p -crf 23 -c:a aac "$outputPath"';
+          command = '-y -i "$inputPath" -vf "$vf" -c:v libx264 -pix_fmt yuv420p -crf 23 $audioCodec "$outputPath"';
         } else {
-          command = '-y -i "$inputPath" -c:v copy -af "$af" -c:a aac "$outputPath"';
+          command = '-y -i "$inputPath" -c:v copy -af "$af" $audioCodec "$outputPath"';
         }
         break;
 
@@ -745,9 +801,12 @@ class NativeToolExecutor {
         });
       }
 
+      final textDetected = recognizedText.text.trim().isNotEmpty;
       return {
         'success': true,
         'text': recognizedText.text,
+        'text_detected': textDetected,
+        if (!textDetected) 'reason': 'no_text_detected',
         'blocks': blocks,
         'block_count': recognizedText.blocks.length,
       };

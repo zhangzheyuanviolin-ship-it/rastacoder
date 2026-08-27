@@ -270,6 +270,7 @@ def extract_zip(
     os.makedirs(root, exist_ok=True)
     root_real = os.path.realpath(root)
     extracted: List[str] = []
+    extracted_sizes: Dict[str, int] = {}
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             for info in zf.infolist():
@@ -285,12 +286,14 @@ def extract_zip(
                 with zf.open(info, "r") as src, open(dest, "wb") as dst:
                     shutil.copyfileobj(src, dst)
                 extracted.append(dest)
+                extracted_sizes[dest] = int(info.file_size)
         return {
             "success": True,
             "zip_path": zip_path,
             "output_dir": root_real,
             "file_count": len(extracted),
             "output_paths": extracted[:2000],
+            "output_sizes": {p: extracted_sizes[p] for p in extracted[:2000]},
         }
     except ToolError:
         raise
@@ -548,10 +551,21 @@ def image_compose(
 
     _ensure_parent(output_path)
     ext = os.path.splitext(output_path)[1].lower()
-    save_format = str(params.get("format", "")).upper() or {
-        ".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP", ".bmp": "BMP", ".gif": "GIF", ".tif": "TIFF", ".tiff": "TIFF",
-    }.get(ext, "PNG")
-    if save_format in {"JPEG", "JPG"}:
+    aliases = {
+        "jpg": "JPEG", "jpeg": "JPEG", "png": "PNG", "webp": "WEBP",
+        "bmp": "BMP", "gif": "GIF", "tif": "TIFF", "tiff": "TIFF",
+    }
+    requested_format = str(params.get("format", "")).strip().lower().lstrip(".")
+    if requested_format:
+        save_format = aliases.get(requested_format)
+        if save_format is None:
+            raise ToolError(
+                f"Unsupported image format: {params.get('format')}. "
+                "Use jpg/jpeg, png, webp, bmp, gif, tif, or tiff."
+            )
+    else:
+        save_format = aliases.get(ext.lstrip("."), "PNG")
+    if save_format == "JPEG":
         result = result.convert("RGB")
     result.save(output_path, format=save_format, quality=int(params.get("quality", 92)))
     for im in images:

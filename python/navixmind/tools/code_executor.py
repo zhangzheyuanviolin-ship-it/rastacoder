@@ -192,6 +192,35 @@ class RestrictedImporter:
         return None
 
 
+class _SafePathFacade:
+    """Pure path-string operations only; no filesystem probing or process APIs."""
+    join = staticmethod(_os.path.join)
+    basename = staticmethod(_os.path.basename)
+    dirname = staticmethod(_os.path.dirname)
+    split = staticmethod(_os.path.split)
+    splitext = staticmethod(_os.path.splitext)
+    normpath = staticmethod(_os.path.normpath)
+    isabs = staticmethod(_os.path.isabs)
+    commonpath = staticmethod(_os.path.commonpath)
+    commonprefix = staticmethod(_os.path.commonprefix)
+    relpath = staticmethod(_os.path.relpath)
+
+
+class _SafeOSFacade:
+    path = _SafePathFacade()
+
+
+class _SafeImportlibMetadataFacade:
+    @staticmethod
+    def version(distribution_name):
+        from importlib import metadata
+        return metadata.version(str(distribution_name))
+
+
+class _SafeImportlibFacade:
+    metadata = _SafeImportlibMetadataFacade()
+
+
 class SafeBuiltins:
     """
     Provides a restricted set of Python builtins.
@@ -237,21 +266,27 @@ class SafeBuiltins:
 
     @staticmethod
     def _safe_import(name: str, globals=None, locals=None, fromlist=(), level=0):
-        """Safe import that checks against whitelist."""
-        top_level = name.split('.')[0]
-
+        """Safe import with tiny facades for os.path and importlib.metadata."""
+        requested = str(name)
+        requested_from = tuple(fromlist or ())
+        if requested == 'os.path':
+            return _SafePathFacade() if requested_from else _SafeOSFacade()
+        if requested == 'os' and requested_from and set(requested_from) <= {'path'}:
+            return _SafeOSFacade()
+        if requested == 'importlib.metadata':
+            return _SafeImportlibMetadataFacade() if requested_from else _SafeImportlibFacade()
+        if requested == 'importlib' and requested_from and set(requested_from) <= {'metadata'}:
+            return _SafeImportlibFacade()
+        top_level = requested.split('.')[0]
         if top_level in BLOCKED_MODULES:
-            raise SecurityError(f"Import of '{name}' is not allowed for security reasons")
-
+            raise SecurityError(f"Import of '{requested}' is not allowed for security reasons")
         if top_level not in SAFE_MODULES:
             raise SecurityError(
-                f"Import of '{name}' is not allowed. "
+                f"Import of '{requested}' is not allowed. "
                 f"Available modules: {', '.join(sorted(SAFE_MODULES))}"
             )
-
-        # Use the real __import__
         import builtins
-        return builtins.__import__(name, globals, locals, fromlist, level)
+        return builtins.__import__(requested, globals, locals, fromlist, level)
 
     # Class variable to store allowed paths
     _allowed_paths: List[str] = []
@@ -271,27 +306,38 @@ class SafeBuiltins:
 
     @classmethod
     def _safe_open(cls, file, mode='r', *args, **kwargs):
-        """Safe open that only allows reading specific files and writing to output_dir."""
-        file_str = str(file)
+        """Allow user-provided inputs plus files created under OUTPUT_DIR."""
+        file_real = _os.path.realpath(str(file))
 
-        # Check write modes
-        if 'w' in mode or 'a' in mode or 'x' in mode or '+' in mode:
-            # Allow writes only inside output_dir
-            if cls._output_dir and file_str.startswith(cls._output_dir):
+        def within(candidate: str, root: str) -> bool:
+            if not root:
+                return False
+            root_real = _os.path.realpath(str(root))
+            try:
+                return _os.path.commonpath([candidate, root_real]) == root_real
+            except ValueError:
+                return False
+
+        is_write = any(flag in mode for flag in ('w', 'a', 'x', '+'))
+        if is_write:
+            if cls._output_dir and within(file_real, cls._output_dir):
                 import builtins
-                return builtins.open(file, mode, *args, **kwargs)
+                return builtins.open(file_real, mode, *args, **kwargs)
             raise SecurityError("Writing files is not allowed outside the output directory.")
 
-        # Check if file is in allowed paths
-        if not any(file_str == allowed or file_str.startswith(allowed) for allowed in cls._allowed_paths):
+        allowed_input = any(
+            file_real == _os.path.realpath(str(allowed))
+            or (_os.path.isdir(str(allowed)) and within(file_real, str(allowed)))
+            for allowed in cls._allowed_paths
+        )
+        generated_output = cls._output_dir and within(file_real, cls._output_dir)
+        if not allowed_input and not generated_output:
             raise SecurityError(
-                f"Reading '{file}' is not allowed. "
-                f"Only files explicitly provided by the user can be read."
+                f"Reading '{file}' is not allowed. Only user-provided files and files "
+                "created inside OUTPUT_DIR can be read."
             )
-
-        # Use the real open
         import builtins
-        return builtins.open(file, mode, *args, **kwargs)
+        return builtins.open(file_real, mode, *args, **kwargs)
 
 
 class CodeValidator(ast.NodeVisitor):
@@ -306,7 +352,7 @@ class CodeValidator(ast.NodeVisitor):
         """Check import statements."""
         for alias in node.names:
             top_level = alias.name.split('.')[0]
-            if top_level in BLOCKED_MODULES:
+            if alias.name not in {'os.path', 'importlib.metadata'} and top_level in BLOCKED_MODULES:
                 self.errors.append(f"Import of '{alias.name}' is not allowed")
         self.generic_visit(node)
 
@@ -314,7 +360,14 @@ class CodeValidator(ast.NodeVisitor):
         """Check from ... import statements."""
         if node.module:
             top_level = node.module.split('.')[0]
-            if top_level in BLOCKED_MODULES:
+            names = {alias.name for alias in node.names}
+            safe_blocked_subset = (
+                (node.module == 'os' and names <= {'path'})
+                or node.module == 'os.path'
+                or (node.module == 'importlib' and names <= {'metadata'})
+                or node.module == 'importlib.metadata'
+            )
+            if top_level in BLOCKED_MODULES and not safe_blocked_subset:
                 self.errors.append(f"Import from '{node.module}' is not allowed")
         self.generic_visit(node)
 
@@ -343,7 +396,7 @@ class CodeValidator(ast.NodeVisitor):
                                  '__truediv__', '__floordiv__', '__mod__', '__pow__',
                                  '__and__', '__or__', '__xor__', '__neg__', '__pos__',
                                  '__abs__', '__invert__', '__enter__', '__exit__',
-                                 '__name__', '__doc__'):
+                                 '__name__', '__doc__', '__version__'):
                 self.errors.append(f"Access to '{node.attr}' is restricted")
 
         self.generic_visit(node)
@@ -555,6 +608,9 @@ def python_execute(
     Execute Python code in a secure sandbox.
 
     This tool allows the agent to write and run Python code for:
+    - Read user-provided files and read/write files created under OUTPUT_DIR in the same execution
+    - Use safe path-string helpers via os.path; full os process/filesystem APIs remain blocked
+    - Inspect package versions with module.__version__ or importlib.metadata.version("package")
     - Data processing and analysis
     - Mathematical calculations
     - Text manipulation

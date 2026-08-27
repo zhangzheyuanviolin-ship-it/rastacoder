@@ -1166,12 +1166,12 @@ def _record_tool_diag(context: Dict[str, Any], stage: str, **fields: Any) -> Non
     events.append(event)
 
 
-def _verify_output_artifact(path: Any) -> int:
+def _verify_output_artifact(path: Any, allow_empty: bool = False) -> int:
     import os
     if not isinstance(path, str) or not path or not os.path.isfile(path):
         raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Output file missing: {path}")
     size = os.path.getsize(path)
-    if size <= 0:
+    if size <= 0 and not allow_empty:
         raise ToolError(f"[TOOL_POSTCONDITION_ERROR] Output file is empty: {path}")
     ext = os.path.splitext(path)[1].lower()
     try:
@@ -1218,7 +1218,14 @@ def _verify_tool_result(tool_name: str, args: Dict[str, Any], result: Any) -> An
         paths.append(result["output_path"])
     if isinstance(result.get("output_paths"), list):
         paths.extend(p for p in result["output_paths"] if isinstance(p, str) and p)
-    sizes = {p: _verify_output_artifact(p) for p in dict.fromkeys(paths)}
+    expected_sizes = result.get("output_sizes") if isinstance(result.get("output_sizes"), dict) else {}
+    sizes = {
+        p: _verify_output_artifact(
+            p,
+            allow_empty=(tool_name == "extract_zip" and expected_sizes.get(p) == 0),
+        )
+        for p in dict.fromkeys(paths)
+    }
     if tool_name == "write_file" and paths:
         expected = str(args.get("content", ""))
         try:
