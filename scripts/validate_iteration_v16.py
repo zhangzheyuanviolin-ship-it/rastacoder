@@ -117,9 +117,26 @@ asset_cfg = json.loads(source('android/mlc4j/src/main/assets/mlc-app-config.json
 asset_ids = {item['model_lib'] for item in asset_cfg['model_list']}
 require(asset_ids == expected_ids, f'MLC asset config diverged from proven runtime IDs: {asset_ids}')
 
+# mlc-package-config.json is compiler input: it names model repositories/model_id
+# and intentionally does not carry the generated model_lib hashes. Lock its five
+# model IDs to the same five user-visible variants, while model-lib hashes are
+# independently locked above by the runtime asset config and binary probe.
+expected_package_model_ids = {
+    'Qwen2.5-Coder-0.5B-Instruct-q4f16_0-MLC',
+    'Qwen2.5-Coder-1.5B-Instruct-q4f16_0-MLC',
+    'Qwen2.5-Coder-3B-Instruct-q4f16_0-MLC',
+    'Ministral-3-3B-Instruct-2512-q4f16_0-MLC',
+    'Qwen3-4B-q4f16_0-MLC',
+}
 package_cfg = json.loads(source('mlc-package-config.json'))
-package_ids = {item['model_lib'] for item in package_cfg['model_list']}
-require(package_ids == expected_ids, f'MLC package config diverged from proven runtime IDs: {package_ids}')
+package_models = package_cfg.get('model_list') or []
+package_model_ids = {item.get('model_id') for item in package_models}
+require(len(package_models) == 5, f'Unexpected MLC package model count: {len(package_models)}')
+require(
+    package_model_ids == expected_package_model_ids,
+    f'MLC package config diverged from proven five variants: {package_model_ids}',
+)
+require(all(item.get('bundle_weight') is False for item in package_models), 'MLC package unexpectedly bundles model weights')
 
 channel = source('android/app/src/main/kotlin/ai/navixmind/services/MLCInferenceChannel.kt')
 require('chatModule.reload(modelPath, modelLib)' in channel, 'Android runtime no longer reloads by explicit model_lib')
