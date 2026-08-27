@@ -448,20 +448,91 @@ def create_xlsx(
     output_path: str,
     sheets: Optional[List[Dict[str, Any]]] = None,
 ) -> dict:
-    """Create an XLSX workbook from structured rows."""
-    from openpyxl import Workbook
+    """Create XLSX from canonical or compatibility row structures, with verification."""
+    import json
+    from openpyxl import Workbook, load_workbook
+
+    def scalar(value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        return json.dumps(value, ensure_ascii=False, sort_keys=False)
+
+    def normalize_rows(spec):
+        raw = spec.get('rows')
+        if raw is None:
+            raw = spec.get('data')
+        if raw is None:
+            return []
+        if isinstance(raw, tuple):
+            raw = list(raw)
+        if not isinstance(raw, list):
+            raise ToolError('create_xlsx sheet rows/data must be an array')
+
+        # A list of ordinary objects is a record set: write deterministic
+        # headers once, then one value row per object.
+        if raw and all(isinstance(row, dict) and not (len(row) == 1 and 'item' in row) for row in raw):
+            headers = []
+            for row in raw:
+                for key in row.keys():
+                    key = str(key)
+                    if key not in headers:
+                        headers.append(key)
+            return [headers] + [[scalar(row.get(key)) for key in headers] for row in raw]
+
+        matrix = []
+        for row in raw:
+            # Compatibility adapters and some models emit {"item": [...]}
+            # for an array item. Unwrap it instead of writing the key itself.
+            if isinstance(row, dict) and len(row) == 1 and 'item' in row:
+                row = row['item']
+            if isinstance(row, (list, tuple)):
+                matrix.append([scalar(value) for value in row])
+            elif isinstance(row, dict):
+                matrix.append([scalar(value) for value in row.values()])
+            else:
+                matrix.append([scalar(row)])
+        return matrix
 
     _ensure_parent(output_path)
+    configured = sheets or [{"name": "Sheet1", "rows": []}]
+    if not isinstance(configured, list) or not all(isinstance(spec, dict) for spec in configured):
+        raise ToolError('create_xlsx sheets must be an array of objects')
+
     wb = Workbook()
     default = wb.active
-    configured = sheets or [{"name": "Sheet1", "rows": []}]
+    expected = {}
     for i, spec in enumerate(configured):
         ws = default if i == 0 else wb.create_sheet()
-        ws.title = str(spec.get("name") or f"Sheet{i + 1}")[:31]
-        for row in spec.get("rows", []) or []:
-            ws.append(list(row) if isinstance(row, (list, tuple)) else [row])
+        ws.title = str(spec.get('name') or spec.get('sheet_name') or f"Sheet{i + 1}")[:31]
+        matrix = normalize_rows(spec)
+        expected[ws.title] = matrix
+        for row in matrix:
+            ws.append(row)
     wb.save(output_path)
-    return {"success": True, "output_path": output_path, "sheet_names": wb.sheetnames}
+    wb.close()
+
+    check = load_workbook(output_path, data_only=False)
+    try:
+        for sheet_name, matrix in expected.items():
+            ws = check[sheet_name]
+            for r, row in enumerate(matrix, start=1):
+                for c, value in enumerate(row, start=1):
+                    actual = ws.cell(row=r, column=c).value
+                    if actual != value:
+                        raise ToolError(
+                            f"XLSX verification failed at {sheet_name}!{ws.cell(r, c).coordinate}: "
+                            f"expected {value!r}, got {actual!r}"
+                        )
+    finally:
+        check.close()
+
+    return {
+        "success": True,
+        "output_path": output_path,
+        "sheet_names": list(expected.keys()),
+        "row_counts": {name: len(rows) for name, rows in expected.items()},
+        "verified": True,
+    }
 
 
 def image_compose(

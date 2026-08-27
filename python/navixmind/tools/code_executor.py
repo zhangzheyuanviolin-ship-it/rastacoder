@@ -193,7 +193,7 @@ class RestrictedImporter:
 
 
 class _SafePathFacade:
-    """Pure path-string operations only; no filesystem probing or process APIs."""
+    """Safe path-string helpers plus scoped read-only filesystem probes."""
     join = staticmethod(_os.path.join)
     basename = staticmethod(_os.path.basename)
     dirname = staticmethod(_os.path.dirname)
@@ -204,6 +204,26 @@ class _SafePathFacade:
     commonpath = staticmethod(_os.path.commonpath)
     commonprefix = staticmethod(_os.path.commonprefix)
     relpath = staticmethod(_os.path.relpath)
+
+    @staticmethod
+    def exists(path):
+        return SafeBuiltins._safe_path_probe(path, 'exists')
+
+    @staticmethod
+    def isfile(path):
+        return SafeBuiltins._safe_path_probe(path, 'isfile')
+
+    @staticmethod
+    def isdir(path):
+        return SafeBuiltins._safe_path_probe(path, 'isdir')
+
+    @staticmethod
+    def getsize(path):
+        return SafeBuiltins._safe_path_probe(path, 'getsize')
+
+    @staticmethod
+    def getmtime(path):
+        return SafeBuiltins._safe_path_probe(path, 'getmtime')
 
 
 class _SafeOSFacade:
@@ -303,6 +323,52 @@ class SafeBuiltins:
     def set_output_dir(cls, path: str):
         """Set the output directory where files can be written."""
         cls._output_dir = str(path) if path else ''
+
+    @classmethod
+    def _resolve_scoped_probe_path(cls, file):
+        """Resolve a probe target without exposing arbitrary filesystem state."""
+        raw = str(file)
+        if _os.path.isabs(raw):
+            candidate = _os.path.realpath(raw)
+        else:
+            # A sandboxed relative path is a workspace-relative path, never a
+            # process-CWD escape hatch.
+            base = cls._output_dir or '.'
+            candidate = _os.path.realpath(_os.path.join(base, raw))
+
+        def within(candidate_path: str, root: str) -> bool:
+            if not root:
+                return False
+            root_real = _os.path.realpath(str(root))
+            try:
+                return _os.path.commonpath([candidate_path, root_real]) == root_real
+            except ValueError:
+                return False
+
+        if cls._output_dir and within(candidate, cls._output_dir):
+            return candidate
+
+        for allowed in cls._allowed_paths:
+            allowed_real = _os.path.realpath(str(allowed))
+            if candidate == allowed_real:
+                return candidate
+            # A user-provided directory intentionally grants read-only access to
+            # descendants, matching safe_open's existing contract.
+            if _os.path.isdir(str(allowed)) and within(candidate, str(allowed)):
+                return candidate
+
+        raise SecurityError(
+            f"Filesystem probing for '{file}' is not allowed. Only user-provided "
+            "paths and paths inside OUTPUT_DIR may be inspected."
+        )
+
+    @classmethod
+    def _safe_path_probe(cls, file, operation):
+        candidate = cls._resolve_scoped_probe_path(file)
+        allowed_ops = {'exists', 'isfile', 'isdir', 'getsize', 'getmtime'}
+        if operation not in allowed_ops:
+            raise SecurityError(f"os.path operation '{operation}' is not allowed")
+        return getattr(_os.path, operation)(candidate)
 
     @classmethod
     def _safe_open(cls, file, mode='r', *args, **kwargs):

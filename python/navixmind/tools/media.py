@@ -112,7 +112,12 @@ def download_media(
 
             try:
                 from curl_cffi import requests as browser_requests
-            except ImportError as exc:
+            except (ImportError, OSError) as exc:
+                detail = str(exc)
+                if 'libc++_shared' in detail or 'dlopen' in detail.lower():
+                    raise ToolError(
+                        "Browser impersonation native runtime is incomplete: " + detail
+                    ) from exc
                 raise ToolError(
                     "Browser impersonation runtime is unavailable; curl-cffi must be bundled "
                     "for download_media."

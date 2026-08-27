@@ -550,7 +550,7 @@ TOOLS_SCHEMA.extend([
             "type": "object",
             "properties": {
                 "output_path": {"type": "string"},
-                "sheets": {"type": "array", "items": {"type": "object"}, "description": "[{name, rows:[[...], ...]}]"},
+                "sheets": {"type": "array", "items": {"type": "object"}, "description": "Sheets accept {name, rows:[[...]]}; compatibility aliases {sheet_name, data} are also accepted. Object rows become a header row plus records."},
             },
             "required": ["output_path"],
         },
