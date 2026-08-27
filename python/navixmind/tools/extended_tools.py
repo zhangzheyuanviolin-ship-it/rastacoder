@@ -30,10 +30,16 @@ def _default_output_dir(_output_dir: Optional[str]) -> str:
 
 # RASTACODER_V11_WORKSPACE_ROOT
 # RASTACODER_V12_EXTENDED_PATH_CONTRACT
-def _resolve_workspace_path(value: str, _output_dir: Optional[str]) -> str:
-    """Resolve through the same central model-facing path contract as execute_tool."""
+def _resolve_workspace_path(value: str, _output_dir: Optional[str], _trusted_paths=None) -> str:
+    """Resolve through the strict central model-facing path contract."""
     root = os.path.normpath(_default_output_dir(_output_dir))
-    return resolve_model_path(value, root, allow_android_roots=True)
+    return resolve_model_path(
+        value,
+        root,
+        allow_android_roots=True,
+        trusted_absolute_paths=_trusted_paths or (),
+        trust_existing_files=False,
+    )
 
 
 def _resolve_named_directory(directory: str, _output_dir: Optional[str]) -> str:
@@ -120,21 +126,22 @@ def file_manage(
     recursive: bool = False,
     overwrite: bool = False,
     _output_dir: Optional[str] = None,
+    _trusted_paths: Optional[List[str]] = None,
 ) -> dict:
-    """Manage files relative to the real app output root and verify mutations."""
+    """Manage files relative to the app workspace with explicit attachment trust."""
     action = (action or "").strip().lower()
     source_raw = source_path or path
 
     try:
         if action == "list":
-            resolved = _resolve_workspace_path(path, _output_dir) if path else _default_output_dir(_output_dir)
+            resolved = _resolve_workspace_path(path, _output_dir, _trusted_paths) if path else _default_output_dir(_output_dir)
             return list_files(path=resolved, directory="output", recursive=recursive, _output_dir=_output_dir)
 
         if action == "mkdir":
             target_raw = path or destination_path
             if not target_raw:
                 raise ToolError("mkdir requires path")
-            target = _resolve_workspace_path(target_raw, _output_dir)
+            target = _resolve_workspace_path(target_raw, _output_dir, _trusted_paths)
             os.makedirs(target, exist_ok=True)
             if not os.path.isdir(target):
                 raise ToolError(f"mkdir verification failed: {target}")
@@ -143,7 +150,7 @@ def file_manage(
         if action == "exists":
             if not source_raw:
                 raise ToolError("exists requires path")
-            source = _resolve_workspace_path(source_raw, _output_dir)
+            source = _resolve_workspace_path(source_raw, _output_dir, _trusted_paths)
             exists = os.path.lexists(source)
             return {
                 "success": True,
@@ -158,7 +165,7 @@ def file_manage(
             target_raw = source_raw or destination_path
             if not target_raw:
                 raise ToolError("touch requires path")
-            target = _resolve_workspace_path(target_raw, _output_dir)
+            target = _resolve_workspace_path(target_raw, _output_dir, _trusted_paths)
             _ensure_parent(target)
             with open(target, "a", encoding="utf-8"):
                 os.utime(target, None)
@@ -169,8 +176,8 @@ def file_manage(
         if action in {"copy", "move", "rename"}:
             if not source_raw or not destination_path:
                 raise ToolError(f"{action} requires source_path and destination_path")
-            source = _resolve_workspace_path(source_raw, _output_dir)
-            destination = _resolve_workspace_path(destination_path, _output_dir)
+            source = _resolve_workspace_path(source_raw, _output_dir, _trusted_paths)
+            destination = _resolve_workspace_path(destination_path, _output_dir, _trusted_paths)
             if not os.path.lexists(source):
                 raise ToolError(f"Source not found: {source}")
             if os.path.lexists(destination):
@@ -203,7 +210,7 @@ def file_manage(
         if action == "delete":
             if not source_raw:
                 raise ToolError("delete requires path")
-            source = _resolve_workspace_path(source_raw, _output_dir)
+            source = _resolve_workspace_path(source_raw, _output_dir, _trusted_paths)
             if not os.path.lexists(source):
                 raise ToolError(f"Delete target not found: {source}")
             if os.path.isdir(source) and not os.path.islink(source):

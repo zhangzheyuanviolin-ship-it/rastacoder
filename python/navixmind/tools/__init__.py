@@ -7,6 +7,7 @@ This module provides tool definitions and execution logic.
 from typing import Any, Dict
 from pathlib import Path
 import copy
+import os
 
 from .web import web_fetch, headless_browser
 from .documents import (
@@ -1116,7 +1117,9 @@ def build_offline_skill_prompt(skill_ids=None):
         "- arguments MUST use the exact parameter names shown in that function signature.",
         "- Never invent generic argument keys such as param, request, instruction, or command.",
         "- Use attached file basenames exactly as shown in the user message; the app resolves them to real paths.",
-        "- WORKSPACE PATH RULE: use path='.' for the workspace root and relative paths like folder/file.txt below it. Do not invent Linux roots such as /workspace or /output.",
+        "- WORKSPACE PATH RULE: use path='.' for the workspace root and relative paths like folder/file.txt below it. Never use bare '/' or Linux-style absolute roots; the app owns the real Android paths.",
+        "- Do not invent Linux roots such as /workspace or /output. Bare '/' is also forbidden in model-facing calls and is repaired to the workspace by the runtime.",
+        "- OUTPUT PATH RULE: choose a relative filename such as result.txt or folder/result.pdf; never prefix generated filenames with '/'.",
         "- Choose a sensible output filename yourself. Do not ask the user for an output path when a filename can be chosen safely.",
         "- Do not place prose before or after a tool call. After the tool result, give the concise final answer.",
         "- Use only the callable functions listed above.",
@@ -1355,9 +1358,16 @@ def execute_tool(
 
     tool_func = tool_map[tool_name]
 
-    # Resolve file paths: if a tool arg is a basename that matches an attached file,
-    # replace it with the full path so native tools can find the file
+    # RASTACODER_V17_EXPLICIT_TRUSTED_ATTACHMENT_PATHS
+    # Resolve attachment basenames first, then carry the exact application-owned
+    # absolute paths as a whitelist into the strict model-facing path resolver.
+    # A model merely spelling an existing Android/Linux path never makes it trusted.
     file_map = context.get('_file_map', {})
+    trusted_paths = {
+        os.path.normpath(str(value))
+        for value in (file_map.values() if isinstance(file_map, dict) else [])
+        if isinstance(value, str) and value.strip() and os.path.isabs(value)
+    }
     if file_map:
         _resolve_file_paths(args, file_map)
 
@@ -1372,7 +1382,7 @@ def execute_tool(
         # Android/app filesystem root. All other tools keep the universal
         # input resolver because their implementations consume physical paths.
         if tool_name != 'list_files':
-            _resolve_workspace_input_paths(args, output_dir)
+            _resolve_workspace_input_paths(args, output_dir, trusted_paths=trusted_paths)
         _resolve_output_paths(args, output_dir)
 
     _record_tool_diag(context, "paths_resolved", tool=tool_name, args=_safe_diag_value(args))
@@ -1389,6 +1399,10 @@ def execute_tool(
         args["output_dir"] = output_dir
     if tool_name in {"list_files", "file_manage", "extract_zip", "pdf_manage", "download_media"} and output_dir:
         args["_output_dir"] = output_dir
+    if tool_name == "file_manage":
+        # file_manage has its own lower-level resolver, so propagate the same
+        # exact attachment whitelist through that second boundary.
+        args["_trusted_paths"] = sorted(trusted_paths)
 
     # Pass timeout for native tools
     if tool_name in ["ocr_image", "ffmpeg_process", "smart_crop"]:
@@ -1461,11 +1475,21 @@ def _resolve_file_paths(args: Dict[str, Any], file_map: Dict[str, str]) -> None:
 
 # RASTACODER_V11_GLOBAL_WORKSPACE_PATHS
 # RASTACODER_V12_CENTRAL_PATH_CONTRACT
-def _workspace_relative_path(value: str, output_dir: str) -> str:
-    return resolve_model_path(value, output_dir, allow_android_roots=True)
+# RASTACODER_V17_STRICT_MODEL_PATH_RESOLUTION
+def _workspace_relative_path(value: str, output_dir: str, trusted_paths=None) -> str:
+    return resolve_model_path(
+        value,
+        output_dir,
+        allow_android_roots=True,
+        trusted_absolute_paths=trusted_paths or (),
+        trust_existing_files=False,
+    )
 
 
-def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str) -> None:
+def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str, trusted_paths=None) -> None:
+    # RASTACODER_V17_ALL_LOCAL_PATH_BOUNDARY
+    # destination_path is deliberately excluded here: it is an output path and
+    # must never inherit trust merely because it equals an attached input file.
     path_keys = [
         'image_path', 'input_path', 'pdf_path', 'file_path', 'path', 'source_path',
         'zip_path', 'docx_path', 'pptx_path', 'xlsx_path',
@@ -1473,12 +1497,12 @@ def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str) -> Non
     for key in path_keys:
         value = args.get(key)
         if isinstance(value, str):
-            args[key] = _workspace_relative_path(value, output_dir)
+            args[key] = _workspace_relative_path(value, output_dir, trusted_paths)
     for key in ('image_paths', 'file_paths', 'input_paths'):
         values = args.get(key)
         if isinstance(values, list):
             args[key] = [
-                _workspace_relative_path(v, output_dir) if isinstance(v, str) else v
+                _workspace_relative_path(v, output_dir, trusted_paths) if isinstance(v, str) else v
                 for v in values
             ]
     operations = args.get('operations')
@@ -1489,16 +1513,20 @@ def _resolve_workspace_input_paths(args: Dict[str, Any], output_dir: str) -> Non
             params = op['params']
             for key in ('image_path', 'file_path', 'source_path', 'input_path'):
                 if isinstance(params.get(key), str):
-                    params[key] = _workspace_relative_path(params[key], output_dir)
+                    params[key] = _workspace_relative_path(params[key], output_dir, trusted_paths)
 
 
 def _resolve_output_paths(args: Dict[str, Any], output_dir: str) -> None:
-    """Resolve generated outputs through the same virtual-workspace contract."""
+    """Resolve generated files/directories through the virtual-workspace contract."""
     import os
     os.makedirs(output_dir, exist_ok=True)
-    value = args.get('output_path')
-    if isinstance(value, str):
-        args['output_path'] = resolve_output_path(value, output_dir)
+    # RASTACODER_V17_OUTPUT_DIRECTORY_BOUNDARY
+    # Outputs are always workspace-owned. extract_zip uses output_dir and
+    # file_manage uses destination_path, so both belong to this strict branch.
+    for key in ('output_path', 'output_dir', 'destination_path'):
+        value = args.get(key)
+        if isinstance(value, str):
+            args[key] = resolve_output_path(value, output_dir)
 
 
 def _file_info(file_path: str, **kwargs) -> dict:

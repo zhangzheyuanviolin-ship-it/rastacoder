@@ -480,6 +480,7 @@ def _repair_with_context(name: str, args: Dict[str, Any], context: Optional[Dict
 
     # Safe output-name synthesis. These are always new output names and are
     # subsequently resolved under the app's writable output directory.
+    # RASTACODER_V17_DETERMINISTIC_OUTPUT_DEFAULTS
     if name == "create_docx" and not args.get("output_path") and args.get("content") is not None:
         args["output_path"] = "document.docx"
         notes.append("default:output_path=document.docx")
@@ -492,6 +493,24 @@ def _repair_with_context(name: str, args: Dict[str, Any], context: Optional[Dict
     elif name == "create_zip" and not args.get("output_path") and args.get("file_paths"):
         args["output_path"] = "archive.zip"
         notes.append("default:output_path=archive.zip")
+    elif name == "create_pptx" and not args.get("output_path"):
+        args["output_path"] = "presentation.pptx"
+        notes.append("default:output_path=presentation.pptx")
+    elif name == "create_xlsx" and not args.get("output_path"):
+        args["output_path"] = "spreadsheet.xlsx"
+        notes.append("default:output_path=spreadsheet.xlsx")
+    elif name == "convert_document" and not args.get("output_path") and isinstance(args.get("input_path"), str) and args.get("output_format"):
+        stem = os.path.splitext(os.path.basename(args["input_path"]))[0] or "document"
+        fmt = str(args["output_format"]).strip().lower().lstrip(".") or "txt"
+        args["output_path"] = f"{stem}_converted.{fmt}"
+        notes.append("derived:output_path=workspace_converted")
+    elif name == "image_compose" and not args.get("output_path") and isinstance(args.get("input_paths"), list) and args.get("input_paths") and args.get("operation"):
+        first = str(args["input_paths"][0])
+        params = args.get("params") if isinstance(args.get("params"), dict) else {}
+        requested = str(params.get("format") or "").strip().lower().lstrip(".")
+        ext = requested or _extension(first) or "png"
+        args["output_path"] = _derive_output(first, str(args["operation"]), ext)
+        notes.append("derived:output_path")
 
     if name in {"modify_docx", "modify_pptx", "modify_xlsx"} and not args.get("output_path") and isinstance(args.get("input_path"), str):
         args["output_path"] = args["input_path"]
@@ -679,10 +698,15 @@ def normalize_tool_call(
     if name in {"ffmpeg_process", "smart_crop", "convert_document", "modify_docx", "modify_pptx", "modify_xlsx"}:
         _move_alias(args, "input_path", ["file", "path", "source", "source_path", "input", "input_file", "filename"], notes)
 
-    if name in {"web_fetch", "headless_browser", "download_media"}:
+    if name in {"web_fetch", "headless_browser", "download_media", "anysearch_extract"}:
         _move_alias(args, "url", ["link", "uri", "website", "address"], notes)
 
-    if name in {"ffmpeg_process", "smart_crop", "create_pdf", "create_docx", "write_file", "create_zip", "modify_docx", "modify_pptx", "modify_xlsx"}:
+    # RASTACODER_V17_ALL_LOCAL_OUTPUT_ALIASES
+    if name in {
+        "ffmpeg_process", "smart_crop", "create_pdf", "create_docx", "write_file",
+        "create_zip", "modify_docx", "modify_pptx", "modify_xlsx", "create_pptx",
+        "create_xlsx", "image_compose", "pdf_manage", "convert_document", "download_media",
+    }:
         _move_alias(args, "output_path", ["output", "destination", "dest", "target", "target_path", "output_file", "filename_out"], notes)
 
     if name in {"write_file", "create_docx", "create_pdf"}:
@@ -728,6 +752,93 @@ def normalize_tool_call(
         if isinstance(args.get("file_paths"), str):
             args["file_paths"] = [args["file_paths"]]
             notes.append("file_paths:string->list")
+
+    # RASTACODER_V17_STRUCTURED_TOOL_ABI_RECOVERY
+    # These v7 tools previously had strict schemas but almost no 3B-4B surface
+    # repair. Normalize only deterministic aliases/container shapes.
+    if name == "file_manage":
+        _move_alias(args, "action", ["operation", "op", "task"], notes)
+        _move_alias(args, "source_path", ["source", "src", "from_path"], notes)
+        _move_alias(args, "destination_path", ["destination", "dest", "dst", "to_path", "target_path"], notes)
+        if "action" in args:
+            raw_action = str(args["action"]).strip().lower().replace("-", "_").replace(" ", "_")
+            mapped = {
+                "ls": "list", "list_files": "list", "make_dir": "mkdir", "create_dir": "mkdir",
+                "create_directory": "mkdir", "cp": "copy", "mv": "move", "rm": "delete",
+                "remove": "delete", "stat": "exists", "check": "exists",
+            }.get(raw_action, raw_action)
+            if mapped != raw_action:
+                notes.append(f"action:{raw_action}->{mapped}")
+            args["action"] = mapped
+        if args.get("action") == "list" and not args.get("path"):
+            args["path"] = "."
+            notes.append("default:path=.")
+
+    if name in {"list_zip", "extract_zip"}:
+        _move_alias(args, "zip_path", ["file", "path", "archive", "archive_path", "input", "input_path"], notes)
+    if name == "extract_zip":
+        _move_alias(args, "output_dir", ["folder", "directory", "destination_dir", "extract_to"], notes)
+
+    if name == "pdf_manage":
+        _move_alias(args, "action", ["operation", "op", "task"], notes)
+        _move_alias(args, "input_path", ["file", "path", "source", "source_path", "input"], notes)
+        _move_alias(args, "input_paths", ["files", "paths", "sources"], notes)
+        if isinstance(args.get("input_paths"), str):
+            args["input_paths"] = [args["input_paths"]]
+            notes.append("input_paths:string->list")
+        if "action" in args:
+            raw_action = str(args["action"]).strip().lower().replace("-", "_").replace(" ", "_")
+            mapped = {
+                "extract": "extract_pages", "extract_page": "extract_pages",
+                "delete": "delete_pages", "remove_pages": "delete_pages",
+                "rotate_pages": "rotate", "reorder_pages": "reorder",
+                "combine": "merge", "merge_pdfs": "merge",
+            }.get(raw_action, raw_action)
+            if mapped != raw_action:
+                notes.append(f"action:{raw_action}->{mapped}")
+            args["action"] = mapped
+
+    if name == "create_pptx":
+        _move_alias(args, "slides", ["pages", "items"], notes)
+        if isinstance(args.get("slides"), dict):
+            args["slides"] = [args["slides"]]
+            notes.append("slides:object->list")
+
+    if name == "create_xlsx":
+        _move_alias(args, "sheets", ["worksheets", "tabs"], notes)
+        if isinstance(args.get("sheets"), dict):
+            args["sheets"] = [args["sheets"]]
+            notes.append("sheets:object->list")
+
+    if name == "image_compose":
+        _move_alias(args, "input_paths", ["images", "files", "paths"], notes)
+        if "image_path" in args and "input_paths" not in args:
+            args["input_paths"] = [args.pop("image_path")]
+            notes.append("image_path->input_paths")
+        if "input_path" in args and "input_paths" not in args:
+            args["input_paths"] = [args.pop("input_path")]
+            notes.append("input_path->input_paths")
+        if isinstance(args.get("input_paths"), str):
+            args["input_paths"] = [args["input_paths"]]
+            notes.append("input_paths:string->list")
+        _move_alias(args, "operation", ["action", "op", "task"], notes)
+        if "operation" in args:
+            raw_op = str(args["operation"]).strip().lower().replace("-", "_").replace(" ", "_")
+            mapped = {
+                "horizontal": "concat_horizontal", "concat_h": "concat_horizontal",
+                "vertical": "concat_vertical", "concat_v": "concat_vertical",
+                "greyscale": "grayscale", "gray": "grayscale", "rotate_image": "rotate",
+                "convert_format": "convert", "format_convert": "convert",
+            }.get(raw_op, raw_op)
+            if mapped != raw_op:
+                notes.append(f"operation:{raw_op}->{mapped}")
+            args["operation"] = mapped
+
+    if name == "anysearch_get_sub_domains":
+        if isinstance(args.get("domains"), str) and not args.get("domain"):
+            args["domain"] = args.pop("domains")
+            notes.append("domains:string->domain")
+        _move_alias(args, "domain", ["host", "hostname", "site"], notes)
 
     if name == "ffmpeg_process":
         _move_alias(args, "operation", ["action", "op", "task"], notes)
@@ -883,7 +994,11 @@ def normalize_tool_call(
         directory_key = str(directory or "").strip().lower()
         path_text = str(args.get("path") or "").strip().replace("\\", "/")
         # RASTACODER_V12_VIRTUAL_WORKSPACE_ALIASES
-        workspace_aliases = {"", ".", "./", "output", "output/", "workspace", "workspace/", "/output", "/output/", "/workspace", "/workspace/"}
+        # RASTACODER_V17_LOCAL_ROOT_ALIAS_RECOVERY
+        # Qwen3-4B may express the logical workspace root as '/'. Repair it at
+        # the model ABI boundary so diagnostics and downstream tools see '.'.
+        # The central path contract independently carries the same invariant.
+        workspace_aliases = {"", ".", "./", "/", "output", "output/", "workspace", "workspace/", "/output", "/output/", "/workspace", "/workspace/"}
 
         if directory_key in roots:
             if directory_key == "output":
@@ -1011,5 +1126,11 @@ def normalize_tool_call(
             args.pop(key, None)
             notes.append(f"removed:{key}")
 
+    # RASTACODER_V17_OUTPUT_ROOT_IS_NOT_A_FILENAME
+    if isinstance(args.get("output_path"), str) and args["output_path"].strip().replace("\\", "/") in {"/", ".", "./", "/workspace", "/output"}:
+        args.pop("output_path", None)
+        notes.append("output_path:workspace_root->default_filename")
     _repair_with_context(name, args, context, notes)
+    # _repair_with_context may synthesize output names, so a root-only value is
+    # removed before it runs; callers never attempt to open the workspace dir as a file.
     return name, args, notes
