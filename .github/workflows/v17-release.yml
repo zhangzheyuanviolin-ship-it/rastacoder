@@ -27,7 +27,7 @@ jobs:
       BUILD_NUMBER: '30'
       OUTPUT_APK: RastaCoder-Qwen3-4B-local-tool-contract-recovery-v17-update.apk
       RELEASE_TAG: qwen3-local-tool-contract-recovery-v17
-      PREFLIGHT_RUN: '33050782138'
+      PREFLIGHT_RUN: '33052838100'
       PRIVATE_CURL_LIB: libc++_shared-d523468d.so
     steps:
       - name: Checkout V17 release source
