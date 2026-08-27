@@ -1,0 +1,138 @@
+name: Preflight RastaCoder Systemic Result Streaming v14
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-systemic-result-streaming-v14
+    paths:
+      - 'V14_PREFLIGHT_TRIGGER.md'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-v14:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout v14 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile reviewed V14 active patch scripts and validators before touching source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v14_systemic_result_streaming.py \
+            scripts/apply_iteration_v14_parser_r2.py \
+            scripts/apply_iteration_v14_streaming_r2.py \
+            scripts/apply_iteration_v14_history_clear.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py \
+            scripts/validate_iteration_v14.py
+
+      - name: Apply reviewed V14 systemic patches
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v14_systemic_result_streaming.py
+          python3 scripts/apply_iteration_v14_parser_r2.py
+          python3 scripts/apply_iteration_v14_streaming_r2.py
+          python3 scripts/apply_iteration_v14_history_clear.py
+
+      - name: Compile generated Python source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/path_contract.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py \
+            scripts/validate_iteration_v14.py
+
+      - name: Install validation dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp numpy pandas matplotlib
+
+      - name: Preserve V9 systemic tool regression gates
+        run: python3 scripts/run_validate_iteration_v9.py
+
+      - name: Preserve V10 context-safe and history gates
+        run: python3 scripts/validate_iteration_v10.py
+
+      - name: Preserve V11 provider and history gates
+        run: python3 scripts/validate_iteration_v11.py
+
+      - name: Preserve V12 workspace alias gates
+        run: python3 scripts/validate_iteration_v12.py
+
+      - name: Preserve V13 systemic Tool ABI and document-ingestion gates
+        run: python3 scripts/validate_iteration_v13.py
+
+      - name: Run V14 all-tool result boundary parser streaming and history gates
+        run: python3 scripts/validate_iteration_v14.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Preflight summary
+        run: |
+          echo 'V14 no-APK preflight passed.'
+          echo 'All 25 Skills / 37 canonical local functions remain present.'
+          echo 'Shared JSON boundary prevents Python-only containers from crashing successful tool turns.'
+          echo 'Brace-array spreadsheet rows preserve model source order; bare missing-value calls enter bounded repair instead of silent execution.'
+          echo 'Successful tool turns have a bounded empty-final recovery path.'
+          echo 'Final local replies stream through Python -> Dart -> Kotlin EventChannel -> ChatScreen while internal document-ingestion calls stay private.'
+          echo 'Chat history keeps per-conversation delete and adds an accessible clear-all action without deleting workspace/generated files.'
+          echo 'All V9-V13 inherited regression gates and Flutter static analysis remain green.'
