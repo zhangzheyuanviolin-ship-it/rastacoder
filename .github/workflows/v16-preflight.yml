@@ -35,15 +35,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Compile reviewed patch scripts and validators before touching source
+      - name: Compile reviewed V16 patch scripts and validators before touching source
         run: |
           set -euo pipefail
           python3 -m py_compile \
-            scripts/apply_iteration_v15_documents_runtime.py \
-            scripts/apply_iteration_v15_curl_cffi_compat.py \
-            scripts/apply_iteration_v15_python_sandbox.py \
-            scripts/apply_iteration_v15_media.py \
-            scripts/apply_iteration_v15_unlimited_tools.py \
             scripts/apply_iteration_v16_residual_hardening.py \
             scripts/prepare_curl_cffi_android_wheel.py \
             scripts/prepare_curl_cffi_native_companion_v16.py \
@@ -56,14 +51,13 @@ jobs:
             scripts/validate_iteration_v15_curl_cffi_compat.py \
             scripts/validate_iteration_v16.py
 
-      - name: Apply inherited V15 and reviewed V16 patches
+      - name: Verify persisted V15 baseline and apply only reviewed V16 delta
         run: |
           set -euo pipefail
-          python3 scripts/apply_iteration_v15_documents_runtime.py
-          python3 scripts/apply_iteration_v15_curl_cffi_compat.py
-          python3 scripts/apply_iteration_v15_python_sandbox.py
-          python3 scripts/apply_iteration_v15_media.py
-          python3 scripts/apply_iteration_v15_unlimited_tools.py
+          grep -F 'version "3.13"' android/app/build.gradle
+          grep -F 'install "cffi==1.17.1"' android/app/build.gradle
+          grep -F 'vendor/curl_cffi-0.16.2-cp313-cp313-android_24_arm64_v8a.whl' android/app/build.gradle
+          grep -F 'com.chaquo.python:gradle:16.1.0' android/build.gradle
           python3 scripts/apply_iteration_v16_residual_hardening.py
 
       - name: Compile generated Python source
@@ -208,7 +202,7 @@ jobs:
       - name: Preflight summary
         run: |
           echo 'V16 full no-APK preflight passed.'
-          echo 'All inherited V9-V15 gates remain green.'
+          echo 'All inherited V9-V15 gates remain green on the persisted V15 baseline.'
           echo 'Safe os.path exists/isfile/isdir/getsize/getmtime are scoped to supplied files and OUTPUT_DIR.'
           echo 'create_xlsx/read_xlsx roundtrip is verified for canonical, compatibility-wrapper and record-object inputs.'
           echo 'curl-cffi wheel-private native companions are packaged byte-identically under exact DT_NEEDED filenames.'
