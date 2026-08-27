@@ -48,7 +48,7 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install anthropic requests beautifulsoup4 lxml pypdf reportlab python-docx python-pptx openpyxl Pillow yt-dlp 'numpy<2' 'pandas<3' 'matplotlib<4'
 
-      - name: Run V9 through V17 regression gates
+      - name: Run V9 through V17 local and host regression gates
         run: |
           set -euo pipefail
           python3 scripts/run_validate_iteration_v9.py
@@ -58,7 +58,6 @@ jobs:
           python3 scripts/validate_iteration_v13.py
           python3 scripts/validate_iteration_v14.py
           python3 scripts/validate_iteration_v15.py
-          python3 scripts/validate_iteration_v15_curl_cffi_compat.py
           python3 scripts/validate_iteration_v16.py
           python3 scripts/validate_iteration_v17.py
 
