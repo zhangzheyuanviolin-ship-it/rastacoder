@@ -1,0 +1,170 @@
+name: Preflight RastaCoder Tool Runtime Hardening v15
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-tool-runtime-hardening-v15
+    paths:
+      - 'V15_PREFLIGHT_TRIGGER.md'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-v15:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout v15 branch
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11 for host regression tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Compile reviewed V15 patch scripts and validators before touching source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/apply_iteration_v15_documents_runtime.py \
+            scripts/apply_iteration_v15_python_sandbox.py \
+            scripts/apply_iteration_v15_media.py \
+            scripts/apply_iteration_v15_unlimited_tools.py \
+            scripts/validate_iteration_v10.py \
+            scripts/validate_iteration_v11.py \
+            scripts/validate_iteration_v12.py \
+            scripts/validate_iteration_v13.py \
+            scripts/validate_iteration_v14.py \
+            scripts/validate_iteration_v15.py
+
+      - name: Apply reviewed V15 systemic patches
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_iteration_v15_documents_runtime.py
+          python3 scripts/apply_iteration_v15_python_sandbox.py
+          python3 scripts/apply_iteration_v15_media.py
+          python3 scripts/apply_iteration_v15_unlimited_tools.py
+
+      - name: Compile generated Python source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            python/navixmind/agent.py \
+            python/navixmind/tools/__init__.py \
+            python/navixmind/tools/compat.py \
+            python/navixmind/tools/documents.py \
+            python/navixmind/tools/extended_tools.py \
+            python/navixmind/tools/code_executor.py \
+            python/navixmind/tools/media.py \
+            python/navixmind/tools/path_contract.py \
+            scripts/validate_iteration_v15.py
+
+      - name: Install host validation dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install \
+            anthropic requests beautifulsoup4 lxml pypdf reportlab \
+            python-docx python-pptx openpyxl Pillow yt-dlp \
+            'numpy<2' 'pandas<3' 'matplotlib<4'
+
+      - name: Preserve V9 systemic tool regression gates
+        run: python3 scripts/run_validate_iteration_v9.py
+
+      - name: Preserve V10 context-safe and history gates
+        run: python3 scripts/validate_iteration_v10.py
+
+      - name: Preserve V11 provider and history gates
+        run: python3 scripts/validate_iteration_v11.py
+
+      - name: Preserve V12 workspace alias gates
+        run: python3 scripts/validate_iteration_v12.py
+
+      - name: Preserve V13 systemic Tool ABI and document-ingestion gates
+        run: python3 scripts/validate_iteration_v13.py
+
+      - name: Preserve V14 result-boundary streaming and history gates
+        run: python3 scripts/validate_iteration_v14.py
+
+      - name: Run V15 document sandbox media XLSX ZIP OCR and unlimited-tool gates
+        run: python3 scripts/validate_iteration_v15.py
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Align inappwebview Android library compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          pub = Path(os.environ['PUB_CACHE']) / 'hosted' / 'pub.dev'
+          candidates = sorted(pub.glob('flutter_inappwebview_android-*/android/build.gradle'))
+          if not candidates:
+              raise SystemExit('flutter_inappwebview_android build.gradle not found')
+          p = candidates[-1]
+          text = p.read_text()
+          for old, new in {
+              'compileSdkVersion 33': 'compileSdkVersion 35',
+              'compileSdkVersion 34': 'compileSdkVersion 35',
+              'compileSdk 33': 'compileSdk 35',
+              'compileSdk 34': 'compileSdk 35',
+          }.items():
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+
+      - name: Flutter static analysis gate
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Setup Python 3.13 for exact Android Chaquopy dependency resolution
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Resolve exact ARM64 Android Python requirements without building an APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle')
+          text = p.read_text()
+          text = text.replace(
+              'abiFilters "armeabi-v7a", "arm64-v8a", "x86_64"',
+              'abiFilters "arm64-v8a"',
+          )
+          p.write_text(text)
+          PY
+          cd android
+          ./gradlew :app:generateDebugPythonRequirements --no-daemon 2>&1 | tee /tmp/v15-chaquopy-resolution.log
+          grep -Ei 'curl[_-]cffi.*0\.16\.2' /tmp/v15-chaquopy-resolution.log
+          grep -Ei 'matplotlib.*3\.8\.4' /tmp/v15-chaquopy-resolution.log
+          grep -Ei 'pandas.*2\.1\.3' /tmp/v15-chaquopy-resolution.log
+          grep -Ei 'numpy.*1\.26\.2' /tmp/v15-chaquopy-resolution.log
+
+      - name: Preflight summary
+        run: |
+          echo 'V15 no-APK preflight passed.'
+          echo 'All inherited V9-V14 regression gates remain green.'
+          echo 'PPTX notes resources, ZIP zero-byte members, XLSX formula fallback and image format aliases passed.'
+          echo 'Python OUTPUT_DIR write/read, safe os.path and safe version diagnostics passed while dangerous APIs remain blocked.'
+          echo 'FFmpeg output-aware audio codecs, numeric mix duration, convert/extract-frame paths and OCR no-text signaling passed source gates.'
+          echo 'download_media resolved real Android ARM64 curl-cffi browser impersonation dependencies.'
+          echo 'Unlimited tool-call mode uses zero as the explicit sentinel and removes the tool-driven step ceiling.'
+          echo 'Flutter static analysis and exact Chaquopy ARM64 dependency resolution passed without producing an APK.'
