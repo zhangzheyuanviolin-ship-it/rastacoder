@@ -62,10 +62,14 @@ with tempfile.TemporaryDirectory() as td:
     require(os.path.normpath(listed['directory']) == root, f'list_files escaped workspace: {listed["directory"]}')
 
     # Exact agent/executor boundary replay using the raw arguments copied from
-    # the V16 phone diagnostic.
+    # the V16 phone diagnostic. V17 requires BOTH layers to work: the small-model
+    # compatibility ABI first rewrites '/' to '.', and the central path contract
+    # independently treats '/' as workspace root as a fail-safe.
     raw_args = {'path': '/', 'recursive': False, 'pattern': None, 'include_directories': True}
     canonical, args, repairs = normalize_tool_call('list_files', raw_args, context={})
     require(canonical == 'list_files', f'list_files canonicalization changed: {canonical}')
+    require(args.get('path') == '.', f'Local ABI failed to repair list_files / -> .: {args}')
+    require(any('virtual_workspace_alias:/->.' in note for note in repairs), f'Expected slash repair diagnostic missing: {repairs}')
     context = {'output_dir': root, '_file_map': {}, '_diagnostics': []}
     executed = execute_tool(canonical, args, context)
     executed_names = {entry['name'] for entry in executed['entries']}
@@ -104,7 +108,9 @@ with tempfile.TemporaryDirectory() as td:
 # Prompt/schema invariant: local Qwen should be taught the logical namespace,
 # while runtime remains tolerant when it chooses '/' anyway.
 source = (ROOT / 'python/navixmind/tools/__init__.py').read_text(encoding='utf-8')
+compat_source = (ROOT / 'python/navixmind/tools/compat.py').read_text(encoding='utf-8')
 require("use path='.' for workspace root" in source, 'Local list_files workspace-root hint missing')
 require('RASTACODER_V13_SMALL_MODEL_TOOL_ABI' in source, 'Small-model tool ABI projection disappeared')
+require('RASTACODER_V17_LOCAL_ROOT_ALIAS_RECOVERY' in compat_source, 'V17 local root ABI repair marker missing')
 
-print('V17 validation passed: exact Qwen3 list_files(path="/") phone failure is repaired at the shared path contract; 25 Skills / 37 functions and inherited path semantics remain intact.')
+print('V17 validation passed: exact Qwen3 list_files(path="/") phone failure is repaired at both the local ABI and shared path contract; 25 Skills / 37 functions and inherited path semantics remain intact.')
