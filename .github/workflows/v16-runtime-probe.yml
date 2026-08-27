@@ -67,9 +67,8 @@ jobs:
           grep -E '^lib[A-Za-z0-9+_.-]+-[0-9a-fA-F]+\.so$' /tmp/all-needed.txt > /tmp/private-needed.txt
           echo '--- wheel-private hashed DT_NEEDED ---'
           cat /tmp/private-needed.txt
-          test "$(wc -l < /tmp/private-needed.txt)" -eq 2
+          test "$(wc -l < /tmp/private-needed.txt)" -eq 1
           grep -Fx 'libc++_shared-d523468d.so' /tmp/private-needed.txt
-          grep -Fx 'libdl-a1426ed8.so' /tmp/private-needed.txt
           while IFS= read -r needed; do
             companion="$(find /tmp/curlwheel -type f -name "$needed" -print -quit)"
             test -f "$companion"
