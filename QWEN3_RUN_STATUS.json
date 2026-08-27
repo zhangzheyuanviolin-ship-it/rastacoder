@@ -1,13 +1,13 @@
 {
-  "workflow": "Build RastaCoder Skills Parameters Stream v5",
-  "run_id": 32850763011,
-  "run_number": 13,
+  "workflow": "Produce Qwen3 Known-Good Baseline APK",
+  "run_id": 33044013027,
+  "run_number": 8,
   "run_attempt": 1,
   "status": "completed",
-  "conclusion": "success",
-  "html_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/32850763011",
-  "head_sha": "3d42faac46a1b9d8a76103efc2b22e9af275d490",
+  "conclusion": "failure",
+  "html_url": "https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/33044013027",
+  "head_sha": "89541801f092953320305b361e1fd959db358e01",
   "event": "push",
-  "created_at": "2026-08-25T13:00:14Z",
-  "updated_at": "2026-08-25T13:06:54Z"
+  "created_at": "2026-08-27T05:54:35Z",
+  "updated_at": "2026-08-27T05:55:04Z"
 }
