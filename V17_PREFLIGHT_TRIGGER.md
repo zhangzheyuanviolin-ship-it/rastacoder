@@ -1,3 +1,3 @@
 # V17 no-APK preflight trigger
 
-Second isolated trigger after workflow-parse cleanup. Run V9-V17 regressions, exact Qwen3-4B list_files(path="/") replay, 25/37 local-tool invariant, Flutter analysis, and exact Android ARM64 Python dependency resolution. No APK build is permitted in this job.
+Third trigger after correcting validation ordering. Run V9-V17 regressions including the exact Qwen3-4B list_files(path="/") phone replay, 25/37 local-tool invariant, Flutter analysis, curl-cffi runtime validation after wheel preparation, and exact Android ARM64 dependency resolution. No APK build is permitted.
