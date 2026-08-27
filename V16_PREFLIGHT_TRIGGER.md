@@ -1,3 +1,3 @@
-# V16 full no-APK preflight trigger
+# V16 full no-APK preflight trigger — baseline-corrected rerun
 
-Run all inherited V9-V15 regression gates plus V16 safe os.path, XLSX roundtrip, curl-cffi native companion, MLC model-set, Flutter and exact Android Python dependency gates. This workflow must not build an APK.
+Use the verified persisted V15 source as the baseline, apply only the V16 delta, and run inherited V9-V15 plus V16 safe-os.path, XLSX roundtrip, native companion, model-set, Flutter and exact Android dependency gates. No APK may be built.
