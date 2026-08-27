@@ -1,3 +1,3 @@
-# V16 full no-APK preflight trigger — baseline-corrected rerun
+# V16 full no-APK preflight trigger — validator-corrected rerun
 
-Use the verified persisted V15 source as the baseline, apply only the V16 delta, and run inherited V9-V15 plus V16 safe-os.path, XLSX roundtrip, native companion, model-set, Flutter and exact Android dependency gates. No APK may be built.
+Run the same locked V16 no-APK gate after correcting the Dart registry field matcher from modelLib to mlcModelLib. No functional source behavior changed in this rerun.
