@@ -48,6 +48,26 @@ projected = get_offline_tools_for_skills(ALL_LOCAL_SKILL_IDS)
 require({tool['name'] for tool in projected} == canonical_names, 'Projected 4B tool schema lost canonical functions')
 require(set(LOCAL_TOOL_PROMPT_HINTS) == canonical_names, 'A canonical local function is missing its compact 4B prompt hint')
 
+# Auto-inventory path-bearing schema fields across all 37 local functions.
+# This prevents a future tool from adding another *_path/paths/output_dir field
+# without deliberately wiring it into the central workspace contract and this
+# test. It is the permanent guard against the class of omission which caused V12.
+schema_path_keys = {
+    key
+    for tool in projected
+    for key in ((tool.get('input_schema') or {}).get('properties') or {})
+    if key == 'path' or key.endswith('_path') or key.endswith('_paths') or key.endswith('_dir')
+}
+expected_schema_path_keys = {
+    'path', 'image_path', 'input_path', 'pdf_path', 'file_path', 'source_path',
+    'destination_path', 'zip_path', 'docx_path', 'pptx_path', 'xlsx_path',
+    'image_paths', 'file_paths', 'input_paths', 'output_path', 'output_dir',
+}
+require(
+    schema_path_keys == expected_schema_path_keys,
+    f'Local schema path inventory changed; audit central resolver before accepting: found={sorted(schema_path_keys)}, expected={sorted(expected_schema_path_keys)}',
+)
+
 # ---------------------------------------------------------------------------
 # B. Exact V16 phone failure + every shared path-bearing key.
 # ---------------------------------------------------------------------------
@@ -105,6 +125,15 @@ with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as exter
         child = {key: '/v17-child.dat'}
         _resolve_workspace_input_paths(child, root)
         require(child[key] == os.path.join(root, 'v17-child.dat'), f'Leading slash leaked for {key}: {child[key]}')
+
+    # Every array path family present in the 37 schemas uses the same resolver.
+    for key in ('image_paths', 'file_paths', 'input_paths'):
+        probe = {key: ['/', '/v17-array-child.dat']}
+        _resolve_workspace_input_paths(probe, root)
+        require(
+            probe[key] == [root, os.path.join(root, 'v17-array-child.dat')],
+            f'Array path resolver leaked a model absolute path for {key}: {probe[key]}',
+        )
 
     # extract_zip uses output_dir instead of output_path; lock both output forms.
     out_probe = {'output_path': '/generated.bin', 'output_dir': '/unzipped'}
@@ -212,4 +241,4 @@ for marker in (
     require(marker in compat_source, f'Missing local ABI marker: {marker}')
 require('every other leading-slash path is interpreted as workspace-relative' in path_source, 'Systemic leading-slash path policy missing')
 
-print('V17 validation passed: exact Qwen3 / regression, arbitrary leading-slash virtualization, all shared input/output path keys, structured v7 tool ABI defaults, and complete 25-Skill/37-function local surface are locked.')
+print('V17 validation passed: exact Qwen3 / regression, automatic 37-schema path inventory, scalar/array/output path boundaries, structured local ABI defaults, and complete 25-Skill/37-function surface are locked.')
