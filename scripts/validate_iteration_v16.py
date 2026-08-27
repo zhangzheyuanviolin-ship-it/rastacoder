@@ -110,7 +110,7 @@ expected_ids = {
     'ministral3_q4f16_0_68e08feb72d08c3826f6a0b3623b81fc',
 }
 registry = source('lib/core/models/model_registry.dart')
-registry_ids = set(re.findall(r"modelLib:\s*'([^']+)'", registry))
+registry_ids = set(re.findall(r"mlcModelLib:\s*'([^']+)'", registry))
 require(registry_ids == expected_ids, f'Unverified or missing model registry entries: {registry_ids}')
 
 asset_cfg = json.loads(source('android/mlc4j/src/main/assets/mlc-app-config.json'))
