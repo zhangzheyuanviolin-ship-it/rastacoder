@@ -20,11 +20,13 @@ grep -F 'com.chaquo.python:gradle:16.1.0' android/build.gradle
 python3 -m py_compile \
   scripts/apply_iteration_v17_local_tool_recovery.py \
   scripts/apply_iteration_v17_prompt_legacy_guard.py \
+  scripts/apply_iteration_v17_trusted_path_boundary.py \
   scripts/validate_iteration_v17.py \
   scripts/prepare_curl_cffi_android_wheel.py \
   scripts/prepare_curl_cffi_native_companion_v16.py
 python3 scripts/apply_iteration_v17_local_tool_recovery.py
 python3 scripts/apply_iteration_v17_prompt_legacy_guard.py
+python3 scripts/apply_iteration_v17_trusted_path_boundary.py
 python3 -m py_compile \
   python/navixmind/agent.py \
   python/navixmind/tools/__init__.py \
@@ -71,4 +73,4 @@ p.write_text(text)
 PY
 flutter analyze --no-fatal-infos --no-fatal-warnings
 
-echo 'V17 release phase 1 passed: exact phone regression, arbitrary leading-slash family, full 25/37 local-tool invariant, V9-V17 host regressions and Flutter analysis are green.'
+echo 'V17 release phase 1 passed: exact phone regression, arbitrary leading-slash family, explicit attachment trust, full 25/37 local-tool invariant, V9-V17 host regressions and Flutter analysis are green.'
