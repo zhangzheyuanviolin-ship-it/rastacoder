@@ -139,6 +139,6 @@ require(
 require(all(item.get('bundle_weight') is False for item in package_models), 'MLC package unexpectedly bundles model weights')
 
 channel = source('android/app/src/main/kotlin/ai/navixmind/services/MLCInferenceChannel.kt')
-require('chatModule.reload(modelPath, modelLib)' in channel, 'Android runtime no longer reloads by explicit model_lib')
+require('engine!!.reload(modelPath, modelLib)' in channel, 'Android runtime no longer reloads by explicit model_lib')
 
 print('V16 validation passed: safe os.path probes, exact XLSX roundtrips, curl-cffi native loader hardening, and verified MLC model-set gates are green.')
