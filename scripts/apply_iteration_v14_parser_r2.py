@@ -69,6 +69,7 @@ def _parse_mapping(text: str) -> Optional[dict]:
 
 def _missing_json_value_keys(text: str) -> List[str]:
     """Return quoted object keys emitted without a ': value' payload."""
+    import re
     keys: List[str] = []
     pattern = re.compile(r'(?P<prefix>[,{]\s*)"(?P<key>(?:\\.|[^"\\])*)"\s*(?=,|})')
     for match in pattern.finditer(str(text or '')):
