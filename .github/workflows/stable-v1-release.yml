@@ -1,0 +1,147 @@
+name: Promote Verified RastaCoder V17 to Stable v1.0.0
+
+on:
+  push:
+    branches:
+      - iteration/qwen3-local-tool-contract-recovery-v17
+    paths:
+      - 'STABLE_V1_RELEASE_TRIGGER.md'
+
+permissions:
+  contents: write
+
+env:
+  STABLE_TAG: stable-v1.0.0
+  SOURCE_TAG: qwen3-local-tool-contract-recovery-v17
+  SOURCE_APK: RastaCoder-Qwen3-4B-local-tool-contract-recovery-v17-update.apk
+  STABLE_APK: RastaCoder-Qwen3-Local-Agent-Stable-v1.0.0-arm64.apk
+  HANDOFF_SOURCE: docs/STABLE_V1_FULL_PROJECT_HANDOFF_FOR_LOCAL_AGENT_SQUARE.md
+  HANDOFF_ASSET: RastaCoder-Stable-v1.0.0-Full-Project-Handoff.md
+  V17_VERIFIED_SOURCE: 4da9cd51cf488fbd6164d01a41de076f95e8d050
+  EXPECTED_APK_SHA256: 689e736da9723d9ce37425ba39920600724a8bb3e187557bf0744d36800eea13
+  EXPECTED_APK_SIZE: '527182699'
+  EXPECTED_CERT_SHA256: 87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8
+  EXPECTED_RUNTIME_SHA256: 5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48
+  V17_RELEASE_RUN: '33053247983'
+  V17_PREFLIGHT_RUN: '33052838100'
+  RUNTIME_PROBE_RUN: '33041507127'
+
+jobs:
+  promote-stable-v1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout stable promotion source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Lock user-accepted V17 source and successful verification runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${V17_RELEASE_RUN}" --jq '.conclusion')" = success
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${V17_PREFLIGHT_RUN}" --jq '.conclusion')" = success
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUNTIME_PROBE_RUN}" --jq '.conclusion')" = success
+
+          # Stable promotion may add only documentation/release infrastructure.
+          # The app/runtime source must remain byte-for-byte the user-accepted V17 source.
+          git diff --exit-code "$V17_VERIFIED_SOURCE" "$GITHUB_SHA" -- android lib python pubspec.yaml pubspec.lock mlc-package-config.json
+
+          test -f "$HANDOFF_SOURCE"
+          test "$(git rev-parse refs/tags/v1.0.0)" = "7eb158cf25f9b99f60fe63eaa3f9efc4c2e407e5"
+          if git show-ref --verify --quiet "refs/tags/$STABLE_TAG"; then
+            echo "Stable tag already exists before promotion: $STABLE_TAG" >&2
+            exit 1
+          fi
+          if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
+            echo "Stable release already exists before promotion: $STABLE_TAG" >&2
+            exit 1
+          fi
+          echo "Stable promotion source is locked to exact user-accepted V17 application code."
+
+      - name: Download and verify exact V17 APK bytes
+        run: |
+          set -euo pipefail
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${SOURCE_TAG}/${SOURCE_APK}"
+          curl --fail --location --retry 3 --retry-delay 3 --output "$SOURCE_APK" "$url"
+          echo "$EXPECTED_APK_SHA256  $SOURCE_APK" | sha256sum --check --strict
+          test "$(stat -c '%s' "$SOURCE_APK")" = "$EXPECTED_APK_SIZE"
+          cp --preserve=mode,timestamps "$SOURCE_APK" "$STABLE_APK"
+          echo "$EXPECTED_APK_SHA256  $STABLE_APK" | sha256sum --check --strict
+          test "$(stat -c '%s' "$STABLE_APK")" = "$EXPECTED_APK_SIZE"
+          cp "$HANDOFF_SOURCE" "$HANDOFF_ASSET"
+          echo "Exact V17 APK promoted without rebuild."
+
+      - name: Publish formal Stable v1.0.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/stable-notes.md <<'EOF'
+          # RastaCoder Qwen3 Local Agent Stable v1.0.0
+
+          This is the first formal stable release of the current Qwen3 on-device agent/tool product line.
+
+          The Android binary is the exact same APK bytes as `qwen3-local-tool-contract-recovery-v17`, which the user completed real-device acceptance testing on and confirmed had no remaining observed problems. No rebuild was performed for the stable promotion.
+
+          - Internal Android version: `0.0.16` / versionCode `30`
+          - Package: `ai.navixmind`
+          - ABI: `arm64-v8a` only
+          - APK SHA-256: `689e736da9723d9ce37425ba39920600724a8bb3e187557bf0744d36800eea13`
+          - APK size: `527182699` bytes
+          - Signing certificate SHA-256: `87d560a2d8f7a7c7fb8fd66b40ac6a40fb8f210a4f436fa468ecbbaa5b6170b8`
+          - MLC runtime SHA-256: `5a3bb01f0819e85c07f58602161f6d020ecbf3e7f65922c9dfe898cfa0820c48`
+          - 25 manually controlled Skills / exactly 37 canonical local functions
+          - Primary verified local tool-calling model: Qwen3-4B
+
+          Stable v1 freezes the current small-model Tool ABI, compatibility layer, unified workspace/path contract, explicit attachment trust, Office/file production toolset, Python/Chaquopy runtime, Android native adapters, result reinjection and release verification discipline as the integration baseline for the next project phase.
+
+          The repository already contains an older historical annotated tag named `v1.0.0`; it is intentionally preserved. This product line therefore uses `stable-v1.0.0` as the formal stable tag.
+
+          Full next-context/project-fusion handoff is included both in the repository and as a release asset:
+          `docs/STABLE_V1_FULL_PROJECT_HANDOFF_FOR_LOCAL_AGENT_SQUARE.md`
+
+          Verification lineage:
+          - User-accepted V17 release run: https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/33053247983
+          - Full V17 no-APK preflight: https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/33052838100
+          - MLC/native runtime probe: https://github.com/zhangzheyuanviolin-ship-it/rastacoder/actions/runs/33041507127
+          EOF
+
+          gh release create "$STABLE_TAG" \
+            "$STABLE_APK" \
+            "$HANDOFF_ASSET" \
+            --target "$GITHUB_SHA" \
+            --title "RastaCoder Qwen3 Local Agent Stable v1.0.0" \
+            --notes-file /tmp/stable-notes.md \
+            --latest
+
+      - name: Verify published Stable release and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}")"
+          test "$(jq -r '.draft' <<<"$release_json")" = false
+          test "$(jq -r '.prerelease' <<<"$release_json")" = false
+          test "$(jq -r '.tag_name' <<<"$release_json")" = "$STABLE_TAG"
+          test "$(jq -r '.target_commitish' <<<"$release_json")" = "$GITHUB_SHA"
+
+          apk_size="$(jq -r --arg n "$STABLE_APK" '.assets[] | select(.name==$n) | .size' <<<"$release_json")"
+          apk_digest="$(jq -r --arg n "$STABLE_APK" '.assets[] | select(.name==$n) | .digest' <<<"$release_json")"
+          handoff_count="$(jq -r --arg n "$HANDOFF_ASSET" '[.assets[] | select(.name==$n)] | length' <<<"$release_json")"
+          test "$apk_size" = "$EXPECTED_APK_SIZE"
+          test "$apk_digest" = "sha256:$EXPECTED_APK_SHA256"
+          test "$handoff_count" = 1
+
+          # Historical old v1.0.0 tag must remain untouched.
+          test "$(git rev-parse refs/tags/v1.0.0)" = "7eb158cf25f9b99f60fe63eaa3f9efc4c2e407e5"
+
+          echo "Stable release verified."
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${STABLE_TAG}"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${STABLE_TAG}/${STABLE_APK}"
+
+      - name: Cleanup promoted binary copies
+        if: always()
+        run: rm -f "$SOURCE_APK" "$STABLE_APK" "$HANDOFF_ASSET"
